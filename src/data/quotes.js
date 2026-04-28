@@ -1,0 +1,17 @@
+export const quotes = [
+  { text: 'there is no greater agony than bearing an untold story inside you', author: 'Maya Angelou' },
+  { text: 'every great film should seem new every time you see it', author: 'Roger Ebert' },
+  { text: 'music is the shorthand of emotion', author: 'Leo Tolstoy' },
+  { text: 'a film is a petrified fountain of thought', author: 'Jean Cocteau' },
+  { text: 'without music, life would be a mistake', author: 'Friedrich Nietzsche' },
+  { text: 'the cinema is truth twenty-four frames per second', author: 'Jean-Luc Godard' },
+  { text: 'music gives a soul to the universe, wings to the mind', author: 'Plato' },
+  { text: 'every artist was first an amateur', author: 'Ralph Waldo Emerson' },
+  { text: 'creativity takes courage', author: 'Henri Matisse' },
+  { text: 'art is not what you see, but what you make others see', author: 'Edgar Degas' },
+  { text: 'imagination is the beginning of creation', author: 'George Bernard Shaw' },
+  { text: 'a picture is a poem without words', author: 'Horace' },
+  { text: 'the only way to do great work is to love what you do', author: 'Steve Jobs' },
+  { text: 'stories are the creative conversion of life itself', author: 'Robert McKee' },
+  { text: 'where words fail, music speaks', author: 'Hans Christian Andersen' },
+];
