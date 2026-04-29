@@ -1,9 +1,7 @@
-import TopBar from '../TopBar';
 
 export default function GenerateShotListScreen({ onNavigate }) {
   return (
-    <div className="screen active" id="s4b">
-      <TopBar left="PRATEEK" right="MUSIC VIDEO" />
+    <div className="screen active" id="s5">
 
       <div className="shot-layout" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <div className="shot-header" style={{ justifyContent: 'flex-end', borderBottom: 'none', paddingBottom: 0 }}>
@@ -26,13 +24,32 @@ export default function GenerateShotListScreen({ onNavigate }) {
               />
               <div className="char-badge">NAISHA</div>
             </div>
+            <div style={{ width: '12px' }} />
+            <div className="char-thumb">
+              <div
+                className="char-avatar"
+                style={{
+                  background: 'linear-gradient(135deg,#2E8B57,#3CB371)',
+                }}
+              />
+              <div className="char-badge" style={{ background: '#3CB371' }}>CAFE</div>
+            </div>
+            <div className="char-thumb">
+              <div
+                className="char-avatar"
+                style={{
+                  background: 'linear-gradient(135deg,#556B2F,#6B8E23)',
+                }}
+              />
+              <div className="char-badge" style={{ background: '#6B8E23' }}>PARK</div>
+            </div>
           </div>
         </div>
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
           <button 
             className="btn-orange" 
-            onClick={() => onNavigate(6)} 
+            onClick={() => onNavigate(7)} 
             style={{ width: '260px', padding: '16px', fontSize: '13px' }}
           >
             GENERATE SHOT LIST
@@ -40,7 +57,7 @@ export default function GenerateShotListScreen({ onNavigate }) {
           
           <button 
             className="btn-teal" 
-            onClick={() => onNavigate(6)} 
+            onClick={() => onNavigate(7)} 
             style={{ 
               width: '260px', 
               padding: '16px', 

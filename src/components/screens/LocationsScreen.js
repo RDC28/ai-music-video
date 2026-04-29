@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 
-const charColors = [
-  '#8B6F47', '#A0522D', '#6B4423', '#4A3728',
-  '#C4956A', '#7D5A3C', '#593D2B', '#8B7355',
-  '#6E5040', '#4E342E', '#3E2723', '#795548',
+const locationColors = [
+  '#6B8E23', '#556B2F', '#808000', '#BDB76B',
+  '#9ACD32', '#32CD32', '#228B22', '#006400',
+  '#4A5D23', '#2E8B57', '#3CB371', '#8F9779',
 ];
 
-export default function CharactersScreen({ onNavigate }) {
+export default function LocationsScreen({ onNavigate }) {
   const [activeTab, setActiveTab] = useState(0);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -25,10 +25,10 @@ export default function CharactersScreen({ onNavigate }) {
         <div className="char-panel">
           <div className="notif-card">
             <div className="notif-title">Notification</div>
-            <div className="notif-big">Fantastic!</div>
+            <div className="notif-big">Almost there!</div>
             <div className="notif-body">
-              Now since we have the song sorted. Let&apos;s pick characters or
-              create new before we start cooking up visuals?
+              Characters are looking great. Let&apos;s build some locations for
+              them to perform in!
             </div>
           </div>
 
@@ -45,14 +45,14 @@ export default function CharactersScreen({ onNavigate }) {
             
             <div className="char-grid-btn-row">
               <button className="btn-teal" onClick={() => setShowHistoryModal(true)}>From History</button>
-              <button className="btn-teal" onClick={() => onNavigate(5)}>
+              <button className="btn-teal" onClick={() => onNavigate(6)}>
                 Upload
               </button>
             </div>
           </div>
         </div>
 
-        {/* Right Panel — Character Sheet */}
+        {/* Right Panel — Location Sheet */}
         <div className="char-sheet">
           <div style={{ position: 'sticky', top: '64px', zIndex: 10, background: 'var(--cream)', paddingTop: '24px', paddingBottom: '12px', borderBottom: '2px solid var(--border)', marginBottom: '16px' }}>
             <div className="char-tabs">
@@ -60,17 +60,17 @@ export default function CharactersScreen({ onNavigate }) {
                 className={`char-tab${activeTab === 0 ? ' active' : ''}`}
                 onClick={() => handleTabClick(0)}
               >
-                CHARACTER 1 — REENA
+                LOCATION 1 — CAFE
               </div>
               <div
                 className={`char-tab${activeTab === 1 ? ' active' : ''}`}
                 onClick={() => handleTabClick(1)}
               >
-                CHARACTER 2 — RAVI
+                LOCATION 2 — PARK
               </div>
               <div
                 className="char-tab"
-                onClick={() => onNavigate(5)}
+                onClick={() => onNavigate(6)}
                 style={{
                   background: 'var(--orange)',
                   color: '#fff',
@@ -83,7 +83,7 @@ export default function CharactersScreen({ onNavigate }) {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="char-name" style={{ marginBottom: 0 }}>
-                {activeTab === 0 ? 'CHARACTER 1 — REENA' : 'CHARACTER 2 — RAVI'}
+                {activeTab === 0 ? 'LOCATION 1 — CAFE' : 'LOCATION 2 — PARK'}
               </div>
               <button 
                 className="btn-outline-small" 
@@ -104,8 +104,8 @@ export default function CharactersScreen({ onNavigate }) {
             </div>
           </div>
 
-          <div className="char-images" id="charGrid">
-            {charColors.map((color, i) => (
+          <div className="char-images" id="locGrid">
+            {locationColors.map((color, i) => (
               <div
                 key={i}
                 className="char-img-thumb"
@@ -120,14 +120,14 @@ export default function CharactersScreen({ onNavigate }) {
         <div className="auth-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="auth-modal" style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowCreateModal(false)}>×</button>
-            <div className="card-title">Generate Character</div>
+            <div className="card-title">Generate Location</div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
               
               {/* Image Placeholder */}
               <div style={{ 
                 width: '100%', 
-                aspectRatio: '1', 
+                aspectRatio: '16/9', 
                 background: 'rgba(42, 38, 34, 0.05)', 
                 borderRadius: '12px', 
                 display: 'flex', 
@@ -159,7 +159,7 @@ export default function CharactersScreen({ onNavigate }) {
                   PROMPT
                 </label>
                 <textarea 
-                  placeholder="Describe your character here..." 
+                  placeholder="Describe your location here..." 
                   style={{ 
                     width: '100%', 
                     minHeight: '100px', 
@@ -205,30 +205,30 @@ export default function CharactersScreen({ onNavigate }) {
 
       {showHistoryModal && (
         <div className="auth-overlay" onClick={() => setShowHistoryModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '600px', width: '90%' }} onClick={e => e.stopPropagation()}>
+          <div className="auth-modal" style={{ maxWidth: '700px', width: '90%' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowHistoryModal(false)}>×</button>
-            <div className="card-title">Character History</div>
+            <div className="card-title">Location History</div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginTop: '20px' }}>
               
               {/* This Project Section */}
               <div>
                 <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', marginBottom: '12px', color: 'var(--dark)' }}>GENERATED IN THIS PROJECT</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-                  <div style={{ aspectRatio: '1', background: '#8B4513', borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
-                  <div style={{ aspectRatio: '1', background: '#D2691E', borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                  <div style={{ aspectRatio: '16/9', background: '#3CB371', borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
+                  <div style={{ aspectRatio: '16/9', background: '#228B22', borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
                 </div>
               </div>
 
               {/* All Time Section */}
               <div>
                 <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', marginBottom: '12px', color: 'var(--dark)' }}>ALL TIME GENERATIONS</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', maxHeight: '300px', overflowY: 'auto', paddingRight: '8px' }}>
-                  {charColors.map((color, i) => (
-                    <div key={i} style={{ aspectRatio: '1', background: color, borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', maxHeight: '300px', overflowY: 'auto', paddingRight: '8px' }}>
+                  {locationColors.map((color, i) => (
+                    <div key={i} style={{ aspectRatio: '16/9', background: color, borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
                   ))}
-                  {charColors.map((color, i) => (
-                    <div key={i + 12} style={{ aspectRatio: '1', background: color, borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent', opacity: 0.8 }} className="history-item"></div>
+                  {locationColors.map((color, i) => (
+                    <div key={i + 12} style={{ aspectRatio: '16/9', background: color, borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent', opacity: 0.8 }} className="history-item"></div>
                   ))}
                 </div>
               </div>

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import TopBar from '../TopBar';
 import { shots } from '@/data/shots';
 import { drawClubScene } from '@/utils/drawClubScene';
 
@@ -22,29 +21,25 @@ export default function VideosScreen({ onNavigate, isActive }) {
 
   return (
     <div className="screen active" id="s7">
-      <TopBar left="PRATEEK" right="MUSIC VIDEO" />
 
       <div
         style={{
+          position: 'sticky',
+          top: '64px',
+          zIndex: 10,
           display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-          padding: '0 28px',
-          margin: '8px 0',
+          justifyContent: 'flex-end',
+          padding: '8px 28px',
+          paddingTop: '16px',
+          background: 'var(--cream)',
+          margin: '0 0 12px 0'
         }}
       >
-        <button
-          className="btn-orange"
-          style={{ fontSize: '12px', padding: '10px 20px' }}
-        >
-          VIDEOS
-        </button>
-        <button
-          className="btn-teal"
-          onClick={() => onNavigate(9)}
-          style={{ marginLeft: 'auto', fontSize: '11px', padding: '10px 20px' }}
-        >
-          APPROVE ALL →
+        <button className="btn-approve" onClick={() => onNavigate(10)}>
+          APPROVE ALL
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12l5 5L20 7"></path>
+          </svg>
         </button>
       </div>
 

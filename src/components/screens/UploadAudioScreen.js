@@ -1,9 +1,7 @@
-import TopBar from '../TopBar';
 
 export default function UploadAudioScreen({ onNavigate }) {
   return (
     <div className="screen active" id="s2">
-      <TopBar left="PRATEEK" right="MUSIC VIDEO" />
 
       <div className="center-content">
         <div

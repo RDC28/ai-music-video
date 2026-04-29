@@ -1,6 +1,20 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
+  const [showAuth, setShowAuth] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
+  const router = useRouter();
+
+  const handleAuthSubmit = (e) => {
+    e.preventDefault();
+    // Simulate auth success and push to studio dashboard
+    router.push('/dashboard');
+  };
+
   return (
     <div className="home-screen">
       <nav className="home-nav">
@@ -8,7 +22,7 @@ export default function Home() {
         <div className="home-nav-links">
           <Link href="#" className="nav-link">Features</Link>
           <Link href="#" className="nav-link">Gallery</Link>
-          <Link href="/create" className="btn-teal">Start Creating</Link>
+          <button onClick={() => setShowAuth(true)} className="btn-teal">Login</button>
         </div>
       </nav>
 
@@ -22,7 +36,7 @@ export default function Home() {
             Create stunning, cohesive music videos and films using cutting-edge AI models. No studio required.
           </p>
           <div className="hero-actions">
-            <Link href="/create" className="btn-orange hero-cta">Open Studio</Link>
+            <button onClick={() => setShowAuth(true)} className="btn-orange hero-cta">Login to get started</button>
             <Link href="#" className="btn-outline hero-cta">Watch Demo</Link>
           </div>
         </div>
@@ -49,6 +63,40 @@ export default function Home() {
       <footer className="home-footer">
         <p>© 2026 Aura AI Studio. All rights reserved.</p>
       </footer>
+
+      {showAuth && (
+        <div className="auth-overlay" onClick={() => setShowAuth(false)}>
+          <div className="auth-modal" onClick={e => e.stopPropagation()}>
+            <button className="auth-close" onClick={() => setShowAuth(false)}>×</button>
+            
+            <div className="auth-header">
+              <h2 className={`auth-tab ${isLogin ? 'active' : ''}`} onClick={() => setIsLogin(true)}>Login</h2>
+              <h2 className={`auth-tab ${!isLogin ? 'active' : ''}`} onClick={() => setIsLogin(false)}>Register</h2>
+            </div>
+
+            <form className="auth-form" onSubmit={handleAuthSubmit}>
+              {!isLogin && (
+                <div className="form-group">
+                  <label>First Name</label>
+                  <input type="text" placeholder="Your name" required />
+                </div>
+              )}
+              <div className="form-group">
+                <label>Email</label>
+                <input type="email" placeholder="you@example.com" required />
+              </div>
+              <div className="form-group">
+                <label>Password</label>
+                <input type="password" placeholder="••••••••" required />
+              </div>
+              
+              <button type="submit" className="btn-orange auth-submit">
+                {isLogin ? 'Login to Studio' : 'Create Account'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

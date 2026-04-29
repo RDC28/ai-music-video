@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import TopBar from '../TopBar';
 import { quotes } from '@/data/quotes';
 
 export default function LandingScreen({ onNavigate }) {
@@ -16,10 +15,18 @@ export default function LandingScreen({ onNavigate }) {
 
   return (
     <div className="screen active" id="s1">
-      <TopBar left="PRATEEK" right="12.03.2026" />
 
       <div className="hero-grid">
-        <div className="tile tile-center">
+        <div className="hero-col">
+          <div className="tile tile-disabled" style={{ flex: 0.8 }}>
+            <span className="tile-label">SHORT</span>
+          </div>
+          <div className="tile tile-disabled" style={{ flex: 1.2 }}>
+            <span className="tile-label">TV SERIES</span>
+          </div>
+        </div>
+
+        <div className="tile tile-center" style={{ height: '100%' }}>
           <div className="heart-icon">♥</div>
           <div className="hello-text">
             hello
@@ -31,12 +38,17 @@ export default function LandingScreen({ onNavigate }) {
           </div>
         </div>
 
-        <div
-          className="tile tile-music"
-          onClick={() => onNavigate(2)}
-          style={{ cursor: 'pointer' }}
-        >
-          <span className="tile-label">MUSIC VIDEO</span>
+        <div className="hero-col">
+          <div className="tile tile-disabled" style={{ flex: 1.2 }}>
+            <span className="tile-label">MOVIE</span>
+          </div>
+          <div
+            className="tile tile-music"
+            onClick={() => onNavigate(2)}
+            style={{ flex: 0.8, cursor: 'pointer' }}
+          >
+            <span className="tile-label">MUSIC VIDEO</span>
+          </div>
         </div>
       </div>
 

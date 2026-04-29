@@ -3,6 +3,7 @@ const labels = [
   'Upload Audio',
   'Brain Dump',
   'Characters',
+  'Locations',
   'Generate Shot List',
   'Shot List',
   'Images',
