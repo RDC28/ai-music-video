@@ -1,29 +1,48 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { shots } from '@/data/shots';
 import { drawClubScene } from '@/utils/drawClubScene';
 
-export default function ImagesScreen({ onNavigate, isActive }) {
+export default function ImagesScreen({ onNavigate, isActive, projectData, onDataUpdate }) {
   const canvasRefs = useRef([]);
   const modalCanvasRef = useRef(null);
   const [editModalIndex, setEditModalIndex] = useState(null);
+  const [isApproving, setIsApproving] = useState(false);
+  
+  // Use props data or fallback to empty array
+  const shots = projectData || [];
 
   useEffect(() => {
     if (!isActive) return;
     const timer = setTimeout(() => {
       canvasRefs.current.forEach((canvas, i) => {
-        if (canvas) drawClubScene(canvas, i * 3 + 7);
+        if (canvas) {
+          // If we have a real image URL, we would draw it here
+          // For now, using the generative placeholder logic
+          drawClubScene(canvas, i * 3 + 7);
+        }
       });
     }, 50);
     return () => clearTimeout(timer);
-  }, [isActive]);
+  }, [isActive, shots]);
 
   useEffect(() => {
     if (editModalIndex !== null && modalCanvasRef.current) {
       drawClubScene(modalCanvasRef.current, editModalIndex * 3 + 7);
     }
   }, [editModalIndex]);
+
+  const handleApproveAll = async () => {
+    setIsApproving(true);
+    // In a real flow, this would mark all shots as "image_ready"
+    // and save any final prompts/metadata to the project state.
+    await onDataUpdate({
+      images_approved: true,
+      current_step: 9
+    });
+    setIsApproving(false);
+    onNavigate(9);
+  };
 
   return (
     <div className="screen active" id="s6" style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
@@ -43,16 +62,22 @@ export default function ImagesScreen({ onNavigate, isActive }) {
             margin: '0 0 12px 0'
           }}
         >
-          <button className="btn-approve" onClick={() => onNavigate(9)}>
-            APPROVE ALL
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12l5 5L20 7"></path>
-            </svg>
+          <button 
+            className="btn-approve" 
+            onClick={handleApproveAll}
+            disabled={isApproving}
+          >
+            {isApproving ? 'SAVING...' : 'APPROVE ALL'}
+            {!isApproving && (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12l5 5L20 7"></path>
+              </svg>
+            )}
           </button>
         </div>
 
         <div className="img-layout" id="imgList">
-          {shots.map((shot, i) => (
+          {shots.length > 0 ? shots.map((shot, i) => (
             <div 
               key={i} 
               className="img-item"
@@ -67,9 +92,11 @@ export default function ImagesScreen({ onNavigate, isActive }) {
               }}
             >
               <div className="img-info">
-                <div className="shot-title" style={{ color: editModalIndex === i ? 'var(--teal)' : 'var(--dark)' }}>{i + 1}. {shot.n}</div>
+                <div className="shot-title" style={{ color: editModalIndex === i ? 'var(--teal)' : 'var(--dark)' }}>
+                  {i + 1}. {shot.n || shot.title || `Shot ${i+1}`}
+                </div>
                 <div className="shot-prompt">
-                  &quot;{shot.p.substring(0, 120)}...&quot;
+                  &quot;{(shot.p || shot.prompt || "No prompt available").substring(0, 120)}...&quot;
                 </div>
               </div>
               <div className="img-thumb">
@@ -93,7 +120,11 @@ export default function ImagesScreen({ onNavigate, isActive }) {
                 {editModalIndex === i ? 'EDITING...' : 'EDIT & GENERATE'}
               </button>
             </div>
-          ))}
+          )) : (
+            <div style={{ padding: '100px', textAlign: 'center', color: '#666', width: '100%' }}>
+              No shots generated yet. Please go back to the Script screen.
+            </div>
+          )}
         </div>
       </div>
 
@@ -123,9 +154,7 @@ export default function ImagesScreen({ onNavigate, isActive }) {
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Previews */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              {/* Current Image */}
               <div>
                 <label style={{ fontFamily: 'var(--font-display)', fontSize: '11px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '0.05em', marginBottom: '8px', display: 'block' }}>
                   CURRENT IMAGE
@@ -135,7 +164,6 @@ export default function ImagesScreen({ onNavigate, isActive }) {
                 </div>
               </div>
 
-              {/* New Preview */}
               <div>
                 <label style={{ fontFamily: 'var(--font-display)', fontSize: '11px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.05em', marginBottom: '8px', display: 'block' }}>
                   NEW PREVIEW
@@ -153,7 +181,6 @@ export default function ImagesScreen({ onNavigate, isActive }) {
             </label>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              {/* Upload Section */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)' }}>
                   1. UPLOAD YOUR OWN
@@ -168,13 +195,12 @@ export default function ImagesScreen({ onNavigate, isActive }) {
                 </div>
               </div>
 
-              {/* Generate Section */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)' }}>
                   2. GENERATE WITH PROMPT
                 </label>
                 <textarea 
-                  defaultValue={shots[editModalIndex].p} 
+                  defaultValue={shots[editModalIndex]?.p || shots[editModalIndex]?.prompt || ""} 
                   style={{ width: '100%', padding: '12px', border: '2px solid var(--border)', borderRadius: '12px', fontFamily: 'var(--font-body)', fontSize: '12px', resize: 'none', outline: 'none', minHeight: '120px' }}
                   onFocus={(e) => e.target.style.borderColor = 'var(--teal)'}
                   onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
@@ -184,7 +210,6 @@ export default function ImagesScreen({ onNavigate, isActive }) {
                 </button>
               </div>
             </div>
-
           </div>
         </div>
       )}

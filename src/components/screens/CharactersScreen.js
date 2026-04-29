@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { geminiAgent } from '@/utils/geminiAgents';
 
 const charColors = [
   '#8B6F47', '#A0522D', '#6B4423', '#4A3728',
@@ -8,18 +9,45 @@ const charColors = [
   '#6E5040', '#4E342E', '#3E2723', '#795548',
 ];
 
-export default function CharactersScreen({ onNavigate }) {
+export default function CharactersScreen({ onNavigate, projectData = [], onDataUpdate, projectId }) {
   const [activeTab, setActiveTab] = useState(0);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Local state for the new character being created
+  const [newChar, setNewChar] = useState({ name: '', description: '' });
 
-  const handleTabClick = (index) => {
-    setActiveTab(index);
+  const characters = projectData || [];
+
+  const handleAddCharacter = async () => {
+    if (!newChar.name) return alert("Please enter a name");
+    
+    const updatedChars = [...characters, { 
+      id: Date.now(), 
+      name: newChar.name.toUpperCase(), 
+      description: newChar.description,
+      images: [] 
+    }];
+    
+    await onDataUpdate({ characters: updatedChars });
+    setShowCreateModal(false);
+    setNewChar({ name: '', description: '' });
+    setActiveTab(updatedChars.length - 1);
   };
+
+  const handleRemoveCharacter = async (index) => {
+    const updatedChars = characters.filter((_, i) => i !== index);
+    await onDataUpdate({ characters: updatedChars });
+    if (activeTab >= updatedChars.length) {
+      setActiveTab(Math.max(0, updatedChars.length - 1));
+    }
+  };
+
+  const activeChar = characters[activeTab] || null;
 
   return (
     <div className="screen active" id="s4">
-
       <div className="char-layout">
         {/* Left Panel */}
         <div className="char-panel">
@@ -56,21 +84,18 @@ export default function CharactersScreen({ onNavigate }) {
         <div className="char-sheet">
           <div style={{ position: 'sticky', top: '64px', zIndex: 10, background: 'var(--cream)', paddingTop: '24px', paddingBottom: '12px', borderBottom: '2px solid var(--border)', marginBottom: '16px' }}>
             <div className="char-tabs">
-              <div
-                className={`char-tab${activeTab === 0 ? ' active' : ''}`}
-                onClick={() => handleTabClick(0)}
-              >
-                CHARACTER 1 — REENA
-              </div>
-              <div
-                className={`char-tab${activeTab === 1 ? ' active' : ''}`}
-                onClick={() => handleTabClick(1)}
-              >
-                CHARACTER 2 — RAVI
-              </div>
+              {characters.map((char, i) => (
+                <div
+                  key={char.id || i}
+                  className={`char-tab${activeTab === i ? ' active' : ''}`}
+                  onClick={() => setActiveTab(i)}
+                >
+                  {char.name}
+                </div>
+              ))}
               <div
                 className="char-tab"
-                onClick={() => onNavigate(5)}
+                onClick={() => setShowCreateModal(true)}
                 style={{
                   background: 'var(--orange)',
                   color: '#fff',
@@ -83,35 +108,46 @@ export default function CharactersScreen({ onNavigate }) {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="char-name" style={{ marginBottom: 0 }}>
-                {activeTab === 0 ? 'CHARACTER 1 — REENA' : 'CHARACTER 2 — RAVI'}
+                {activeChar ? activeChar.name : 'NO CHARACTER SELECTED'}
               </div>
-              <button 
-                className="btn-outline-small" 
-                style={{ 
-                  color: 'var(--orange)', 
-                  borderColor: 'var(--orange)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '6px' 
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18"></path>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-                Remove
-              </button>
+              {activeChar && (
+                <button 
+                  className="btn-outline-small" 
+                  onClick={() => handleRemoveCharacter(activeTab)}
+                  style={{ 
+                    color: 'var(--orange)', 
+                    borderColor: 'var(--orange)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '6px' 
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                  Remove
+                </button>
+              )}
             </div>
           </div>
 
           <div className="char-images" id="charGrid">
-            {charColors.map((color, i) => (
-              <div
-                key={i}
-                className="char-img-thumb"
-                style={{ background: color + '88' }}
-              />
-            ))}
+            {activeChar?.images?.length > 0 ? (
+              activeChar.images.map((img, i) => (
+                <div key={i} className="char-img-thumb">
+                  <img src={img} alt="Generated" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              ))
+            ) : (
+              charColors.map((color, i) => (
+                <div
+                  key={i}
+                  className="char-img-thumb"
+                  style={{ background: color + '88' }}
+                />
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -124,42 +160,27 @@ export default function CharactersScreen({ onNavigate }) {
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
               
-              {/* Image Placeholder */}
-              <div style={{ 
-                width: '100%', 
-                aspectRatio: '1', 
-                background: 'rgba(42, 38, 34, 0.05)', 
-                borderRadius: '12px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                color: '#888', 
-                fontSize: '14px', 
-                border: '2px dashed var(--dark)' 
-              }}>
-                Generated Preview Will Appear Here
-              </div>
-
-              {/* Model Selection */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '0.05em' }}>
-                  AI MODEL
-                </label>
-                <button
-                  className="btn-outline-small"
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  Nano Banan Pro <span style={{ fontSize: '10px' }}>▼</span>
-                </button>
-              </div>
-
-              {/* Prompt Input */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '0.05em' }}>
-                  PROMPT
+                  CHARACTER NAME
+                </label>
+                <input 
+                  type="text"
+                  placeholder="e.g. REENA" 
+                  value={newChar.name}
+                  onChange={(e) => setNewChar({...newChar, name: e.target.value})}
+                  style={{ width: '100%', padding: '12px', border: '2px solid var(--border)', borderRadius: '12px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '0.05em' }}>
+                  DESCRIPTION
                 </label>
                 <textarea 
-                  placeholder="Describe your character here..." 
+                  placeholder="Describe your character's look..." 
+                  value={newChar.description}
+                  onChange={(e) => setNewChar({...newChar, description: e.target.value})}
                   style={{ 
                     width: '100%', 
                     minHeight: '100px', 
@@ -171,33 +192,16 @@ export default function CharactersScreen({ onNavigate }) {
                     resize: 'vertical',
                     outline: 'none'
                   }}
-                  onFocus={(e) => e.target.style.borderColor = 'var(--teal)'}
-                  onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
                 />
               </div>
 
-              {/* Reference Image Upload */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(42, 38, 34, 0.03)', padding: '12px', borderRadius: '8px', border: '1px dashed var(--border)' }}>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '0.05em' }}>
-                  REFERENCE IMAGE
-                </label>
-                <button
-                  className="btn-outline-small"
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', padding: '6px 12px' }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="17 8 12 3 7 8"></polyline>
-                    <line x1="12" y1="3" x2="12" y2="15"></line>
-                  </svg>
-                  Upload File
-                </button>
-              </div>
-
-              <button className="btn-orange" style={{ width: '100%' }}>
-                Generate
+              <button 
+                className="btn-orange" 
+                style={{ width: '100%' }}
+                onClick={handleAddCharacter}
+              >
+                Create Character
               </button>
-
             </div>
           </div>
         </div>
@@ -208,36 +212,10 @@ export default function CharactersScreen({ onNavigate }) {
           <div className="auth-modal" style={{ maxWidth: '600px', width: '90%' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowHistoryModal(false)}>×</button>
             <div className="card-title">Character History</div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginTop: '20px' }}>
-              
-              {/* This Project Section */}
-              <div>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', marginBottom: '12px', color: 'var(--dark)' }}>GENERATED IN THIS PROJECT</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-                  <div style={{ aspectRatio: '1', background: '#8B4513', borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
-                  <div style={{ aspectRatio: '1', background: '#D2691E', borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
-                </div>
-              </div>
-
-              {/* All Time Section */}
-              <div>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', marginBottom: '12px', color: 'var(--dark)' }}>ALL TIME GENERATIONS</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', maxHeight: '300px', overflowY: 'auto', paddingRight: '8px' }}>
-                  {charColors.map((color, i) => (
-                    <div key={i} style={{ aspectRatio: '1', background: color, borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
-                  ))}
-                  {charColors.map((color, i) => (
-                    <div key={i + 12} style={{ aspectRatio: '1', background: color, borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent', opacity: 0.8 }} className="history-item"></div>
-                  ))}
-                </div>
-              </div>
-
-            </div>
+            {/* ... history content ... */}
           </div>
         </div>
       )}
-
     </div>
   );
 }

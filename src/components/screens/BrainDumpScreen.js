@@ -1,8 +1,37 @@
+import { useState } from 'react';
+import { geminiAgent } from '@/utils/geminiAgents';
+import { creditManager } from '@/utils/credits';
 
-export default function BrainDumpScreen({ onNavigate }) {
+export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId }) {
+  const [idea, setIdea] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const handleBrainDump = async () => {
+    if (!idea.trim()) return alert("Please enter an idea first");
+    
+    setIsAnalyzing(true);
+    try {
+      // 1. Generate the script using Gemini
+      const script = await geminiAgent.generateScript(idea);
+      
+      // 2. Save the script to the project state in Supabase
+      await onDataUpdate({ script: script });
+      
+      // 3. Deduct credit (optional, but good for tracking)
+      // await creditManager.deductCredits(userId, creditManager.COSTS.SCRIPT);
+
+      // 4. Move to next screen (Characters)
+      onNavigate(4);
+    } catch (error) {
+      console.error("AI Analysis failed:", error);
+      alert("Something went wrong with the AI analysis. Please try again.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   return (
     <div className="screen active" id="s3">
-
       <div className="brain-content">
         <div>
           <div className="option-label">OPTION 1</div>
@@ -13,11 +42,21 @@ export default function BrainDumpScreen({ onNavigate }) {
             <textarea
               rows="5"
               placeholder="Describe your music video concept, mood, story..."
+              value={idea}
+              onChange={(e) => setIdea(e.target.value)}
+              disabled={isAnalyzing}
             />
-            <button className="btn-orange" onClick={() => onNavigate(4)} style={{ padding: '10px 24px', fontSize: '12px', flexShrink: 0 }}>BRAIN DUMP</button>
+            <button 
+              className="btn-orange" 
+              onClick={handleBrainDump}
+              disabled={isAnalyzing}
+              style={{ padding: '10px 24px', fontSize: '12px', flexShrink: 0 }}
+            >
+              {isAnalyzing ? 'ANALYZING...' : 'BRAIN DUMP'}
+            </button>
           </div>
           <div style={{ fontSize: '11px', color: '#666', marginTop: '12px', marginLeft: '16px', fontFamily: 'var(--font-body)' }}>
-            * This prompt box will be used to generate a script.
+            * This prompt box will use Gemini 1.5 Pro to generate your script.
           </div>
         </div>
 
@@ -46,7 +85,7 @@ export default function BrainDumpScreen({ onNavigate }) {
             justifyContent: 'flex-end',
           }}
         >
-          <button className="btn-teal" onClick={() => onNavigate(4)}>
+          <button className="btn-teal" onClick={() => onNavigate(4)} disabled={isAnalyzing}>
             Continue →
           </button>
         </div>

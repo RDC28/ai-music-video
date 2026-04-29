@@ -3,16 +3,54 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/utils/supabase';
 
 export default function Home() {
   const [showAuth, setShowAuth] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  
   const router = useRouter();
+  const supabase = createClient();
 
-  const handleAuthSubmit = (e) => {
+  const handleAuthSubmit = async (e) => {
     e.preventDefault();
-    // Simulate auth success and push to studio dashboard
-    router.push('/dashboard');
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      if (isLogin) {
+        // Login Logic
+        const { error: loginError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (loginError) throw loginError;
+        router.push('/dashboard');
+      } else {
+        // Registration Logic
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: firstName,
+            },
+          },
+        });
+        if (signUpError) throw signUpError;
+        alert("Registration successful! Please check your email for a confirmation link.");
+        setIsLogin(true);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -74,24 +112,44 @@ export default function Home() {
               <h2 className={`auth-tab ${!isLogin ? 'active' : ''}`} onClick={() => setIsLogin(false)}>Register</h2>
             </div>
 
+            {error && <div style={{ color: '#ff4d4d', fontSize: '12px', marginBottom: '16px', textAlign: 'center' }}>{error}</div>}
+
             <form className="auth-form" onSubmit={handleAuthSubmit}>
               {!isLogin && (
                 <div className="form-group">
                   <label>First Name</label>
-                  <input type="text" placeholder="Your name" required />
+                  <input 
+                    type="text" 
+                    placeholder="Your name" 
+                    required 
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
                 </div>
               )}
               <div className="form-group">
                 <label>Email</label>
-                <input type="email" placeholder="you@example.com" required />
+                <input 
+                  type="email" 
+                  placeholder="you@example.com" 
+                  required 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
               </div>
               <div className="form-group">
                 <label>Password</label>
-                <input type="password" placeholder="••••••••" required />
+                <input 
+                  type="password" 
+                  placeholder="••••••••" 
+                  required 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
               
-              <button type="submit" className="btn-orange auth-submit">
-                {isLogin ? 'Login to Studio' : 'Create Account'}
+              <button type="submit" className="btn-orange auth-submit" disabled={isLoading}>
+                {isLoading ? 'Processing...' : (isLogin ? 'Login to Studio' : 'Create Account')}
               </button>
             </form>
           </div>

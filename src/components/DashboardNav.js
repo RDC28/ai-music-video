@@ -1,12 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { createClient } from '@/utils/supabase';
 
 export default function DashboardNav() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [profile, setProfile] = useState(null);
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createClient();
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      setProfile(data);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/');
+  };
 
   const isActive = (path) => pathname === path;
 
@@ -22,9 +47,14 @@ export default function DashboardNav() {
       
       <div className="home-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
         
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px', color: 'var(--dark)' }}>
-          Hi, Prateek
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px', color: 'var(--dark)' }}>
+            Hi, {profile?.full_name?.split(' ')[0] || 'User'}
+          </span>
+          <span style={{ fontSize: '10px', color: 'var(--teal)', fontWeight: 700, letterSpacing: '0.05em' }}>
+            {profile?.credits || 0} CREDITS
+          </span>
+        </div>
 
         <div className="hamburger-container" style={{ position: 'relative' }}>
           <div 
@@ -41,7 +71,13 @@ export default function DashboardNav() {
               <Link href="/billing" className="dropdown-item" style={isActive('/billing') ? activeStyle : {}}>Billing &amp; Usage</Link>
               <Link href="/payment" className="dropdown-item" style={isActive('/payment') ? activeStyle : {}}>Payment Methods</Link>
               <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
-              <Link href="/" className="dropdown-item" style={{ color: 'var(--orange)' }}>Log out</Link>
+              <button 
+                onClick={handleLogout} 
+                className="dropdown-item" 
+                style={{ color: 'var(--orange)', border: 'none', background: 'none', width: '100%', textAlign: 'left', cursor: 'pointer' }}
+              >
+                Log out
+              </button>
             </div>
           )}
         </div>

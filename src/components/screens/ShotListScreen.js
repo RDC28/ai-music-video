@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { shots as initialShots } from '@/data/shots';
 
-export default function ShotListScreen({ onNavigate }) {
-  const [localShots, setLocalShots] = useState(initialShots);
+export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }) {
+  const characters = projectData?.characters || [];
+  const localShots = projectData?.shot_list || [];
   const [editingIndex, setEditingIndex] = useState(null);
 
   const handleEditClick = (index) => {
@@ -15,10 +15,11 @@ export default function ShotListScreen({ onNavigate }) {
     setEditingIndex(null);
   };
 
-  const handleSave = (index, newTitle, newPrompt) => {
+  const handleSave = async (index, newTitle, newPrompt) => {
     const updated = [...localShots];
     updated[index] = { ...updated[index], n: newTitle, p: newPrompt };
-    setLocalShots(updated);
+    
+    await onDataUpdate({ shot_list: updated });
     setEditingIndex(null);
   };
 
@@ -29,43 +30,21 @@ export default function ShotListScreen({ onNavigate }) {
         <div className="shot-header" style={{ position: 'sticky', top: '64px', zIndex: 10, justifyContent: 'space-between', padding: '16px 28px', paddingTop: '32px', background: 'var(--cream)', borderRadius: '16px', border: '2px solid var(--border)', marginBottom: '32px' }}>
           
           <div className="chars-preview">
-            <div className="char-thumb">
-              <div
-                className="char-avatar"
-                style={{
-                  background: 'linear-gradient(135deg,#8B4513,#D2691E)',
-                }}
-              />
-              <div className="char-badge">ZAIN</div>
-            </div>
-            <div className="char-thumb">
-              <div
-                className="char-avatar"
-                style={{
-                  background: 'linear-gradient(135deg,#9B59B6,#E8A0BF)',
-                }}
-              />
-              <div className="char-badge">NAISHA</div>
-            </div>
-            <div style={{ width: '12px' }} />
-            <div className="char-thumb">
-              <div
-                className="char-avatar"
-                style={{
-                  background: 'linear-gradient(135deg,#2E8B57,#3CB371)',
-                }}
-              />
-              <div className="char-badge" style={{ background: '#3CB371' }}>CAFE</div>
-            </div>
-            <div className="char-thumb">
-              <div
-                className="char-avatar"
-                style={{
-                  background: 'linear-gradient(135deg,#556B2F,#6B8E23)',
-                }}
-              />
-              <div className="char-badge" style={{ background: '#6B8E23' }}>PARK</div>
-            </div>
+            {characters.map((char, i) => (
+              <div key={i} className="char-thumb">
+                <div
+                  className="char-avatar"
+                  style={{
+                    background: `linear-gradient(135deg, #3d8c7a, #f28c28)`,
+                  }}
+                />
+                <div className="char-badge">{char.name}</div>
+              </div>
+            ))}
+            
+            {characters.length === 0 && (
+              <div style={{ fontSize: '12px', color: '#666' }}>No characters defined yet.</div>
+            )}
           </div>
 
           <button className="btn-approve" onClick={() => onNavigate(8)}>
@@ -77,40 +56,46 @@ export default function ShotListScreen({ onNavigate }) {
         </div>
 
         <div id="shotListItems">
-          {localShots.map((shot, i) => (
-            <div 
-              key={i} 
-              className="shot-item"
-              style={{
-                background: editingIndex === i ? 'rgba(61, 140, 122, 0.08)' : 'transparent',
-                borderLeft: editingIndex === i ? '4px solid var(--teal)' : '4px solid transparent',
-                paddingLeft: '16px',
-                paddingRight: '16px',
-                borderRadius: editingIndex === i ? '0 12px 12px 0' : '0',
-                transition: 'all 0.2s ease',
-                borderBottomColor: editingIndex === i ? 'transparent' : 'var(--border)'
-              }}
-            >
-              <div>
-                <div className="shot-title" style={{ color: editingIndex === i ? 'var(--teal)' : 'var(--dark)' }}>{i + 1}. {shot.n}</div>
-                <div className="shot-prompt">&quot;{shot.p}&quot;</div>
+          {localShots.length > 0 ? (
+            localShots.map((shot, i) => (
+              <div 
+                key={i} 
+                className="shot-item"
+                style={{
+                  background: editingIndex === i ? 'rgba(61, 140, 122, 0.08)' : 'transparent',
+                  borderLeft: editingIndex === i ? '4px solid var(--teal)' : '4px solid transparent',
+                  paddingLeft: '16px',
+                  paddingRight: '16px',
+                  borderRadius: editingIndex === i ? '0 12px 12px 0' : '0',
+                  transition: 'all 0.2s ease',
+                  borderBottomColor: editingIndex === i ? 'transparent' : 'var(--border)'
+                }}
+              >
+                <div>
+                  <div className="shot-title" style={{ color: editingIndex === i ? 'var(--teal)' : 'var(--dark)' }}>{i + 1}. {shot.n}</div>
+                  <div className="shot-prompt">&quot;{shot.p}&quot;</div>
+                </div>
+                <div className="shot-actions">
+                  <button
+                    className="btn-teal"
+                    style={{ 
+                      fontSize: '10px', 
+                      padding: '7px 14px',
+                      opacity: editingIndex === i ? 0.5 : 1,
+                      cursor: editingIndex === i ? 'default' : 'pointer'
+                    }}
+                    onClick={() => handleEditClick(i)}
+                  >
+                    {editingIndex === i ? 'EDITING...' : 'EDIT'}
+                  </button>
+                </div>
               </div>
-              <div className="shot-actions">
-                <button
-                  className="btn-teal"
-                  style={{ 
-                    fontSize: '10px', 
-                    padding: '7px 14px',
-                    opacity: editingIndex === i ? 0.5 : 1,
-                    cursor: editingIndex === i ? 'default' : 'pointer'
-                  }}
-                  onClick={() => handleEditClick(i)}
-                >
-                  {editingIndex === i ? 'EDITING...' : 'EDIT'}
-                </button>
-              </div>
+            ))
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+              No shots generated yet. Please go back and generate a shot list.
             </div>
-          ))}
+          )}
         </div>
       </div>
 
