@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 
-export default function TopBar({ activeScreen, onNavigate }) {
+export default function TopBar({ activeScreen, onNavigate, userName, projectName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const rightText = activeScreen === 1 ? '12.03.2026' : (activeScreen <= 5 ? '2025' : 'MUSIC VIDEO');
 
   const steps = [
     { id: 1, name: 'Home' },
@@ -21,7 +20,7 @@ export default function TopBar({ activeScreen, onNavigate }) {
   return (
     <div className="topbar-wrapper">
     <div className="topbar">
-      <span className="topbar-name">PRATEEK</span>
+      <span className="topbar-name">{userName || 'USER'}</span>
       
       {/* Desktop Nav */}
       <div className="topbar-nav desktop-only">
@@ -66,7 +65,7 @@ export default function TopBar({ activeScreen, onNavigate }) {
       </div>
       
       <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-        <span className="topbar-right desktop-only">{rightText}</span>
+        <span className="topbar-right desktop-only">{projectName || 'PROJECT'}</span>
         <Link href="/dashboard" className="btn-outline-small">
           Save & Exit
         </Link>

@@ -19,6 +19,7 @@ export default function CreateProject({ params }) {
   const { projectId } = use(params);
   const [activeScreen, setActiveScreen] = useState(1);
   const [projectData, setProjectData] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   
   const supabase = createClient();
@@ -26,7 +27,7 @@ export default function CreateProject({ params }) {
 
   useEffect(() => {
     if (projectId) {
-      fetchProject(projectId);
+      fetchData(projectId);
     }
     
     const savedScreen = localStorage.getItem('activeScreen');
@@ -35,20 +36,33 @@ export default function CreateProject({ params }) {
     }
   }, [projectId]);
 
-  const fetchProject = async (id) => {
-    const { data, error } = await supabase
+  const fetchData = async (id) => {
+    // Fetch project
+    const { data: project, error: projectError } = await supabase
       .from('projects')
       .select('*')
       .eq('id', id)
       .single();
     
-    if (error || !data) {
+    if (projectError || !project) {
       console.error("Project not found or access denied");
       router.push('/dashboard');
       return;
     }
 
-    setProjectData(data);
+    setProjectData(project);
+
+    // Fetch profile
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      setProfile(prof);
+    }
+
     setIsInitialLoading(false);
   };
 
@@ -77,11 +91,13 @@ export default function CreateProject({ params }) {
     return <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--cream)', color: 'var(--teal)', fontWeight: 700 }}>Validating Project Session...</div>;
   }
 
+  const userName = profile?.full_name?.split(' ')[0]?.toUpperCase() || 'USER';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <TopBar activeScreen={activeScreen} onNavigate={goTo} />
+      <TopBar activeScreen={activeScreen} onNavigate={goTo} userName={userName} projectName={projectData?.title} />
 
-      {activeScreen === 1 && <LandingScreen onNavigate={goTo} />}
+      {activeScreen === 1 && <LandingScreen onNavigate={goTo} userName={userName} />}
       {activeScreen === 2 && (
         <UploadAudioScreen 
           onNavigate={goTo} 
@@ -109,10 +125,17 @@ export default function CreateProject({ params }) {
         <LocationsScreen 
           onNavigate={goTo} 
           projectId={projectId}
+          projectData={projectData?.project_state?.locations}
           onDataUpdate={updateProjectData}
         />
       )}
-      {activeScreen === 6 && <GenerateShotListScreen onNavigate={goTo} />}
+      {activeScreen === 6 && (
+        <GenerateShotListScreen 
+          onNavigate={goTo} 
+          projectData={projectData?.project_state}
+          onDataUpdate={updateProjectData}
+        />
+      )}
       {activeScreen === 7 && (
         <ShotListScreen 
           onNavigate={goTo} 
@@ -129,7 +152,12 @@ export default function CreateProject({ params }) {
         />
       )}
       {activeScreen === 9 && (
-        <VideosScreen onNavigate={goTo} isActive={activeScreen === 9} />
+        <VideosScreen 
+          onNavigate={goTo} 
+          isActive={activeScreen === 9}
+          projectData={projectData?.project_state}
+          onDataUpdate={updateProjectData}
+        />
       )}
       {activeScreen === 10 && (
         <AssembleScreen 

@@ -6,11 +6,14 @@ import { createClient } from '@/utils/supabase';
 
 export default function BillingScreen() {
   const [profile, setProfile] = useState(null);
+  const [transactions, setTransactions] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoadingTx, setIsLoadingTx] = useState(true);
   const supabase = createClient();
 
   useEffect(() => {
     fetchProfile();
+    fetchTransactions();
   }, []);
 
   const fetchProfile = async () => {
@@ -25,17 +28,28 @@ export default function BillingScreen() {
     }
   };
 
+  const fetchTransactions = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data } = await supabase
+        .from('credit_transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      setTransactions(data || []);
+    }
+    setIsLoadingTx(false);
+  };
+
   const handleTopUp = async (priceId, credits) => {
     setIsProcessing(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
       const res = await fetch('/api/checkout/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           priceId,
-          userId: user.id,
           credits
         })
       });
@@ -74,7 +88,7 @@ export default function BillingScreen() {
         </div>
 
         <div className="card-title" style={{ marginBottom: '24px' }}>Top Up Credits</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', marginBottom: '48px' }}>
           
           <div className="profile-card" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--teal)' }}>STARTER</div>
@@ -114,7 +128,35 @@ export default function BillingScreen() {
               Buy Now
             </button>
           </div>
+        </div>
 
+        <div className="card-title" style={{ marginBottom: '24px' }}>Transaction History</div>
+        <div className="profile-card" style={{ padding: '0' }}>
+          {isLoadingTx ? (
+            <div style={{ padding: '24px', color: '#666' }}>Loading history...</div>
+          ) : transactions.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {transactions.map((tx) => (
+                <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--dark)' }}>
+                      {tx.action.toUpperCase().replace('_', ' ')}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#888' }}>
+                      {new Date(tx.created_at).toLocaleDateString()} at {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: 800, color: tx.amount > 0 ? 'var(--teal)' : 'var(--orange)' }}>
+                    {tx.amount > 0 ? '+' : ''}{tx.amount}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+              No transactions found yet.
+            </div>
+          )}
         </div>
       </main>
     </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { quotes } from '@/data/quotes';
 
-export default function LandingScreen({ onNavigate }) {
+export default function LandingScreen({ onNavigate, userName }) {
   const [quoteIndex, setQuoteIndex] = useState(0);
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export default function LandingScreen({ onNavigate }) {
           <div className="hello-text">
             hello
             <br />
-            <strong>PRATEEK!</strong>
+            <strong>{userName || 'PRATEEK'}!</strong>
           </div>
           <div className="hello-sub">
             Let&apos;s tell a tale.

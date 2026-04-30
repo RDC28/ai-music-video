@@ -14,6 +14,19 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
 
     if (!projectId) {
       alert("No project session found. Please go back to the dashboard.");
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    if (!file.type.startsWith('audio/')) {
+      alert("Please upload a valid audio file (MP3, WAV, FLAC).");
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    if (file.size > 200 * 1024 * 1024) {
+      alert("File is too large. Please upload an audio file under 200MB.");
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 

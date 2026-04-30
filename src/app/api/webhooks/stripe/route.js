@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import stripe from 'stripe';
-import { createClient } from '@/utils/supabase';
+import { createAdminClient } from '@/utils/supabase-admin';
 
 const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -22,18 +22,28 @@ export async function POST(req) {
     const userId = session.metadata.userId;
     const creditAmount = parseInt(session.metadata.credits);
 
-    const supabase = createClient();
+    const supabaseAdmin = createAdminClient();
     
-    // Update the user's credit balance in Supabase
-    const { error } = await supabase
-      .from('profiles')
-      .update({ credits: supabase.sql`credits + ${creditAmount}` })
-      .eq('id', userId);
+    // 1. Update the user's credit balance in Supabase via RPC
+    const { error } = await supabaseAdmin.rpc('add_credits', {
+      p_user_id: userId,
+      p_amount: creditAmount
+    });
 
     if (error) {
       console.error('Failed to update credits:', error);
       return NextResponse.json({ error: 'Database update failed' }, { status: 500 });
     }
+
+    // 2. Log the transaction for audit trail
+    await supabaseAdmin
+      .from('credit_transactions')
+      .insert([{
+        user_id: userId,
+        amount: creditAmount,
+        action: 'purchase',
+        reference_id: session.id
+      }]);
   }
 
   return NextResponse.json({ received: true });

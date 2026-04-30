@@ -1,16 +1,19 @@
 import { NextResponse } from 'next/server';
 import stripe from 'stripe';
-import { createClient } from '@/utils/supabase';
+import { createClient } from '@/utils/supabase-server';
 
 const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY);
 
 export async function POST(req) {
   try {
-    const { priceId, userId, credits } = await req.json();
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (!userId) {
+    if (!user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
+
+    const { priceId, credits } = await req.json();
 
     // Create Stripe Checkout Session
     const session = await stripeClient.checkout.sessions.create({
@@ -23,7 +26,7 @@ export async function POST(req) {
       ],
       mode: 'payment',
       metadata: {
-        userId: userId,
+        userId: user.id,
         credits: credits,
       },
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?success=true`,

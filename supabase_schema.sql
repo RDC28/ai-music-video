@@ -58,3 +58,65 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- 6. Credit System Stored Procedures
+-- Atomic credit deduction (prevents double-spend)
+CREATE OR REPLACE FUNCTION deduct_credits(p_user_id UUID, p_amount BIGINT)
+RETURNS BIGINT AS $$
+DECLARE
+  new_balance BIGINT;
+BEGIN
+  UPDATE profiles 
+  SET credits = credits - p_amount 
+  WHERE id = p_user_id AND credits >= p_amount
+  RETURNING credits INTO new_balance;
+  
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Insufficient credits';
+  END IF;
+  
+  RETURN new_balance;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Atomic credit addition
+CREATE OR REPLACE FUNCTION add_credits(p_user_id UUID, p_amount BIGINT)
+RETURNS BIGINT AS $$
+DECLARE
+  new_balance BIGINT;
+BEGIN
+  UPDATE profiles 
+  SET credits = credits + p_amount 
+  WHERE id = p_user_id
+  RETURNING credits INTO new_balance;
+  
+  RETURN new_balance;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 7. Triggers for updated_at
+CREATE OR REPLACE FUNCTION update_modified_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_projects_modtime
+  BEFORE UPDATE ON projects
+  FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+
+-- 8. Credit Transactions Audit Trail
+CREATE TABLE credit_transactions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  amount BIGINT NOT NULL,           -- positive = add, negative = deduct
+  action TEXT NOT NULL,             -- 'purchase', 'script_gen', 'image_gen', 'video_gen', 'refund'
+  reference_id TEXT,                -- stripe session ID or project ID
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own transactions" 
+  ON credit_transactions FOR SELECT USING (auth.uid() = user_id);

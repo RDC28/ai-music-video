@@ -10,6 +10,8 @@ export default function DashboardScreen() {
   const [projects, setProjects] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [newProjectTitle, setNewProjectTitle] = useState('');
   const supabase = createClient();
   const router = useRouter();
 
@@ -41,7 +43,6 @@ export default function DashboardScreen() {
     if (confirmed) {
       try {
         // 1. Storage Cleanup: Delete all files in the project folder
-        // First, list all files in the folder
         const { data: files } = await supabase.storage
           .from('assets')
           .list(projectId);
@@ -68,7 +69,13 @@ export default function DashboardScreen() {
   };
 
   const startNewProject = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    
+    if (!newProjectTitle.trim()) {
+      alert("Please enter a project title");
+      return;
+    }
+
     setIsCreating(true);
     
     const { data: { user } } = await supabase.auth.getUser();
@@ -82,7 +89,7 @@ export default function DashboardScreen() {
       .from('projects')
       .insert([{ 
         user_id: user.id, 
-        title: "New Music Video" 
+        title: newProjectTitle.trim() 
       }])
       .select()
       .single();
@@ -92,6 +99,7 @@ export default function DashboardScreen() {
       router.push(`/create/${data.id}`);
     } else {
       console.error("Error creating project:", error);
+      alert("Failed to create project. Please try again.");
       setIsCreating(false);
     }
   };
@@ -105,7 +113,7 @@ export default function DashboardScreen() {
           <div className="projects-header">
             <div className="card-title">Your Projects</div>
             <button 
-              onClick={startNewProject}
+              onClick={() => setShowModal(true)}
               disabled={isCreating}
               className="btn-teal" 
               style={{ padding: '8px 16px', fontSize: '12px', border: 'none', cursor: isCreating ? 'wait' : 'pointer' }}
@@ -167,7 +175,7 @@ export default function DashboardScreen() {
             ) : (
               <div style={{ padding: '40px', textAlign: 'center', gridColumn: '1 / -1' }}>
                 <p style={{ color: '#666', marginBottom: '16px' }}>You haven&apos;t created any projects yet.</p>
-                <button onClick={startNewProject} disabled={isCreating} className="btn-orange" style={{ padding: '10px 20px', border: 'none', cursor: 'pointer' }}>
+                <button onClick={() => setShowModal(true)} disabled={isCreating} className="btn-orange" style={{ padding: '10px 20px', border: 'none', cursor: 'pointer' }}>
                   {isCreating ? 'Creating...' : 'Create your first video'}
                 </button>
               </div>
@@ -175,6 +183,44 @@ export default function DashboardScreen() {
           </div>
         </div>
       </main>
+
+      {/* New Project Modal */}
+      {showModal && (
+        <div className="auth-overlay" onClick={() => setShowModal(false)}>
+          <div className="auth-modal" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
+            <button className="auth-close" onClick={() => setShowModal(false)}>×</button>
+            <div className="card-title">New Project</div>
+            <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#666' }}>PROJECT TITLE</label>
+                <input 
+                  type="text" 
+                  autoFocus
+                  placeholder="e.g. My Epic Music Video"
+                  value={newProjectTitle}
+                  onChange={(e) => setNewProjectTitle(e.target.value)}
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '2px solid var(--border)',
+                    fontSize: '14px',
+                    outline: 'none',
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && startNewProject()}
+                />
+              </div>
+              <button 
+                className="btn-orange" 
+                onClick={startNewProject}
+                disabled={isCreating || !newProjectTitle.trim()}
+                style={{ padding: '12px' }}
+              >
+                {isCreating ? 'Creating...' : 'Start Creation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

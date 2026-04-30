@@ -8,14 +8,41 @@ const locationColors = [
   '#4A5D23', '#2E8B57', '#3CB371', '#8F9779',
 ];
 
-export default function LocationsScreen({ onNavigate }) {
+export default function LocationsScreen({ onNavigate, projectData = [], onDataUpdate }) {
   const [activeTab, setActiveTab] = useState(0);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
-  const handleTabClick = (index) => {
-    setActiveTab(index);
+  // Local state for new location being created
+  const [newLoc, setNewLoc] = useState({ name: '', description: '' });
+
+  const locations = projectData || [];
+
+  const handleAddLocation = async () => {
+    if (!newLoc.name) return alert("Please enter a location name");
+
+    const updatedLocs = [...locations, {
+      id: Date.now(),
+      name: newLoc.name.toUpperCase(),
+      description: newLoc.description,
+      images: []
+    }];
+
+    await onDataUpdate({ locations: updatedLocs });
+    setShowCreateModal(false);
+    setNewLoc({ name: '', description: '' });
+    setActiveTab(updatedLocs.length - 1);
   };
+
+  const handleRemoveLocation = async (index) => {
+    const updatedLocs = locations.filter((_, i) => i !== index);
+    await onDataUpdate({ locations: updatedLocs });
+    if (activeTab >= updatedLocs.length) {
+      setActiveTab(Math.max(0, updatedLocs.length - 1));
+    }
+  };
+
+  const activeLoc = locations[activeTab] || null;
 
   return (
     <div className="screen active" id="s4">
@@ -45,7 +72,7 @@ export default function LocationsScreen({ onNavigate }) {
             
             <div className="char-grid-btn-row">
               <button className="btn-teal" onClick={() => setShowHistoryModal(true)}>From History</button>
-              <button className="btn-teal" onClick={() => onNavigate(6)}>
+              <button className="btn-teal" onClick={() => setShowCreateModal(true)}>
                 Upload
               </button>
             </div>
@@ -56,21 +83,18 @@ export default function LocationsScreen({ onNavigate }) {
         <div className="char-sheet">
           <div style={{ position: 'sticky', top: '64px', zIndex: 10, background: 'var(--cream)', paddingTop: '24px', paddingBottom: '12px', borderBottom: '2px solid var(--border)', marginBottom: '16px' }}>
             <div className="char-tabs">
-              <div
-                className={`char-tab${activeTab === 0 ? ' active' : ''}`}
-                onClick={() => handleTabClick(0)}
-              >
-                LOCATION 1 — CAFE
-              </div>
-              <div
-                className={`char-tab${activeTab === 1 ? ' active' : ''}`}
-                onClick={() => handleTabClick(1)}
-              >
-                LOCATION 2 — PARK
-              </div>
+              {locations.map((loc, i) => (
+                <div
+                  key={loc.id || i}
+                  className={`char-tab${activeTab === i ? ' active' : ''}`}
+                  onClick={() => setActiveTab(i)}
+                >
+                  {loc.name}
+                </div>
+              ))}
               <div
                 className="char-tab"
-                onClick={() => onNavigate(6)}
+                onClick={() => setShowCreateModal(true)}
                 style={{
                   background: 'var(--orange)',
                   color: '#fff',
@@ -83,35 +107,46 @@ export default function LocationsScreen({ onNavigate }) {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="char-name" style={{ marginBottom: 0 }}>
-                {activeTab === 0 ? 'LOCATION 1 — CAFE' : 'LOCATION 2 — PARK'}
+                {activeLoc ? activeLoc.name : 'NO LOCATION SELECTED'}
               </div>
-              <button 
-                className="btn-outline-small" 
-                style={{ 
-                  color: 'var(--orange)', 
-                  borderColor: 'var(--orange)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '6px' 
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18"></path>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-                Remove
-              </button>
+              {activeLoc && (
+                <button 
+                  className="btn-outline-small" 
+                  onClick={() => handleRemoveLocation(activeTab)}
+                  style={{ 
+                    color: 'var(--orange)', 
+                    borderColor: 'var(--orange)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '6px' 
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                  Remove
+                </button>
+              )}
             </div>
           </div>
 
           <div className="char-images" id="locGrid">
-            {locationColors.map((color, i) => (
-              <div
-                key={i}
-                className="char-img-thumb"
-                style={{ background: color + '88' }}
-              />
-            ))}
+            {activeLoc?.images?.length > 0 ? (
+              activeLoc.images.map((img, i) => (
+                <div key={i} className="char-img-thumb">
+                  <img src={img} alt="Generated" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              ))
+            ) : (
+              locationColors.map((color, i) => (
+                <div
+                  key={i}
+                  className="char-img-thumb"
+                  style={{ background: color + '88' }}
+                />
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -120,7 +155,7 @@ export default function LocationsScreen({ onNavigate }) {
         <div className="auth-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="auth-modal" style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowCreateModal(false)}>×</button>
-            <div className="card-title">Generate Location</div>
+            <div className="card-title">Create Location</div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
               
@@ -140,26 +175,31 @@ export default function LocationsScreen({ onNavigate }) {
                 Generated Preview Will Appear Here
               </div>
 
-              {/* Model Selection */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {/* Location Name */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '0.05em' }}>
-                  AI MODEL
+                  LOCATION NAME
                 </label>
-                <button
-                  className="btn-outline-small"
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  Nano Banan Pro <span style={{ fontSize: '10px' }}>▼</span>
-                </button>
+                <input 
+                  type="text"
+                  placeholder="e.g. ROOFTOP BAR" 
+                  value={newLoc.name}
+                  onChange={(e) => setNewLoc({...newLoc, name: e.target.value})}
+                  style={{ width: '100%', padding: '12px', border: '2px solid var(--border)', borderRadius: '12px', fontFamily: 'var(--font-body)', fontSize: '14px', outline: 'none' }}
+                  onFocus={(e) => e.target.style.borderColor = 'var(--teal)'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                />
               </div>
 
               {/* Prompt Input */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '0.05em' }}>
-                  PROMPT
+                  DESCRIPTION / PROMPT
                 </label>
                 <textarea 
                   placeholder="Describe your location here..." 
+                  value={newLoc.description}
+                  onChange={(e) => setNewLoc({...newLoc, description: e.target.value})}
                   style={{ 
                     width: '100%', 
                     minHeight: '100px', 
@@ -194,8 +234,8 @@ export default function LocationsScreen({ onNavigate }) {
                 </button>
               </div>
 
-              <button className="btn-orange" style={{ width: '100%' }}>
-                Generate
+              <button className="btn-orange" style={{ width: '100%' }} onClick={handleAddLocation}>
+                Create Location
               </button>
 
             </div>
@@ -205,7 +245,7 @@ export default function LocationsScreen({ onNavigate }) {
 
       {showHistoryModal && (
         <div className="auth-overlay" onClick={() => setShowHistoryModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '700px', width: '90%' }} onClick={e => e.stopPropagation()}>
+          <div className="auth-modal" style={{ maxWidth: '600px', width: '90%' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowHistoryModal(false)}>×</button>
             <div className="card-title">Location History</div>
             
@@ -213,24 +253,36 @@ export default function LocationsScreen({ onNavigate }) {
               
               {/* This Project Section */}
               <div>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', marginBottom: '12px', color: 'var(--dark)' }}>GENERATED IN THIS PROJECT</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                  <div style={{ aspectRatio: '16/9', background: '#3CB371', borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
-                  <div style={{ aspectRatio: '16/9', background: '#228B22', borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
-                </div>
-              </div>
-
-              {/* All Time Section */}
-              <div>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', marginBottom: '12px', color: 'var(--dark)' }}>ALL TIME GENERATIONS</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', maxHeight: '300px', overflowY: 'auto', paddingRight: '8px' }}>
-                  {locationColors.map((color, i) => (
-                    <div key={i} style={{ aspectRatio: '16/9', background: color, borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent' }} className="history-item"></div>
-                  ))}
-                  {locationColors.map((color, i) => (
-                    <div key={i + 12} style={{ aspectRatio: '16/9', background: color, borderRadius: '8px', cursor: 'pointer', border: '2px solid transparent', opacity: 0.8 }} className="history-item"></div>
-                  ))}
-                </div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', marginBottom: '12px', color: 'var(--dark)' }}>LOCATIONS IN THIS PROJECT</h3>
+                {locations.length > 0 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                    {locations.map((loc, i) => (
+                      <div 
+                        key={loc.id || i}
+                        style={{ 
+                          aspectRatio: '16/9', 
+                          background: locationColors[i % locationColors.length], 
+                          borderRadius: '8px', 
+                          cursor: 'pointer', 
+                          border: '2px solid transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#fff',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          letterSpacing: '0.05em',
+                        }} 
+                        className="history-item"
+                        onClick={() => { setActiveTab(i); setShowHistoryModal(false); }}
+                      >
+                        {loc.name}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '13px', color: '#888' }}>No locations created yet in this project.</div>
+                )}
               </div>
 
             </div>
