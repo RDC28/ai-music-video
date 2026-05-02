@@ -1,0 +1,117 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { createAdminClient } from "@/utils/supabase-admin";
+import { NextResponse } from "next/server";
+
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
+
+export async function POST(req) {
+  try {
+    const { projectId, audioUrl } = await req.json();
+
+    if (!projectId || !audioUrl) {
+      return NextResponse.json({ error: "Missing projectId or audioUrl" }, { status: 400 });
+    }
+
+    console.log(`Starting analysis for project ${projectId} with audio ${audioUrl}`);
+
+    // 1. Fetch the audio file from Supabase URL
+    const audioResp = await fetch(audioUrl);
+    if (!audioResp.ok) throw new Error("Failed to fetch audio from URL");
+    
+    const audioBuffer = Buffer.from(await audioResp.arrayBuffer());
+    const mimeType = audioResp.headers.get("content-type") || "audio/mpeg";
+
+    // 2. Initialize Gemini 2.5 Flash
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.5-flash"
+    });
+
+    const prompt = `
+      Analyze this audio track (it's a song/music piece). 
+      1. Identify the core theme, mood, and emotional journey.
+      2. Identify the genre and BPM.
+      3. CRITICAL: Transcribe the lyrics with WORD-BY-WORD start and end timestamps. 
+         - Do not just provide line-level timing.
+         - For every line, provide a list of every single word with its precise timing.
+      
+      Return the analysis STRICTLY as a JSON object with this structure:
+      {
+        "theme": "string",
+        "mood": "string",
+        "genre": "string",
+        "bpm": number,
+        "summary": "string",
+        "lyrics": [
+          { 
+            "text": "The full line of lyrics", 
+            "start": 0.0, 
+            "end": 4.5,
+            "words": [
+              { "word": "The", "start": 0.0, "end": 0.5 },
+              { "word": "full", "start": 0.6, "end": 1.2 },
+              ...
+            ]
+          },
+          ...
+        ]
+      }
+    `;
+
+    // 3. Generate Content
+    console.log("Sending to Gemini...");
+    const result = await model.generateContent([
+      prompt,
+      {
+        inlineData: {
+          data: audioBuffer.toString("base64"),
+          mimeType: mimeType
+        }
+      }
+    ]);
+
+    const response = await result.response;
+    const text = response.text();
+    
+    // Robust JSON extraction
+    let analysis;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      analysis = JSON.parse(jsonMatch[0]);
+    } else {
+      throw new Error("Could not find JSON in Gemini response: " + text);
+    }
+
+    console.log("Analysis complete:", analysis.theme);
+
+    // 4. Update the project in Supabase
+    const supabase = createAdminClient();
+    
+    // Fetch current state to merge
+    const { data: project, error: fetchError } = await supabase
+      .from('projects')
+      .select('project_state')
+      .eq('id', projectId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    const newState = {
+      ...project.project_state,
+      analysis: analysis,
+      current_step: 2 // Move to next step logically
+    };
+
+    const { error: updateError } = await supabase
+      .from('projects')
+      .update({ project_state: newState })
+      .eq('id', projectId);
+
+    if (updateError) throw updateError;
+
+    return NextResponse.json({ success: true, analysis });
+
+  } catch (error) {
+    console.error("Analysis API Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

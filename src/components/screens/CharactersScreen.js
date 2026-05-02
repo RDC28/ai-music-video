@@ -1,220 +1,735 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { geminiAgent } from '@/utils/geminiAgents';
+import { useState, useEffect, useRef } from 'react';
+import { createClient } from '@/utils/supabase';
 
-const charColors = [
-  '#8B6F47', '#A0522D', '#6B4423', '#4A3728',
-  '#C4956A', '#7D5A3C', '#593D2B', '#8B7355',
-  '#6E5040', '#4E342E', '#3E2723', '#795548',
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const MODAL_BTN = {
+  background: 'rgba(255,255,255,0.07)',
+  border: '1px solid rgba(255,255,255,0.1)',
+  color: '#bbb',
+  padding: '8px 14px',
+  borderRadius: '8px',
+  fontSize: '11px',
+  fontWeight: 700,
+  cursor: 'pointer',
+  letterSpacing: '0.04em',
+};
+
+const PANEL_LABELS = [
+  'Mid Portrait', 'Full Body Front', 'Full Body Left', 'Full Body Right', 'Full Body Back',
+  'Face Close-up Front', 'Face Close-up Back', 'Face 3/4 Left', 'Face 3/4 Right',
 ];
 
-export default function CharactersScreen({ onNavigate, projectData = [], onDataUpdate, projectId }) {
-  const [activeTab, setActiveTab] = useState(0);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  
-  // Local state for the new character being created
-  const [newChar, setNewChar] = useState({ name: '', description: '' });
+const buildSheetPrompt = (desc, hasRef) => {
+  const charClause = hasRef
+    ? 'of the character shown in the reference image'
+    : `of this character: ${desc}`;
+  return `Professional character design reference sheet. A single wide 21:9 horizontal canvas with 9 clearly separated panels on a warm beige or soft neutral studio backdrop.
 
-  const characters = projectData || [];
+Panel layout:
+- Far left: one large mid-body portrait panel (waist and above)
+- Center column: four full-body standing panels — front view, left profile, right profile, back view — each showing the complete figure head-to-toe
+- Top right: close-up front portrait (head and upper chest/shoulders)
+- Middle right: close-up back-of-head portrait (head and upper shoulders from behind)
+- Bottom right left: close-up left three-quarter portrait (head and upper chest)
+- Bottom right right: close-up right three-quarter portrait (head and upper chest)
 
-  const handleAddCharacter = async () => {
-    if (!newChar.name) return alert("Please enter a name");
-    
-    const updatedChars = [...characters, { 
-      id: Date.now(), 
-      name: newChar.name.toUpperCase(), 
-      description: newChar.description,
-      images: [] 
-    }];
-    
-    await onDataUpdate({ characters: updatedChars });
-    setShowCreateModal(false);
-    setNewChar({ name: '', description: '' });
-    setActiveTab(updatedChars.length - 1);
+Character ${charClause}.
+
+Do not crop any face or costume details. Maintain perfectly consistent character appearance across all 9 panels. Clean visible spacing between panels. Studio lighting throughout. Professional concept art quality.`;
+};
+
+// ─── ZoomCropModal ────────────────────────────────────────────────────────────
+
+function ZoomCropModal({ imageUrl, label, onClose, onApply }) {
+  const containerRef = useRef(null);
+  const imgRef      = useRef(null);
+  const [zoom, setZoom]         = useState(1);
+  const [pan,  setPan]          = useState({ x: 0, y: 0 });
+  const [drag, setDrag]         = useState(null);   // { type:'pan'|'crop', ... }
+  const [cropBox,   setCropBox] = useState(null);   // { x, y, w, h } container-local px
+  const [cropMode,  setCropMode]  = useState(false);
+  const [applying,  setApplying]  = useState(false);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const onWheel = (e) => {
+    e.preventDefault();
+    const f = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    setZoom(z => Math.max(0.5, Math.min(10, z * f)));
   };
 
-  const handleRemoveCharacter = async (index) => {
-    const updatedChars = characters.filter((_, i) => i !== index);
-    await onDataUpdate({ characters: updatedChars });
-    if (activeTab >= updatedChars.length) {
-      setActiveTab(Math.max(0, updatedChars.length - 1));
+  const onMouseDown = (e) => {
+    e.preventDefault();
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    if (cropMode) {
+      setDrag({ type: 'crop', startX: x, startY: y });
+      setCropBox({ x, y, w: 0, h: 0 });
+    } else {
+      setDrag({ type: 'pan', startX: e.clientX - pan.x, startY: e.clientY - pan.y });
     }
   };
 
-  const activeChar = characters[activeTab] || null;
+  const onMouseMove = (e) => {
+    if (!drag) return;
+    if (drag.type === 'pan') {
+      setPan({ x: e.clientX - drag.startX, y: e.clientY - drag.startY });
+    } else {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setCropBox({
+        x: Math.min(x, drag.startX), y: Math.min(y, drag.startY),
+        w: Math.abs(x - drag.startX), h: Math.abs(y - drag.startY),
+      });
+    }
+  };
+
+  const onMouseUp = () => setDrag(null);
+
+  const applyCrop = () => {
+    if (!cropBox || cropBox.w < 4 || cropBox.h < 4 || !imgRef.current) return;
+    setApplying(true);
+    const img  = imgRef.current;
+    const iRect = img.getBoundingClientRect();
+    const cRect = containerRef.current.getBoundingClientRect();
+    const sx = img.naturalWidth  / iRect.width;
+    const sy = img.naturalHeight / iRect.height;
+    const natX = Math.max(0, (cropBox.x + cRect.left - iRect.left) * sx);
+    const natY = Math.max(0, (cropBox.y + cRect.top  - iRect.top)  * sy);
+    const natW = Math.min(img.naturalWidth  - natX, cropBox.w * sx);
+    const natH = Math.min(img.naturalHeight - natY, cropBox.h * sy);
+    if (natW < 1 || natH < 1) { setApplying(false); return; }
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.round(natW);
+    canvas.height = Math.round(natH);
+    const tmp = new Image();
+    tmp.crossOrigin = 'anonymous';
+    tmp.onload = () => {
+      canvas.getContext('2d').drawImage(tmp, natX, natY, natW, natH, 0, 0, natW, natH);
+      canvas.toBlob(blob => { onApply(blob); setApplying(false); }, 'image/jpeg', 0.95);
+    };
+    tmp.src = imageUrl;
+  };
+
+  const canApply = cropBox && cropBox.w > 4 && cropBox.h > 4;
 
   return (
-    <div className="screen active" id="s4">
-      <div className="char-layout">
-        {/* Left Panel */}
-        <div className="char-panel">
-          <div className="notif-card">
-            <div className="notif-title">Notification</div>
-            <div className="notif-big">Fantastic!</div>
-            <div className="notif-body">
-              Now since we have the song sorted. Let&apos;s pick characters or
-              create new before we start cooking up visuals?
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.97)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px' }}
+      onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+    >
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <span style={{ color: '#555', fontSize: '10px', fontWeight: 800, letterSpacing: '0.12em', marginRight: '4px' }}>{label?.toUpperCase()}</span>
+        <button onClick={() => setZoom(z => Math.min(10, z * 1.25))} style={MODAL_BTN}>+ ZOOM</button>
+        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} style={MODAL_BTN}>{Math.round(zoom * 100)}% · RESET</button>
+        <button onClick={() => setZoom(z => Math.max(0.5, z * 0.8))} style={MODAL_BTN}>− ZOOM</button>
+        <div style={{ width: '1px', height: '18px', background: '#252525' }} />
+        <button onClick={() => { setCropMode(m => !m); setCropBox(null); }} style={{ ...MODAL_BTN, background: cropMode ? '#00B8D4' : undefined, color: cropMode ? '#000' : undefined, borderColor: cropMode ? '#00B8D4' : undefined }}>
+          ✂ {cropMode ? 'CROPPING — DRAG TO SELECT' : 'CROP MODE'}
+        </button>
+        {canApply && (
+          <button onClick={applyCrop} disabled={applying} style={{ ...MODAL_BTN, background: '#FF6F00', color: '#fff', border: 'none' }}>
+            {applying ? 'SAVING...' : '✓ APPLY CROP'}
+          </button>
+        )}
+        <div style={{ width: '1px', height: '18px', background: '#252525' }} />
+        <button onClick={onClose} style={{ ...MODAL_BTN, color: '#ff6666', borderColor: 'rgba(255,100,100,0.2)' }}>✕ CLOSE</button>
+      </div>
+
+      {/* Viewport */}
+      <div
+        ref={containerRef}
+        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: '#0c0c0c', borderRadius: '16px', border: '1px solid #1a1a1a', cursor: cropMode ? 'crosshair' : drag?.type === 'pan' ? 'grabbing' : 'grab' }}
+        onMouseDown={onMouseDown}
+        onWheel={onWheel}
+      >
+        <img
+          ref={imgRef} src={imageUrl} alt={label} draggable={false}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'center center', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
+        />
+        {cropBox && cropBox.w > 0 && (
+          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '2px solid #00B8D4', background: 'rgba(0,184,212,0.1)', pointerEvents: 'none', boxSizing: 'border-box' }} />
+        )}
+        {!cropMode && (
+          <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: '#252525', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+            Scroll to zoom · Drag to pan · Enable crop mode to select area
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function CharactersScreen({ onNavigate, projectData = [], onDataUpdate, projectId }) {
+  const [activeTab,      setActiveTab]      = useState(0);
+  const [globalLibrary,  setGlobalLibrary]  = useState([]);
+  const [showCreateModal,setShowCreateModal] = useState(false);
+  const [showEditModal,  setShowEditModal]   = useState(false);
+  const [createName,     setCreateName]      = useState('');
+  const [createDesc,     setCreateDesc]      = useState('');
+  const [createRefImage, setCreateRefImage]  = useState(null); // { base64, mimeType, previewUrl }
+  const [editName,       setEditName]        = useState('');
+  const [editDesc,       setEditDesc]        = useState('');
+  const [isProcessingSheet, setIsProcessingSheet] = useState(false);
+  const [isGenerating,   setIsGenerating]    = useState(false);
+  const [generatingChar, setGeneratingChar]  = useState(null);
+  const [zoomCropTarget, setZoomCropTarget]  = useState(null);
+  const [activeCategory, setActiveCategory]  = useState('project');
+
+  const fileInputRef    = useRef(null);
+  const refFileInputRef = useRef(null);
+  const supabase = createClient();
+  const projectCharacters = projectData || [];
+
+  useEffect(() => { fetchGlobalLibrary(); }, []);
+
+  const fetchGlobalLibrary = async () => {
+    const { data, error } = await supabase.from('characters_library').select('*').order('created_at', { ascending: false });
+    if (!error && data) setGlobalLibrary(data);
+  };
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  const base64ToBlob = (b64, mime) => {
+    const bytes = atob(b64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  };
+
+  const uploadBlob = async (blob, _mime, path) => {
+    const { error } = await supabase.storage.from('assets').upload(path, blob);
+    if (error) throw error;
+    const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(path);
+    return publicUrl;
+  };
+
+  const callNBPro = async (payload) => {
+    const res  = await fetch('/api/generate-character-pose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    return res.json();
+  };
+
+  const pushSlot = (i, url, label) => {
+    setGeneratingChar(prev => {
+      if (!prev) return prev;
+      const images = [...prev.images];
+      images[i] = { url, label };
+      return { ...prev, images };
+    });
+  };
+
+  const handleRefImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      const [prefix, base64] = dataUrl.split(',');
+      const mimeType = prefix.match(/:(.*?);/)[1];
+      setCreateRefImage({ base64, mimeType, previewUrl: dataUrl });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ── Upload sheet flow ────────────────────────────────────────────────────────
+
+  const handleSheetUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    setIsProcessingSheet(true);
+
+    try {
+      const sheetPath = `${projectId}/sheets/${Date.now()}-${file.name}`;
+      const { error: upErr } = await supabase.storage.from('assets').upload(sheetPath, file);
+      if (upErr) throw upErr;
+      const { data: { publicUrl: sheetUrl } } = supabase.storage.from('assets').getPublicUrl(sheetPath);
+
+      const { poses, error: splitErr } = await fetch('/api/split-character-sheet', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: sheetUrl }),
+      }).then(r => r.json());
+      if (splitErr) throw new Error(splitErr);
+
+      const charName = file.name.split('.')[0].toUpperCase();
+      setGeneratingChar({ id: 'generating', name: charName, images: poses.map(p => ({ label: p.label || 'Section', url: null })) });
+      setActiveTab(projectCharacters.length);
+      setActiveCategory('project');
+
+      const img = await new Promise((res, rej) => {
+        const el = new Image(); el.crossOrigin = 'anonymous';
+        el.onload = () => res(el); el.onerror = rej; el.src = sheetUrl;
+      });
+
+      const finalImages = new Array(poses.length).fill(null);
+
+      await Promise.all(poses.map(async (pose, i) => {
+        const label = pose.label || `Section ${i + 1}`;
+        const [ymin, xmin, ymax, xmax] = pose.box_2d;
+        const sx = Math.max(0, (xmin / 1000) * img.width);
+        const sy = Math.max(0, (ymin / 1000) * img.height);
+        const sw = Math.min((xmax / 1000) * img.width,  img.width)  - sx;
+        const sh = Math.min((ymax / 1000) * img.height, img.height) - sy;
+        
+        if (sw <= 0 || sh <= 0) return;
+
+        const cv = document.createElement('canvas');
+        cv.width = sw; cv.height = sh;
+        cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+        const cropB64 = cv.toDataURL('image/jpeg', 0.95).split(',')[1];
+
+        let finalB64 = cropB64, finalMime = 'image/jpeg';
+        try {
+          const nb = await callNBPro({ base64: cropB64, mimeType: 'image/jpeg', label });
+          if (nb.success && nb.base64) { 
+            finalB64 = nb.base64; 
+            finalMime = 'image/png'; 
+          }
+        } catch (e) {
+          console.warn("NB Pro refinement failed for pose, using raw crop", e);
+        }
+
+        const blob = base64ToBlob(finalB64, finalMime);
+        const ext  = finalMime.split('/')[1] || 'png';
+        const url  = await uploadBlob(blob, finalMime, `${projectId}/generated/${Date.now()}-section-${i}.${ext}`);
+        
+        finalImages[i] = { url, label };
+        // We update the local state so the user sees images popping in
+        setGeneratingChar(prev => {
+          const newImgs = [...prev.images];
+          newImgs[i] = { url, label };
+          return { ...prev, images: newImgs };
+        });
+      }));
+
+      const newChar = { id: Date.now(), name: charName, description: 'Uploaded from character sheet', images: finalImages.filter(Boolean), source: 'upload' };
+      const updatedChars = [...projectCharacters, newChar];
+      await onDataUpdate({ characters: updatedChars });
+      setActiveTab(updatedChars.length - 1);
+    } catch (err) {
+      console.error('Sheet processing failed:', err);
+      alert('Failed to process sheet: ' + err.message);
+    } finally {
+      setIsProcessingSheet(false);
+      setGeneratingChar(null);
+    }
+  };
+
+  // ── Generate character sheet flow ─────────────────────────────────────────────
+
+  const handleGenerateAngles = async () => {
+    if (!createName.trim()) return alert('Enter a character name');
+    if (!createDesc.trim()) return alert('Describe the character');
+    const charName = createName.trim().toUpperCase();
+    const desc = createDesc.trim();
+    setShowCreateModal(false);
+    setCreateName(''); setCreateDesc('');
+    setIsGenerating(true);
+
+    const angles = [
+      { label: 'FRONT VIEW', prompt: 'Front view portrait, standing, full body, professional studio lighting, clean white background, cinematic high detail.' },
+      { label: 'SIDE VIEW', prompt: 'Side profile view, standing, full body, matching character features and outfit, studio lighting, white background.' },
+      { label: 'BACK VIEW', prompt: 'Back view, standing, full body, matching character features and outfit, studio lighting, white background.' },
+      { label: 'FACE CLOSE-UP', prompt: 'Cinematic face close-up, highly detailed facial features, jewelry, neutral expression, matching the character exactly.' }
+    ];
+
+    try {
+      const tempId = Date.now();
+      setGeneratingChar({ id: tempId, name: charName, images: angles.map(a => ({ label: a.label, url: null })) });
+      setActiveTab(projectCharacters.length);
+      setActiveCategory('project');
+
+      const finalImages = [];
+      let referenceBase64 = null;
+
+      // Generate SEQUENTIALLY to maintain character consistency via reference image
+      for (let i = 0; i < angles.length; i++) {
+        const angle = angles[i];
+        try {
+          const payload = { 
+            characterDescription: desc,
+            angleDescription: angle.prompt,
+            label: angle.label
+          };
+
+          // Use the FIRST generated image as a reference for all others
+          if (referenceBase64) {
+            payload.base64 = referenceBase64;
+            payload.mimeType = 'image/png';
+          }
+
+          const resp = await fetch('/api/generate-character-pose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const { imageBase64, error } = await resp.json();
+          if (error) throw new Error(error);
+
+          // Lock this character's look using the first generated image
+          if (i === 0) referenceBase64 = imageBase64;
+
+          const blob = base64ToBlob(imageBase64, 'image/png');
+          const url = await uploadBlob(blob, 'image/png', `${projectId}/generated/${Date.now()}-${angle.label.replace(' ', '_')}.png`);
+
+          const imageData = { url, label: angle.label };
+          finalImages[i] = imageData;
+
+          setGeneratingChar(prev => {
+            if (!prev) return prev;
+            const newImgs = [...prev.images];
+            newImgs[i] = imageData;
+            return { ...prev, images: newImgs };
+          });
+
+        } catch (e) {
+          console.error(`Failed ${angle.label}:`, e);
+        }
+      }
+
+      const newChar = { id: tempId, name: charName, description: desc, images: finalImages.filter(Boolean), source: 'ai' };
+      const updatedChars = [...projectCharacters, newChar];
+      await onDataUpdate({ characters: updatedChars });
+      setActiveTab(updatedChars.length - 1);
+
+    } catch (err) {
+      console.error('Generation failed:', err);
+      alert('Failed: ' + err.message);
+    } finally {
+      setIsGenerating(false);
+      setGeneratingChar(null);
+    }
+  };
+
+  // ── Edit save ─────────────────────────────────────────────────────────────────
+
+  const handleEditSave = async () => {
+    if (!editName.trim()) return alert('Name cannot be empty');
+    const updatedChars = [...projectCharacters];
+    updatedChars[activeTab] = { ...projectCharacters[activeTab], name: editName.trim().toUpperCase(), description: editDesc.trim() };
+    await onDataUpdate({ characters: updatedChars });
+    setShowEditModal(false);
+  };
+
+  // ── Apply crop ────────────────────────────────────────────────────────────────
+
+  const handleApplyCrop = async (blob) => {
+    if (!zoomCropTarget) return;
+    const { charIdx, imgIdx } = zoomCropTarget;
+    try {
+      const url = await uploadBlob(blob, 'image/jpeg', `${projectId}/crops/${Date.now()}-crop.jpg`);
+      const char = projectCharacters[charIdx];
+      const images = [...char.images];
+      const existing = images[imgIdx];
+      images[imgIdx] = { url, label: typeof existing === 'string' ? `Section ${imgIdx + 1}` : existing.label };
+      const updatedChars = [...projectCharacters];
+      updatedChars[charIdx] = { ...char, images };
+      await onDataUpdate({ characters: updatedChars });
+      setZoomCropTarget(null);
+    } catch (err) { alert('Crop upload failed: ' + err.message); }
+  };
+
+  // ── Delete ────────────────────────────────────────────────────────────────────
+
+  const handleDelete = async () => {
+    if (!activeChar || activeChar.id === 'generating') return;
+    if (!confirm(`Delete ${activeChar.name}?`)) return;
+    try {
+      if (activeCategory === 'project') {
+        await onDataUpdate({ characters: projectCharacters.filter((_, i) => i !== activeTab) });
+        setActiveTab(Math.max(0, activeTab - 1));
+      } else {
+        const { error } = await supabase.from('characters_library').delete().eq('id', activeChar.id);
+        if (error) throw error;
+        await fetchGlobalLibrary();
+        setActiveTab(Math.max(0, activeTab - 1));
+      }
+    } catch (err) { alert('Delete failed: ' + err.message); }
+  };
+
+  // ── Derived state ─────────────────────────────────────────────────────────────
+
+  const displayedCharacters = activeCategory === 'project'
+    ? [...projectCharacters, ...(generatingChar ? [generatingChar] : [])]
+    : globalLibrary;
+  const activeChar = displayedCharacters[activeTab] || null;
+  const isGeneratingActive = activeChar?.id === 'generating';
+  const busy = isProcessingSheet || isGenerating;
+
+  // ── Render ────────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="screen active" id="s4" style={{ height: 'calc(100vh - 64px)', overflow: 'hidden', background: '#080808' }}>
+      <style>{`
+        @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        .skeleton-shimmer { background:linear-gradient(90deg,#111 25%,#1e1e1e 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
+        .img-card-actions { opacity:0; transition:opacity 0.15s; }
+        .img-card:hover .img-card-actions { opacity:1; }
+      `}</style>
+
+      <div style={{ display: 'flex', height: '100%' }}>
+
+        {/* ── Sidebar ── */}
+        <div style={{ width: '272px', minWidth: '272px', background: '#0D0D0D', borderRight: '1px solid #1A1A1A', display: 'flex', flexDirection: 'column', padding: '28px', height: '100%', overflowY: 'auto' }}>
+          <div style={{ marginBottom: '28px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'var(--teal)' }} />
+              <span style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 800, letterSpacing: '0.15em' }}>CHARACTER STUDIO</span>
             </div>
+            <h2 style={{ color: '#FFF', fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 800, lineHeight: 1.1 }}>
+              Build your <span style={{ color: 'var(--teal)' }}>Cast</span>
+            </h2>
+            <p style={{ color: '#555', fontSize: '12px', marginTop: '10px', lineHeight: 1.5 }}>
+              {busy && generatingChar
+                ? `Generating ${generatingChar.images.filter(x => x.url).length}/${generatingChar.images.length}...`
+                : busy ? 'Detecting sections...' : 'Upload a sheet or generate with AI.'}
+            </p>
           </div>
 
-          <div className="preview-box" />
+          <div style={{ display: 'flex', background: '#151515', borderRadius: '12px', padding: '4px', marginBottom: '24px', border: '1px solid #1e1e1e' }}>
+            {['project', 'global'].map(cat => (
+              <button key={cat} onClick={() => { setActiveCategory(cat); setActiveTab(0); }} style={{
+                flex: 1, padding: '9px', borderRadius: '8px', border: 'none',
+                background: activeCategory === cat ? '#222' : 'transparent',
+                color: activeCategory === cat ? (cat === 'project' ? 'var(--teal)' : 'var(--orange)') : '#555',
+                fontWeight: 700, fontSize: '10px', cursor: 'pointer', letterSpacing: '0.04em',
+              }}>
+                {cat === 'project' ? 'PROJECT CAST' : 'GLOBAL HISTORY'}
+              </button>
+            ))}
+          </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <button 
-              className="btn-outline" 
-              style={{ width: '100%' }}
-              onClick={() => setShowCreateModal(true)}
-            >
-              Let&apos;s create
+            <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
+            <button className="btn-orange" style={{ width: '100%', padding: '15px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '12px', fontWeight: 700 }}
+              onClick={() => fileInputRef.current.click()} disabled={busy}>
+              {isProcessingSheet ? '⌛ PROCESSING...' : '📁 UPLOAD SHEET'}
             </button>
-            
-            <div className="char-grid-btn-row">
-              <button className="btn-teal" onClick={() => setShowHistoryModal(true)}>From History</button>
-              <button className="btn-teal" onClick={() => onNavigate(5)}>
-                Upload
-              </button>
-            </div>
+            <button onClick={() => setShowCreateModal(true)} disabled={busy}
+              style={{ width: '100%', padding: '15px', borderRadius: '12px', background: 'transparent', border: '1px solid #252525', color: '#777', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+              ✨ GENERATE NEW
+            </button>
+          </div>
+
+          <div style={{ marginTop: 'auto', paddingTop: '32px' }}>
+            <button className="btn-teal" style={{ width: '100%', padding: '16px', borderRadius: '14px', fontWeight: 800, fontSize: '13px' }} onClick={() => onNavigate(5)}>
+              CONTINUE TO LOCATIONS →
+            </button>
           </div>
         </div>
 
-        {/* Right Panel — Character Sheet */}
-        <div className="char-sheet">
-          <div style={{ position: 'sticky', top: '64px', zIndex: 10, background: 'var(--cream)', paddingTop: '24px', paddingBottom: '12px', borderBottom: '2px solid var(--border)', marginBottom: '16px' }}>
-            <div className="char-tabs">
-              {characters.map((char, i) => (
-                <div
-                  key={char.id || i}
-                  className={`char-tab${activeTab === i ? ' active' : ''}`}
-                  onClick={() => setActiveTab(i)}
-                >
+        {/* ── Right panel ── */}
+        <div style={{ flex: 1, background: '#080808', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+
+          {/* Header */}
+          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(8,8,8,0.92)', backdropFilter: 'blur(20px)', padding: '22px 40px', borderBottom: '1px solid #1A1A1A' }}>
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '14px' }}>
+              {displayedCharacters.map((char, i) => (
+                <div key={char.id || i} onClick={() => setActiveTab(i)} style={{
+                  whiteSpace: 'nowrap', borderRadius: '100px', padding: '7px 18px',
+                  fontSize: '11px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                  background: activeTab === i ? 'var(--teal)' : '#151515',
+                  color: activeTab === i ? '#000' : '#666',
+                  border: activeTab === i ? 'none' : '1px solid #1e1e1e',
+                }}>
                   {char.name}
+                  {char.id === 'generating' && (
+                    <span style={{ marginLeft: '6px', opacity: 0.6, fontSize: '9px' }}>
+                      {char.images.filter(x => x.url).length}/{char.images.length}
+                    </span>
+                  )}
                 </div>
               ))}
-              <div
-                className="char-tab"
-                onClick={() => setShowCreateModal(true)}
-                style={{
-                  background: 'var(--orange)',
-                  color: '#fff',
-                  borderColor: 'var(--orange)',
-                }}
-              >
-                + Add
-              </div>
+              {activeCategory === 'project' && !isGeneratingActive && (
+                <div onClick={() => setShowCreateModal(true)} style={{ borderRadius: '100px', padding: '7px 14px', background: 'rgba(0,184,212,0.07)', color: 'var(--teal)', fontSize: '14px', cursor: 'pointer' }}>+</div>
+              )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="char-name" style={{ marginBottom: 0 }}>
-                {activeChar ? activeChar.name : 'NO CHARACTER SELECTED'}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
+              <div>
+                <h1 style={{ color: '#FFF', fontFamily: 'var(--font-display)', fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em' }}>
+                  {activeChar ? activeChar.name : 'Ready for Casting'}
+                </h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                  <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', background: activeCategory === 'global' ? 'var(--orange)' : 'var(--teal)', color: '#000' }}>
+                    {activeCategory === 'global' ? 'GLOBAL' : 'PROJECT'}
+                  </span>
+                  <span style={{ color: '#3a3a3a', fontSize: '12px' }}>{activeChar?.description || 'No description'}</span>
+                </div>
               </div>
-              {activeChar && (
-                <button 
-                  className="btn-outline-small" 
-                  onClick={() => handleRemoveCharacter(activeTab)}
-                  style={{ 
-                    color: 'var(--orange)', 
-                    borderColor: 'var(--orange)', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '6px' 
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 6h18"></path>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  </svg>
-                  Remove
-                </button>
+              {activeChar && !isGeneratingActive && activeCategory === 'project' && (
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={() => { setEditName(activeChar.name); setEditDesc(activeChar.description || ''); setShowEditModal(true); }}
+                    style={{ background: 'transparent', border: '1px solid #222', color: '#777', padding: '8px 16px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                    Edit
+                  </button>
+                  <button onClick={handleDelete}
+                    style={{ background: 'rgba(255,0,0,0.04)', border: '1px solid rgba(255,0,0,0.1)', color: '#ff4444', padding: '8px 16px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                    Delete
+                  </button>
+                </div>
               )}
             </div>
           </div>
 
-          <div className="char-images" id="charGrid">
+          {/* Image grid */}
+          <div style={{ padding: '36px 40px', flex: 1 }}>
             {activeChar?.images?.length > 0 ? (
-              activeChar.images.map((img, i) => (
-                <div key={i} className="char-img-thumb">
-                  <img src={img} alt="Generated" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-              ))
+              <div style={{ columnCount: 'auto', columnWidth: '260px', columnGap: '18px' }}>
+                {activeChar.images.map((img, i) => {
+                  const src     = typeof img === 'string' ? img : img.url;
+                  const label   = typeof img === 'string' ? `POSE ${i + 1}` : img.label;
+                  const loading = src === null;
+                  const charIdx = activeCategory === 'project' ? activeTab : -1;
+                  return (
+                    <div key={i} className="img-card" style={{
+                      breakInside: 'avoid', marginBottom: '18px', background: '#0f0f0f',
+                      borderRadius: '18px', border: `1px solid ${loading ? '#161616' : '#1c1c1c'}`,
+                      overflow: 'hidden', position: 'relative', boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+                    }}>
+                      {loading
+                        ? <div className="skeleton-shimmer" style={{ width: '100%', paddingBottom: '133%' }} />
+                        : <img src={src} alt={label} style={{ width: '100%', height: 'auto', display: 'block' }} />
+                      }
+                      {/* Label badge */}
+                      <div style={{ position: 'absolute', top: '10px', right: '10px', padding: '4px 9px', background: 'rgba(0,0,0,0.7)', borderRadius: '6px', fontSize: '9px', color: loading ? '#2a2a2a' : '#bbb', backdropFilter: 'blur(8px)', fontWeight: 800, border: '1px solid rgba(255,255,255,0.05)' }}>
+                        {label.toUpperCase()}
+                      </div>
+                      {/* Zoom / Crop button (visible on hover) */}
+                      {!loading && charIdx >= 0 && (
+                        <button
+                          className="img-card-actions"
+                          onClick={() => setZoomCropTarget({ charIdx, imgIdx: i, url: src, label })}
+                          style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(255,255,255,0.08)', color: '#ccc', borderRadius: '8px', padding: '6px 10px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)' }}
+                        >
+                          ⤢ ZOOM / CROP
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              charColors.map((color, i) => (
-                <div
-                  key={i}
-                  className="char-img-thumb"
-                  style={{ background: color + '88' }}
-                />
-              ))
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '420px', border: '2px dashed #161616', borderRadius: '28px' }}>
+                <div style={{ fontSize: '44px', marginBottom: '18px', filter: 'grayscale(1) opacity(0.2)' }}>🎭</div>
+                <h3 style={{ color: '#2e2e2e', fontSize: '17px', fontWeight: 700 }}>No images yet</h3>
+                <p style={{ color: '#232323', fontSize: '13px', marginTop: '6px' }}>Upload a character sheet or generate with AI.</p>
+              </div>
             )}
           </div>
         </div>
       </div>
 
+      {/* ── Create Modal ── */}
       {showCreateModal && (
         <div className="auth-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
+          <div className="auth-modal" style={{ maxWidth: '440px', background: '#0e0e0e', border: '1px solid #222', borderRadius: '24px' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowCreateModal(false)}>×</button>
-            <div className="card-title">Generate Character</div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '20px' }}>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '0.05em' }}>
-                  CHARACTER NAME
-                </label>
-                <input 
-                  type="text"
-                  placeholder="e.g. REENA" 
-                  value={newChar.name}
-                  onChange={(e) => setNewChar({...newChar, name: e.target.value})}
-                  style={{ width: '100%', padding: '12px', border: '2px solid var(--border)', borderRadius: '12px' }}
-                />
+            <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Generate Character</div>
+            <div style={{ color: '#3a3a3a', fontSize: '12px', marginBottom: '22px' }}>Generates a 9-panel 21:9 reference sheet, then splits and refines each panel.</div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>CHARACTER NAME</label>
+                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)}
+                  style={{ width: '100%', padding: '13px', border: '1px solid #222', borderRadius: '11px', background: '#0a0a0a', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>CHARACTER DESCRIPTION</label>
+                <textarea placeholder="Ancient Indian warrior, 40s, grey beard, dark red dhoti, gold jewellery..." value={createDesc} onChange={e => setCreateDesc(e.target.value)}
+                  style={{ width: '100%', minHeight: '100px', padding: '13px', border: '1px solid #222', borderRadius: '11px', background: '#0a0a0a', color: '#fff', fontSize: '13px', resize: 'none', fontFamily: 'var(--font-body)', boxSizing: 'border-box' }} />
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '0.05em' }}>
-                  DESCRIPTION
+              {/* Reference image */}
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>
+                  REFERENCE IMAGE <span style={{ color: '#444', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>(optional — locks character appearance)</span>
                 </label>
-                <textarea 
-                  placeholder="Describe your character's look..." 
-                  value={newChar.description}
-                  onChange={(e) => setNewChar({...newChar, description: e.target.value})}
-                  style={{ 
-                    width: '100%', 
-                    minHeight: '100px', 
-                    padding: '12px 16px', 
-                    border: '2px solid var(--border)', 
-                    borderRadius: '12px', 
-                    fontFamily: 'var(--font-body)', 
-                    fontSize: '14px', 
-                    resize: 'vertical',
-                    outline: 'none'
-                  }}
-                />
+                <input type="file" ref={refFileInputRef} onChange={handleRefImageSelect} style={{ display: 'none' }} accept="image/*" />
+                {createRefImage ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: '11px' }}>
+                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '8px', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: '#bbb', fontSize: '11px', fontWeight: 700 }}>Reference uploaded</div>
+                      <div style={{ color: '#444', fontSize: '10px', marginTop: '2px' }}>All angles will match this character</div>
+                    </div>
+                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'rgba(255,68,68,0.1)', border: '1px solid rgba(255,68,68,0.2)', color: '#ff6666', borderRadius: '7px', padding: '5px 9px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>✕ REMOVE</button>
+                  </div>
+                ) : (
+                  <button onClick={() => refFileInputRef.current.click()}
+                    style={{ width: '100%', padding: '11px', borderRadius: '10px', background: 'transparent', border: '1px dashed #252525', color: '#555', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                    + Upload Reference Image
+                  </button>
+                )}
               </div>
 
-              <button 
-                className="btn-orange" 
-                style={{ width: '100%' }}
-                onClick={handleAddCharacter}
-              >
-                Create Character
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {PANEL_LABELS.map(label => (
+                  <span key={label} style={{ fontSize: '10px', padding: '3px 9px', borderRadius: '20px', background: 'rgba(0,184,212,0.07)', color: 'var(--teal)', border: '1px solid rgba(0,184,212,0.12)' }}>{label}</span>
+                ))}
+              </div>
+              <button className="btn-orange" style={{ width: '100%', padding: '14px', borderRadius: '11px', fontWeight: 700, fontSize: '13px' }} onClick={handleGenerateAngles}>
+                ✨ GENERATE 9-PANEL SHEET
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {showHistoryModal && (
-        <div className="auth-overlay" onClick={() => setShowHistoryModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '600px', width: '90%' }} onClick={e => e.stopPropagation()}>
-            <button className="auth-close" onClick={() => setShowHistoryModal(false)}>×</button>
-            <div className="card-title">Character History</div>
-            {/* ... history content ... */}
+      {/* ── Edit Modal ── */}
+      {showEditModal && activeChar && (
+        <div className="auth-overlay" onClick={() => setShowEditModal(false)}>
+          <div className="auth-modal" style={{ maxWidth: '440px', background: '#0e0e0e', border: '1px solid #222', borderRadius: '24px' }} onClick={e => e.stopPropagation()}>
+            <button className="auth-close" onClick={() => setShowEditModal(false)}>×</button>
+            <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 800, marginBottom: '22px' }}>Edit Character</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>NAME</label>
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
+                  style={{ width: '100%', padding: '13px', border: '1px solid #222', borderRadius: '11px', background: '#0a0a0a', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>DESCRIPTION</label>
+                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)}
+                  style={{ width: '100%', minHeight: '80px', padding: '13px', border: '1px solid #222', borderRadius: '11px', background: '#0a0a0a', color: '#fff', fontSize: '13px', resize: 'none', fontFamily: 'var(--font-body)', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ borderTop: '1px solid #181818', paddingTop: '16px' }}>
+                <label style={{ fontSize: '10px', fontWeight: 800, color: '#333', letterSpacing: '0.1em', display: 'block', marginBottom: '8px' }}>REPLACE IMAGES</label>
+                <button onClick={() => { setShowEditModal(false); fileInputRef.current.click(); }}
+                  style={{ width: '100%', padding: '11px', borderRadius: '10px', background: 'transparent', border: '1px solid #252525', color: '#555', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                  📁 Upload New Character Sheet
+                </button>
+              </div>
+              <button className="btn-teal" style={{ width: '100%', padding: '14px', borderRadius: '11px', fontWeight: 700, fontSize: '13px' }} onClick={handleEditSave}>
+                SAVE CHANGES
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* ── Zoom / Crop Modal ── */}
+      {zoomCropTarget && (
+        <ZoomCropModal
+          imageUrl={zoomCropTarget.url}
+          label={zoomCropTarget.label}
+          onClose={() => setZoomCropTarget(null)}
+          onApply={handleApplyCrop}
+        />
       )}
     </div>
   );

@@ -103,13 +103,15 @@ export default function CreateProject({ params }) {
           onNavigate={goTo} 
           projectId={projectId} 
           existingAudioUrl={projectData?.audio_url}
-          onUploadSuccess={(url) => setProjectData(prev => ({ ...prev, audio_url: url }))}
+          projectState={projectData?.project_state}
+          onUploadSuccess={() => fetchData(projectId)}
         />
       )}
       {activeScreen === 3 && (
         <BrainDumpScreen 
           onNavigate={goTo} 
           projectId={projectId}
+          projectState={projectData?.project_state}
           onDataUpdate={updateProjectData}
         />
       )}

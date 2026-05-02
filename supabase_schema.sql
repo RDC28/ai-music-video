@@ -1,5 +1,5 @@
 -- 1. Create a table for User Profiles (including Credits)
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   full_name TEXT,
   email TEXT UNIQUE,
@@ -8,7 +8,7 @@ CREATE TABLE profiles (
 );
 
 -- 2. Create a table for Music Video Projects
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
   title TEXT DEFAULT 'Untitled Project',
@@ -30,22 +30,60 @@ CREATE TABLE projects (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3. Enable Row Level Security (RLS)
+-- 3. Credit Transactions Audit Trail
+CREATE TABLE IF NOT EXISTS credit_transactions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  amount BIGINT NOT NULL,           -- positive = add, negative = deduct
+  action TEXT NOT NULL,             -- 'purchase', 'script_gen', 'image_gen', 'video_gen', 'refund'
+  reference_id TEXT,                -- stripe session ID or project ID
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Global Character Library (Shared across projects)
+CREATE TABLE IF NOT EXISTS characters_library (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  visual_prompt TEXT,
+  images TEXT[] DEFAULT '{}',
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 5. Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE characters_library ENABLE ROW LEVEL SECURITY;
 
--- 4. Create Policies
--- Profiles: Users can only see/update their own profile
+-- 6. Policies (Idempotent: Drop and Re-create)
+-- Profiles
+DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
 CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
--- Projects: Users can only see/manage their own projects
+-- Projects
+DROP POLICY IF EXISTS "Users can view own projects" ON projects;
 CREATE POLICY "Users can view own projects" ON projects FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can create own projects" ON projects;
 CREATE POLICY "Users can create own projects" ON projects FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own projects" ON projects;
 CREATE POLICY "Users can update own projects" ON projects FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own projects" ON projects;
 CREATE POLICY "Users can delete own projects" ON projects FOR DELETE USING (auth.uid() = user_id);
 
--- 5. Trigger to create profile on signup
+-- Transactions
+DROP POLICY IF EXISTS "Users can view own transactions" ON credit_transactions;
+CREATE POLICY "Users can view own transactions" ON credit_transactions FOR SELECT USING (auth.uid() = user_id);
+
+-- Global Characters
+DROP POLICY IF EXISTS "Users can manage own global characters" ON characters_library;
+CREATE POLICY "Users can manage own global characters" ON characters_library FOR ALL USING (auth.uid() = user_id);
+
+-- 7. Functions & Triggers
+-- Function for new user profile
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -55,46 +93,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Trigger for new user
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 6. Credit System Stored Procedures
--- Atomic credit deduction (prevents double-spend)
-CREATE OR REPLACE FUNCTION deduct_credits(p_user_id UUID, p_amount BIGINT)
-RETURNS BIGINT AS $$
-DECLARE
-  new_balance BIGINT;
-BEGIN
-  UPDATE profiles 
-  SET credits = credits - p_amount 
-  WHERE id = p_user_id AND credits >= p_amount
-  RETURNING credits INTO new_balance;
-  
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Insufficient credits';
-  END IF;
-  
-  RETURN new_balance;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Atomic credit addition
-CREATE OR REPLACE FUNCTION add_credits(p_user_id UUID, p_amount BIGINT)
-RETURNS BIGINT AS $$
-DECLARE
-  new_balance BIGINT;
-BEGIN
-  UPDATE profiles 
-  SET credits = credits + p_amount 
-  WHERE id = p_user_id
-  RETURNING credits INTO new_balance;
-  
-  RETURN new_balance;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- 7. Triggers for updated_at
+-- Function for updated_at column
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -103,20 +108,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Trigger for project modtime
+DROP TRIGGER IF EXISTS update_projects_modtime ON projects;
 CREATE TRIGGER update_projects_modtime
   BEFORE UPDATE ON projects
   FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
--- 8. Credit Transactions Audit Trail
-CREATE TABLE credit_transactions (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
-  amount BIGINT NOT NULL,           -- positive = add, negative = deduct
-  action TEXT NOT NULL,             -- 'purchase', 'script_gen', 'image_gen', 'video_gen', 'refund'
-  reference_id TEXT,                -- stripe session ID or project ID
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 8. Storage Buckets & Policies
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('assets', 'assets', true)
+ON CONFLICT (id) DO NOTHING;
 
-ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view own transactions" 
-  ON credit_transactions FOR SELECT USING (auth.uid() = user_id);
+-- Relaxed policies for development to allow project-id based folders
+DROP POLICY IF EXISTS "Public Access" ON storage.objects;
+CREATE POLICY "Public Access" ON storage.objects FOR SELECT USING (bucket_id = 'assets');
+
+DROP POLICY IF EXISTS "Users can upload own assets" ON storage.objects;
+CREATE POLICY "Users can upload own assets" ON storage.objects 
+  FOR INSERT WITH CHECK (bucket_id = 'assets' AND auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Users can update own assets" ON storage.objects;
+CREATE POLICY "Users can update own assets" ON storage.objects 
+  FOR UPDATE USING (bucket_id = 'assets' AND auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Users can delete own assets" ON storage.objects;
+CREATE POLICY "Users can delete own assets" ON storage.objects 
+  FOR DELETE USING (bucket_id = 'assets' AND auth.role() = 'authenticated');
