@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/utils/supabase';
+import ProgressBar from '../ProgressBar';
 
 export default function UploadAudioScreen({ onNavigate, projectId, existingAudioUrl, onUploadSuccess, projectState }) {
   const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [progressStep, setProgressStep] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -11,22 +13,37 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
   const audioRef = useRef(null);
   const supabase = createClient();
 
+  const AUDIO_STEPS = [
+    'Fetching audio file',
+    'Sending to Gemini 2.5 Flash',
+    'Analyzing rhythm & lyrics',
+    'Processing transcript',
+    'Saving to project'
+  ];
+
   const hasAnalysis = projectState?.analysis;
 
   const handleAnalyze = async () => {
     if (!existingAudioUrl || !projectId) return;
     
     setIsAnalyzing(true);
+    setProgressStep(0);
     try {
+      // Simulate sending to Gemini after fetch starts
+      setTimeout(() => setProgressStep(1), 400);
+      setTimeout(() => setProgressStep(2), 1500);
+
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId, audioUrl: existingAudioUrl })
       });
       
+      setProgressStep(3);
       const data = await response.json();
       if (data.error) throw new Error(data.error);
       
+      setProgressStep(4);
       // Refresh the page or update state to show analysis
       if (onUploadSuccess) onUploadSuccess(existingAudioUrl); 
     } catch (err) {
@@ -34,6 +51,7 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
       alert("AI Analysis failed: " + err.message);
     } finally {
       setIsAnalyzing(false);
+      setProgressStep(-1);
     }
   };
 
@@ -276,9 +294,9 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
                 className="btn-orange" 
                 onClick={handleAnalyze}
                 disabled={isAnalyzing}
-                style={{ width: '100%', padding: '16px', borderRadius: '16px', fontSize: '15px' }}
+                style={{ width: '100%', padding: '16px', borderRadius: '16px', fontSize: '15px', position: 'relative', overflow: 'hidden' }}
               >
-                {isAnalyzing ? 'Gemini is listening...' : '✨ Analyze Song with Gemini 2.5 Flash'}
+                {isAnalyzing ? 'Analyzing Audio...' : '✨ Analyze Song with Gemini 2.5 Flash'}
               </button>
             ) : (
               <button 
@@ -288,6 +306,10 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
               >
                 Continue to Script Builder
               </button>
+            )}
+
+            {isAnalyzing && (
+              <ProgressBar steps={AUDIO_STEPS} currentStep={progressStep} />
             )}
           </div>
         ) : (

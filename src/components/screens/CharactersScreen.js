@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/utils/supabase';
+import ProgressBar from '../ProgressBar';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -255,6 +256,20 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
   const [activeCategory, setActiveCategory]  = useState('project');
   const [renamingPanel,  setRenamingPanel]   = useState(null); // { charIdx, imgIdx }
 
+  const [pendingSheetFile, setPendingSheetFile] = useState(null);
+  const [showSheetCropModal, setShowSheetCropModal] = useState(false);
+  const [sheetPreviewUrl, setSheetPreviewUrl] = useState(null);
+  const [charProgressStep, setCharProgressStep] = useState(-1);
+
+  const CHARACTER_STEPS = [
+    'Preparing character profile',
+    'Generating Front View',
+    'Generating Side View',
+    'Generating Back View',
+    'Generating Face Close-up',
+    'Uploading to library'
+  ];
+
   const fileInputRef    = useRef(null);
   const refFileInputRef = useRef(null);
   const supabase = createClient();
@@ -288,6 +303,28 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     return res.json();
   };
 
+  const saveToGlobalLibrary = async (charObj, source) => {
+    try {
+      const { data: { user }, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !user) throw new Error(userErr?.message || 'No user found');
+
+      const { error: insErr } = await supabase.from('characters_library').insert({
+        user_id: user.id,
+        name: charObj.name,
+        description: charObj.description,
+        images: charObj.images, // JSONB array
+        source: source,
+        sheet_url: charObj.sheetUrl || null
+      });
+
+      if (insErr) throw insErr;
+      await fetchGlobalLibrary();
+      console.log(`Character ${charObj.name} saved to global library.`);
+    } catch (err) {
+      console.error('Failed to save to global library:', err);
+    }
+  };
+
   const pushSlot = (i, url, label) => {
     setGeneratingChar(prev => {
       if (!prev) return prev;
@@ -313,10 +350,31 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
 
   // ── Upload sheet flow ────────────────────────────────────────────────────────
 
-  const handleSheetUpload = async (e) => {
+  const handleSheetUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
+    // Reset input immediately
     e.target.value = '';
+    
+    const previewUrl = URL.createObjectURL(file);
+    setSheetPreviewUrl(previewUrl);
+    setPendingSheetFile(file);
+    setShowSheetCropModal(true);
+  };
+
+  const handleCloseSheetCropModal = () => {
+    if (sheetPreviewUrl) {
+      URL.revokeObjectURL(sheetPreviewUrl);
+    }
+    setSheetPreviewUrl(null);
+    setPendingSheetFile(null);
+    setShowSheetCropModal(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const processSheetFile = async (file) => {
+    if (!file) return;
     setIsProcessingSheet(true);
 
     try {
@@ -385,12 +443,23 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       const updatedChars = [...projectCharacters, newChar];
       await onDataUpdate({ characters: updatedChars });
       setActiveTab(updatedChars.length - 1);
+
+      // Save to global library independently
+      saveToGlobalLibrary(newChar, 'upload');
     } catch (err) {
       console.error('Sheet processing failed:', err);
       alert('Failed to process sheet: ' + err.message);
     } finally {
       setIsProcessingSheet(false);
       setGeneratingChar(null);
+      
+      // Cleanup preview state
+      if (sheetPreviewUrl) {
+        URL.revokeObjectURL(sheetPreviewUrl);
+      }
+      setSheetPreviewUrl(null);
+      setPendingSheetFile(null);
+      setShowSheetCropModal(false);
     }
   };
 
@@ -404,6 +473,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     setShowCreateModal(false);
     setCreateName(''); setCreateDesc('');
     setIsGenerating(true);
+    setCharProgressStep(0);
 
     const angles = [
       { label: 'FRONT VIEW', prompt: 'Front view portrait, standing, full body, professional studio lighting, clean white background, cinematic high detail.' },
@@ -423,6 +493,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
 
       // Generate SEQUENTIALLY to maintain character consistency via reference image
       for (let i = 0; i < angles.length; i++) {
+        setCharProgressStep(i + 1);
         const angle = angles[i];
         try {
           const payload = { 
@@ -467,16 +538,20 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         }
       }
 
+      setCharProgressStep(5);
       const newChar = { id: tempId, name: charName, description: desc, images: finalImages.filter(Boolean), source: 'ai' };
       const updatedChars = [...projectCharacters, newChar];
       await onDataUpdate({ characters: updatedChars });
       setActiveTab(updatedChars.length - 1);
 
+      // Save to global library independently
+      saveToGlobalLibrary(newChar, 'ai');
     } catch (err) {
       console.error('Generation failed:', err);
       alert('Failed: ' + err.message);
     } finally {
       setIsGenerating(false);
+      setCharProgressStep(-1);
       setGeneratingChar(null);
     }
   };
@@ -563,6 +638,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
   const activeChar = displayedCharacters[activeTab] || null;
   const isGeneratingActive = activeChar?.id === 'generating';
   const busy = isProcessingSheet || isGenerating;
+  const _n        = activeChar?.images?.length || 0;
+  const gridCols  = Math.max(2, Math.ceil(Math.sqrt(_n)));
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -619,6 +696,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
               style={{ width: '100%', padding: '15px', borderRadius: '12px', background: 'transparent', border: '1px solid #252525', color: '#777', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
               ✨ GENERATE NEW
             </button>
+ 
+            {isGenerating && (
+              <ProgressBar steps={CHARACTER_STEPS} currentStep={charProgressStep} />
+            )}
           </div>
 
           <div style={{ marginTop: 'auto', paddingTop: '32px' }}>
@@ -629,10 +710,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         </div>
 
         {/* ── Right panel ── */}
-        <div style={{ flex: 1, background: '#080808', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, background: '#080808', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
           {/* Header */}
-          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(8,8,8,0.92)', backdropFilter: 'blur(20px)', padding: '22px 40px', borderBottom: '1px solid #1A1A1A' }}>
+          <div style={{ flexShrink: 0, zIndex: 10, background: 'rgba(8,8,8,0.92)', backdropFilter: 'blur(20px)', padding: '22px 40px', borderBottom: '1px solid #1A1A1A' }}>
             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '14px' }}>
               {displayedCharacters.map((char, i) => (
                 <div key={char.id || i} onClick={() => setActiveTab(i)} style={{
@@ -690,19 +771,44 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
           </div>
 
           {/* Image grid */}
-          <div style={{ padding: '36px 40px', flex: 1 }}>
+          <div style={{ height: 'calc(100vh - 280px)', overflow: 'hidden', padding: '16px 28px', boxSizing: 'border-box', flexShrink: 0 }}>
             {activeChar?.images?.length > 0 ? (
-              <div style={{ columnCount: 'auto', columnWidth: '260px', columnGap: '18px' }}>
+              activeCategory === 'global' ? (
+                <div style={{ height: '100%', display: 'flex', flexWrap: 'wrap', gap: '8px', overflowY: 'auto', alignContent: 'flex-start' }}>
+                  {activeChar.images.map((img, i) => {
+                    const _imgObj = (typeof img === 'string' && img.charAt(0) === '{') ? (() => { try { return JSON.parse(img); } catch { return null; } })() : null;
+                    const src   = _imgObj ? (_imgObj.url || null) : (typeof img === 'string' ? img : img?.url);
+                    const label = _imgObj ? (_imgObj.label || `POSE ${i + 1}`) : (typeof img === 'string' ? `POSE ${i + 1}` : img?.label);
+                    if (!src) return null;
+                    return (
+                      <div key={i} className="img-card" style={{
+                        height: '160px', flexShrink: 0, background: '#0f0f0f',
+                        borderRadius: '10px', border: '1px solid #1c1c1c',
+                        overflow: 'hidden', position: 'relative', boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+                      }}>
+                        <img src={src} alt={label} style={{ height: '100%', width: 'auto', display: 'block' }} />
+                        <div style={{ position: 'absolute', top: '6px', right: '6px' }}>
+                          <div style={{ padding: '3px 6px', background: 'rgba(0,0,0,0.7)', borderRadius: '4px', fontSize: '8px', color: '#bbb', backdropFilter: 'blur(8px)', fontWeight: 800, border: '1px solid rgba(255,255,255,0.05)', whiteSpace: 'nowrap' }}>
+                            {label.toUpperCase()}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+              <div style={{ height: '100%', overflow: 'hidden', columnCount: gridCols, columnGap: '8px' }}>
                 {activeChar.images.map((img, i) => {
-                  const src     = typeof img === 'string' ? img : img.url;
-                  const label   = typeof img === 'string' ? `POSE ${i + 1}` : img.label;
+                  const _imgObj = (typeof img === 'string' && img.charAt(0) === '{') ? (() => { try { return JSON.parse(img); } catch { return null; } })() : null;
+                  const src     = _imgObj ? (_imgObj.url || null) : (typeof img === 'string' ? img : img?.url);
+                  const label   = _imgObj ? (_imgObj.label || `POSE ${i + 1}`) : (typeof img === 'string' ? `POSE ${i + 1}` : img?.label);
                   const loading = src === null;
                   const charIdx = activeCategory === 'project' ? activeTab : -1;
                   return (
                     <div key={i} className="img-card" style={{
-                      breakInside: 'avoid', marginBottom: '18px', background: '#0f0f0f',
-                      borderRadius: '18px', border: `1px solid ${loading ? '#161616' : '#1c1c1c'}`,
-                      overflow: 'hidden', position: 'relative', boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+                      breakInside: 'avoid', marginBottom: '8px', background: '#0f0f0f', borderRadius: '14px',
+                      border: `1px solid ${loading ? '#161616' : '#1c1c1c'}`,
+                      overflow: 'hidden', position: 'relative', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
                     }}>
                       {loading
                         ? <div className="skeleton-shimmer" style={{ width: '100%', paddingBottom: '133%' }} />
@@ -771,8 +877,9 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
                   );
                 })}
               </div>
+              )
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '420px', border: '2px dashed #161616', borderRadius: '28px' }}>
+              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed #161616', borderRadius: '28px' }}>
                 <div style={{ fontSize: '44px', marginBottom: '18px', filter: 'grayscale(1) opacity(0.2)' }}>🎭</div>
                 <h3 style={{ color: '#2e2e2e', fontSize: '17px', fontWeight: 700 }}>No images yet</h3>
                 <p style={{ color: '#232323', fontSize: '13px', marginTop: '6px' }}>Upload a character sheet or generate with AI.</p>
@@ -880,6 +987,42 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
           initialBox={zoomCropTarget.initialBox || null}
           showLabelInput={zoomCropTarget.showLabelInput || false}
         />
+      )}
+
+      {/* ── Sheet Crop Choice Modal ── */}
+      {showSheetCropModal && sheetPreviewUrl && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={handleCloseSheetCropModal}>
+          <div style={{ background: '#0c0c0c', width: '100%', maxWidth: '520px', borderRadius: '16px', border: '1px solid #1a1a1a', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }} onClick={e => e.stopPropagation()}>
+            <button onClick={handleCloseSheetCropModal} style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', color: '#555', fontSize: '20px', cursor: 'pointer', zIndex: 10 }}>✕</button>
+            <div style={{ padding: '32px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: 'var(--teal)' }} />
+                <span style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 800, letterSpacing: '0.12em' }}>CROP SELECTION</span>
+              </div>
+              <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 800, marginBottom: '6px' }}>How would you like to crop?</h3>
+              <p style={{ color: '#555', fontSize: '12px', marginBottom: '24px', lineHeight: 1.5 }}>Our AI can automatically detect and refine 9+ character poses from your sheet, or you can do it yourself.</p>
+              
+              <div style={{ width: '100%', height: '280px', background: '#080808', borderRadius: '12px', overflow: 'hidden', border: '1px solid #151515', marginBottom: '28px' }}>
+                <img src={sheetPreviewUrl} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Preview" />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <button 
+                  onClick={() => processSheetFile(pendingSheetFile)} 
+                  style={{ ...MODAL_BTN, background: '#00B8D4', color: '#000', border: 'none', padding: '18px', borderRadius: '14px', fontSize: '13px', fontWeight: 800 }}
+                >
+                  ✨ CROP WITH AI (AUTO-DETECT)
+                </button>
+                <div style={{ position: 'relative' }}>
+                  <button disabled style={{ ...MODAL_BTN, opacity: 0.45, width: '100%', padding: '18px', borderRadius: '14px', fontSize: '13px', cursor: 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    ✂ CROP MANUALLY
+                  </button>
+                  <span style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', background: '#1a1a1a', color: '#444', fontSize: '9px', fontWeight: 900, padding: '3px 8px', borderRadius: '5px', letterSpacing: '0.06em' }}>COMING SOON</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

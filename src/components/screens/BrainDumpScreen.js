@@ -1,10 +1,20 @@
 import { useState, useEffect } from 'react';
-import { geminiAgent } from '@/utils/geminiAgents';
+import ProgressBar from '../ProgressBar';
 
 export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, projectState }) {
   const [idea, setIdea] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [progressStep, setProgressStep] = useState(-1);
   const [generatedPlan, setGeneratedPlan] = useState(null);
+
+  const SCRIPT_STEPS = [
+    'Reading your idea',
+    'Analyzing lyrics & transcript',
+    'Writing script & scenes',
+    'Creating characters & locations',
+    'Building shot list',
+    'Saving to project'
+  ];
 
   useEffect(() => {
     if (projectState?.script && projectState?.characters && projectState?.locations) {
@@ -24,7 +34,12 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
     if (!finalPrompt.trim()) return alert("Please enter an idea first");
     
     setIsAnalyzing(true);
+    setProgressStep(0);
     try {
+      setProgressStep(1);
+      // Simulate analysis phase
+      setTimeout(() => setProgressStep(2), 600);
+
       const response = await fetch('/api/generate-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -34,8 +49,10 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
       const plan = await response.json();
       if (plan.error) throw new Error(plan.error);
       
+      setProgressStep(3);
       setGeneratedPlan(plan);
       
+      setProgressStep(4);
       // Save everything to the project state
       await onDataUpdate({ 
         script: plan.script,
@@ -44,11 +61,13 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
         shot_list: plan.shot_list,
         current_step: 4
       });
+      setProgressStep(5);
     } catch (error) {
       console.error("AI Analysis failed:", error);
       alert("Something went wrong with the AI analysis. Please try again.");
     } finally {
       setIsAnalyzing(false);
+      setProgressStep(-1);
     }
   };
 
@@ -227,6 +246,12 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
             <span>{isAnalyzing ? 'WAIT' : 'GENERATE'}</span>
           </button>
         </div>
+
+        {isAnalyzing && (
+          <div style={{ marginTop: '16px' }}>
+            <ProgressBar steps={SCRIPT_STEPS} currentStep={progressStep} />
+          </div>
+        )}
 
         {!transcript && (
           <div 
