@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "py": "cd python-service && python3 -m uvicorn main:app --port 8001 --reload"
   },
   "dependencies": {
     "@google/genai": "^1.51.0",

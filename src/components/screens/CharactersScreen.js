@@ -41,23 +41,65 @@ Character ${charClause}.
 Do not crop any face or costume details. Maintain perfectly consistent character appearance across all 9 panels. Clean visible spacing between panels. Studio lighting throughout. Professional concept art quality.`;
 };
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Returns the rendered image rect (accounting for objectFit:contain letterboxing)
+// in the coordinate space of the container (all values in px, relative to container top-left).
+function _renderedRect(img, containerW, containerH) {
+  const natAR = img.naturalWidth / img.naturalHeight;
+  const cAR   = containerW / containerH;
+  let rendW, rendH, offX, offY;
+  if (natAR > cAR) {
+    rendW = containerW; rendH = containerW / natAR;
+    offX  = 0;          offY  = (containerH - rendH) / 2;
+  } else {
+    rendH = containerH; rendW = containerH * natAR;
+    offX  = (containerW - rendW) / 2; offY = 0;
+  }
+  return { offX, offY, rendW, rendH };
+}
+
 // ─── ZoomCropModal ────────────────────────────────────────────────────────────
 
-function ZoomCropModal({ imageUrl, label, onClose, onApply }) {
+function ZoomCropModal({ imageUrl, label, onClose, onApply, initialBox, showLabelInput }) {
   const containerRef = useRef(null);
   const imgRef      = useRef(null);
   const [zoom, setZoom]         = useState(1);
   const [pan,  setPan]          = useState({ x: 0, y: 0 });
-  const [drag, setDrag]         = useState(null);   // { type:'pan'|'crop', ... }
-  const [cropBox,   setCropBox] = useState(null);   // { x, y, w, h } container-local px
-  const [cropMode,  setCropMode]  = useState(false);
+  const [drag, setDrag]         = useState(null);
+  const [cropBox,   setCropBox] = useState(null);
+  const [cropMode,  setCropMode]  = useState(!!initialBox);
   const [applying,  setApplying]  = useState(false);
+  const [labelInput, setLabelInput] = useState(label || '');
 
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, []);
+
+  // Pre-select the crop region from normalised box_2d coords once the image renders
+  useEffect(() => {
+    if (!initialBox) return;
+    const img = imgRef.current;
+    if (!img) return;
+
+    const apply = () => {
+      const cRect = containerRef.current?.getBoundingClientRect();
+      if (!cRect || !img.naturalWidth) return;
+      const { offX, offY, rendW, rendH } = _renderedRect(img, cRect.width, cRect.height);
+      const [ymin, xmin, ymax, xmax] = initialBox;
+      setCropBox({
+        x: offX + (xmin / 1000) * rendW,
+        y: offY + (ymin / 1000) * rendH,
+        w: ((xmax - xmin) / 1000) * rendW,
+        h: ((ymax - ymin) / 1000) * rendH,
+      });
+    };
+
+    if (img.complete && img.naturalWidth) apply();
+    else img.addEventListener('load', apply, { once: true });
+  }, [initialBox]);
 
   const onWheel = (e) => {
     e.preventDefault();
@@ -98,24 +140,39 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply }) {
   const applyCrop = () => {
     if (!cropBox || cropBox.w < 4 || cropBox.h < 4 || !imgRef.current) return;
     setApplying(true);
-    const img  = imgRef.current;
-    const iRect = img.getBoundingClientRect();
+    const img   = imgRef.current;
     const cRect = containerRef.current.getBoundingClientRect();
-    const sx = img.naturalWidth  / iRect.width;
-    const sy = img.naturalHeight / iRect.height;
-    const natX = Math.max(0, (cropBox.x + cRect.left - iRect.left) * sx);
-    const natY = Math.max(0, (cropBox.y + cRect.top  - iRect.top)  * sy);
-    const natW = Math.min(img.naturalWidth  - natX, cropBox.w * sx);
-    const natH = Math.min(img.naturalHeight - natY, cropBox.h * sy);
+    const cw    = cRect.width;
+    const ch    = cRect.height;
+    const { offX, offY, rendW, rendH } = _renderedRect(img, cw, ch);
+
+    // cropBox is in container coords. Account for zoom/pan:
+    // CSS transform `scale(zoom) translate(pan.x/zoom, pan.y/zoom)` at center means
+    // container point (px,py) → rendered image point:
+    //   rx = cw/2 + (px - cw/2 - pan.x) / zoom
+    //   ry = ch/2 + (py - ch/2 - pan.y) / zoom
+    const toImg = (px, py) => ({
+      x: (cw / 2 + (px - cw / 2 - pan.x) / zoom - offX) / rendW * img.naturalWidth,
+      y: (ch / 2 + (py - ch / 2 - pan.y) / zoom - offY) / rendH * img.naturalHeight,
+    });
+
+    const tl = toImg(cropBox.x, cropBox.y);
+    const br = toImg(cropBox.x + cropBox.w, cropBox.y + cropBox.h);
+
+    const natX = Math.max(0, tl.x);
+    const natY = Math.max(0, tl.y);
+    const natW = Math.min(img.naturalWidth  - natX, br.x - tl.x);
+    const natH = Math.min(img.naturalHeight - natY, br.y - tl.y);
     if (natW < 1 || natH < 1) { setApplying(false); return; }
+
     const canvas = document.createElement('canvas');
     canvas.width  = Math.round(natW);
     canvas.height = Math.round(natH);
     const tmp = new Image();
     tmp.crossOrigin = 'anonymous';
     tmp.onload = () => {
-      canvas.getContext('2d').drawImage(tmp, natX, natY, natW, natH, 0, 0, natW, natH);
-      canvas.toBlob(blob => { onApply(blob); setApplying(false); }, 'image/jpeg', 0.95);
+      canvas.getContext('2d').drawImage(tmp, Math.round(natX), Math.round(natY), Math.round(natW), Math.round(natH), 0, 0, Math.round(natW), Math.round(natH));
+      canvas.toBlob(blob => { onApply(blob, labelInput.trim() || label); setApplying(false); }, 'image/jpeg', 0.95);
     };
     tmp.src = imageUrl;
   };
@@ -134,12 +191,21 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply }) {
         <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} style={MODAL_BTN}>{Math.round(zoom * 100)}% · RESET</button>
         <button onClick={() => setZoom(z => Math.max(0.5, z * 0.8))} style={MODAL_BTN}>− ZOOM</button>
         <div style={{ width: '1px', height: '18px', background: '#252525' }} />
-        <button onClick={() => { setCropMode(m => !m); setCropBox(null); }} style={{ ...MODAL_BTN, background: cropMode ? '#00B8D4' : undefined, color: cropMode ? '#000' : undefined, borderColor: cropMode ? '#00B8D4' : undefined }}>
-          ✂ {cropMode ? 'CROPPING — DRAG TO SELECT' : 'CROP MODE'}
+        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={{ ...MODAL_BTN, background: cropMode ? '#00B8D4' : undefined, color: cropMode ? '#000' : undefined, borderColor: cropMode ? '#00B8D4' : undefined }}>
+          ✂ {cropMode ? 'DRAW NEW SELECTION' : 'CROP MODE'}
         </button>
+        {canApply && showLabelInput && (
+          <input
+            value={labelInput}
+            onChange={e => setLabelInput(e.target.value)}
+            placeholder="Label (e.g. BACK VIEW)"
+            onClick={e => e.stopPropagation()}
+            style={{ ...MODAL_BTN, width: '170px', outline: 'none', caretColor: '#fff', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+          />
+        )}
         {canApply && (
           <button onClick={applyCrop} disabled={applying} style={{ ...MODAL_BTN, background: '#FF6F00', color: '#fff', border: 'none' }}>
-            {applying ? 'SAVING...' : '✓ APPLY CROP'}
+            {applying ? 'SAVING...' : '✓ SAVE CROP'}
           </button>
         )}
         <div style={{ width: '1px', height: '18px', background: '#252525' }} />
@@ -160,11 +226,11 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply }) {
         {cropBox && cropBox.w > 0 && (
           <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '2px solid #00B8D4', background: 'rgba(0,184,212,0.1)', pointerEvents: 'none', boxSizing: 'border-box' }} />
         )}
-        {!cropMode && (
-          <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: '#252525', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-            Scroll to zoom · Drag to pan · Enable crop mode to select area
-          </div>
-        )}
+        <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: '#2a2a2a', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
+          {cropMode
+            ? 'Drag to select the panel · Draw a new box to change selection'
+            : 'Scroll to zoom · Drag to pan · Enable Crop Mode to select area'}
+        </div>
       </div>
     </div>
   );
@@ -187,6 +253,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
   const [generatingChar, setGeneratingChar]  = useState(null);
   const [zoomCropTarget, setZoomCropTarget]  = useState(null);
   const [activeCategory, setActiveCategory]  = useState('project');
+  const [renamingPanel,  setRenamingPanel]   = useState(null); // { charIdx, imgIdx }
 
   const fileInputRef    = useRef(null);
   const refFileInputRef = useRef(null);
@@ -306,16 +373,15 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         const ext  = finalMime.split('/')[1] || 'png';
         const url  = await uploadBlob(blob, finalMime, `${projectId}/generated/${Date.now()}-section-${i}.${ext}`);
         
-        finalImages[i] = { url, label };
-        // We update the local state so the user sees images popping in
+        finalImages[i] = { url, label, box_2d: pose.box_2d };
         setGeneratingChar(prev => {
           const newImgs = [...prev.images];
-          newImgs[i] = { url, label };
+          newImgs[i] = { url, label, box_2d: pose.box_2d };
           return { ...prev, images: newImgs };
         });
       }));
 
-      const newChar = { id: Date.now(), name: charName, description: 'Uploaded from character sheet', images: finalImages.filter(Boolean), source: 'upload' };
+      const newChar = { id: Date.now(), name: charName, description: 'Uploaded from character sheet', images: finalImages.filter(Boolean), source: 'upload', sheetUrl };
       const updatedChars = [...projectCharacters, newChar];
       await onDataUpdate({ characters: updatedChars });
       setActiveTab(updatedChars.length - 1);
@@ -427,15 +493,21 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
 
   // ── Apply crop ────────────────────────────────────────────────────────────────
 
-  const handleApplyCrop = async (blob) => {
+  const handleApplyCrop = async (blob, newLabel) => {
     if (!zoomCropTarget) return;
     const { charIdx, imgIdx } = zoomCropTarget;
     try {
       const url = await uploadBlob(blob, 'image/jpeg', `${projectId}/crops/${Date.now()}-crop.jpg`);
       const char = projectCharacters[charIdx];
       const images = [...char.images];
-      const existing = images[imgIdx];
-      images[imgIdx] = { url, label: typeof existing === 'string' ? `Section ${imgIdx + 1}` : existing.label };
+      if (imgIdx === null) {
+        // Add new panel from sheet
+        images.push({ url, label: newLabel || 'CUSTOM CROP' });
+      } else {
+        // Replace existing panel
+        const existing = images[imgIdx];
+        images[imgIdx] = { url, label: newLabel || (typeof existing === 'string' ? `Section ${imgIdx + 1}` : existing.label) };
+      }
       const updatedChars = [...projectCharacters];
       updatedChars[charIdx] = { ...char, images };
       await onDataUpdate({ characters: updatedChars });
@@ -461,6 +533,28 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     } catch (err) { alert('Delete failed: ' + err.message); }
   };
 
+  const handleDeleteImage = async (charIdx, imgIdx) => {
+    if (!confirm('Remove this image?')) return;
+    const char = projectCharacters[charIdx];
+    const images = char.images.filter((_, i) => i !== imgIdx);
+    const updatedChars = [...projectCharacters];
+    updatedChars[charIdx] = { ...char, images };
+    await onDataUpdate({ characters: updatedChars });
+  };
+
+  const handleRenameLabel = async (charIdx, imgIdx, newLabel) => {
+    setRenamingPanel(null);
+    if (charIdx < 0 || !newLabel.trim()) return;
+    const char = projectCharacters[charIdx];
+    if (!char) return;
+    const images = [...char.images];
+    const existing = images[imgIdx];
+    images[imgIdx] = { ...(typeof existing === 'object' ? existing : { url: existing }), label: newLabel.trim().toUpperCase() };
+    const updatedChars = [...projectCharacters];
+    updatedChars[charIdx] = { ...char, images };
+    await onDataUpdate({ characters: updatedChars });
+  };
+
   // ── Derived state ─────────────────────────────────────────────────────────────
 
   const displayedCharacters = activeCategory === 'project'
@@ -479,6 +573,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         .skeleton-shimmer { background:linear-gradient(90deg,#111 25%,#1e1e1e 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
         .img-card-actions { opacity:0; transition:opacity 0.15s; }
         .img-card:hover .img-card-actions { opacity:1; }
+        .img-card-delete { opacity:0; transition:opacity 0.15s; }
+        .img-card:hover .img-card-delete { opacity:1; }
       `}</style>
 
       <div style={{ display: 'flex', height: '100%' }}>
@@ -572,7 +668,14 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
                 </div>
               </div>
               {activeChar && !isGeneratingActive && activeCategory === 'project' && (
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  {activeChar.sheetUrl && (
+                    <button
+                      onClick={() => setZoomCropTarget({ charIdx: activeTab, imgIdx: null, url: activeChar.sheetUrl, label: '', showLabelInput: true })}
+                      style={{ background: 'rgba(0,184,212,0.07)', border: '1px solid rgba(0,184,212,0.2)', color: 'var(--teal)', padding: '8px 14px', borderRadius: '10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      + ADD FROM SHEET
+                    </button>
+                  )}
                   <button onClick={() => { setEditName(activeChar.name); setEditDesc(activeChar.description || ''); setShowEditModal(true); }}
                     style={{ background: 'transparent', border: '1px solid #222', color: '#777', padding: '8px 16px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
                     Edit
@@ -603,21 +706,66 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
                     }}>
                       {loading
                         ? <div className="skeleton-shimmer" style={{ width: '100%', paddingBottom: '133%' }} />
-                        : <img src={src} alt={label} style={{ width: '100%', height: 'auto', display: 'block' }} />
+                        : <img key={src} src={src} alt={label} style={{ width: '100%', height: 'auto', display: 'block' }} />
                       }
-                      {/* Label badge */}
-                      <div style={{ position: 'absolute', top: '10px', right: '10px', padding: '4px 9px', background: 'rgba(0,0,0,0.7)', borderRadius: '6px', fontSize: '9px', color: loading ? '#2a2a2a' : '#bbb', backdropFilter: 'blur(8px)', fontWeight: 800, border: '1px solid rgba(255,255,255,0.05)' }}>
-                        {label.toUpperCase()}
+                      {/* Label badge — click to rename */}
+                      <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
+                        {renamingPanel?.charIdx === charIdx && renamingPanel?.imgIdx === i ? (
+                          <input
+                            autoFocus
+                            defaultValue={label}
+                            onBlur={e => handleRenameLabel(charIdx, i, e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleRenameLabel(charIdx, i, e.target.value);
+                              if (e.key === 'Escape') setRenamingPanel(null);
+                            }}
+                            onClick={e => e.stopPropagation()}
+                            style={{ background: 'rgba(0,0,0,0.92)', border: '1px solid #00B8D4', color: '#fff', borderRadius: '6px', padding: '3px 8px', fontSize: '9px', fontWeight: 800, outline: 'none', width: '110px', letterSpacing: '0.06em' }}
+                          />
+                        ) : (
+                          <div
+                            onClick={() => !loading && charIdx >= 0 && setRenamingPanel({ charIdx, imgIdx: i })}
+                            title={charIdx >= 0 ? 'Click to rename' : ''}
+                            style={{ padding: '4px 9px', background: 'rgba(0,0,0,0.7)', borderRadius: '6px', fontSize: '9px', color: loading ? '#2a2a2a' : '#bbb', backdropFilter: 'blur(8px)', fontWeight: 800, border: '1px solid rgba(255,255,255,0.05)', cursor: charIdx >= 0 ? 'text' : 'default', whiteSpace: 'nowrap' }}
+                          >
+                            {label.toUpperCase()}
+                          </div>
+                        )}
                       </div>
-                      {/* Zoom / Crop button (visible on hover) */}
+                      {/* Delete button (top-left, visible on hover) */}
                       {!loading && charIdx >= 0 && (
                         <button
-                          className="img-card-actions"
-                          onClick={() => setZoomCropTarget({ charIdx, imgIdx: i, url: src, label })}
-                          style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(255,255,255,0.08)', color: '#ccc', borderRadius: '8px', padding: '6px 10px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)' }}
+                          className="img-card-delete"
+                          onClick={() => handleDeleteImage(charIdx, i)}
+                          style={{ position: 'absolute', top: '10px', left: '10px', background: 'rgba(255,40,40,0.85)', border: 'none', color: '#fff', borderRadius: '6px', width: '26px', height: '26px', fontSize: '14px', fontWeight: 900, cursor: 'pointer', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
                         >
-                          ⤢ ZOOM / CROP
+                          ×
                         </button>
+                      )}
+                      {/* Action buttons (visible on hover) */}
+                      {!loading && charIdx >= 0 && (
+                        <div className="img-card-actions" style={{ position: 'absolute', bottom: '10px', right: '10px', display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
+                          {/* Re-crop from original sheet */}
+                          {activeChar?.sheetUrl && (
+                            <button
+                              onClick={() => setZoomCropTarget({
+                                charIdx, imgIdx: i, url: activeChar.sheetUrl, label,
+                                initialBox: typeof img === 'object' ? img.box_2d : null,
+                                showLabelInput: true,
+                              })}
+                              style={{ background: 'rgba(0,184,212,0.85)', border: 'none', color: '#000', borderRadius: '8px', padding: '6px 10px', fontSize: '10px', fontWeight: 800, cursor: 'pointer', backdropFilter: 'blur(8px)', whiteSpace: 'nowrap' }}
+                            >
+                              ✂ RE-CROP
+                            </button>
+                          )}
+                          {/* Zoom / free-crop on the already-cropped image */}
+                          <button
+                            onClick={() => setZoomCropTarget({ charIdx, imgIdx: i, url: src, label })}
+                            style={{ background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(255,255,255,0.08)', color: '#ccc', borderRadius: '8px', padding: '6px 10px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)' }}
+                          >
+                            ⤢ ZOOM / CROP
+                          </button>
+                        </div>
                       )}
                     </div>
                   );
@@ -729,6 +877,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
           label={zoomCropTarget.label}
           onClose={() => setZoomCropTarget(null)}
           onApply={handleApplyCrop}
+          initialBox={zoomCropTarget.initialBox || null}
+          showLabelInput={zoomCropTarget.showLabelInput || false}
         />
       )}
     </div>
