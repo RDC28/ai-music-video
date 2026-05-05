@@ -395,12 +395,12 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
           viewingRecropSource ? (
             <button onClick={openCurrentImage} style={MODAL_BTN}>View Image</button>
           ) : (
-            <button onClick={openRecropSource} style={{ ...MODAL_BTN, background: 'var(--teal)', color: '#000', borderColor: 'var(--teal)' }}>
+            <button onClick={openRecropSource} style={{ ...MODAL_BTN, background: 'var(--teal)', color: '#000', border: '1px solid var(--teal)' }}>
               Re-crop
             </button>
           )
         )}
-        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={{ ...MODAL_BTN, background: cropMode ? '#00B8D4' : undefined, color: cropMode ? '#000' : undefined, borderColor: cropMode ? '#00B8D4' : undefined }}>
+        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={cropMode ? { ...MODAL_BTN, background: '#00B8D4', color: '#000', border: '1px solid #00B8D4' } : MODAL_BTN}>
           {cropMode ? 'Draw New Selection' : 'Crop Mode'}
         </button>
         {canApply && showEditorLabel && (
@@ -419,11 +419,11 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
         )}
         <div style={{ width: '1px', height: '18px', background: '#222' }} />
         {onDelete && (
-          <button onClick={onDelete} style={{ ...MODAL_BTN, color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}>
+          <button onClick={onDelete} style={{ ...MODAL_BTN, color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>
             Delete Image
           </button>
         )}
-        <button onClick={onClose} style={{ ...MODAL_BTN, color: '#bbb', borderColor: 'rgba(255,255,255,0.1)' }}>Close</button>
+        <button onClick={onClose} style={{ ...MODAL_BTN, color: '#bbb', border: '1px solid rgba(255,255,255,0.1)' }}>Close</button>
       </div>
 
       {/* Viewport */}
@@ -912,11 +912,11 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         .skeleton-shimmer { background:linear-gradient(90deg,#111 25%,#1a1a1a 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
         .img-card {
-          --pin-card-scale: 1;
+          --board-card-scale: 1;
           transition: transform 0.16s ease, filter 0.16s ease;
         }
         .img-card:hover {
-          --pin-card-scale: 1.06;
+          --board-card-scale: 1.06;
           z-index: 20;
           filter: brightness(1.04);
         }
@@ -1134,7 +1134,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
                             boxSizing: 'border-box',
                             padding: `${cardPadding}px`,
                             cursor: !item.loading && charIdx >= 0 ? 'pointer' : 'default',
-                            transform: 'scale(var(--pin-card-scale))',
+                            transform: 'scale(var(--board-card-scale))',
                             transformOrigin: 'center center',
                           }}>
                           {item.loading
