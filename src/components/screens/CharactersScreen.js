@@ -1,27 +1,33 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/utils/supabase';
 import ProgressBar from '../ProgressBar';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MODAL_BTN = {
-  background: 'rgba(255,255,255,0.07)',
-  border: '1px solid rgba(255,255,255,0.1)',
+  background: 'rgba(255,255,255,0.06)',
+  border: '1px solid rgba(255,255,255,0.08)',
   color: '#bbb',
-  padding: '8px 14px',
-  borderRadius: '8px',
+  padding: '7px 12px',
+  borderRadius: '6px',
   fontSize: '11px',
-  fontWeight: 700,
+  fontWeight: 600,
   cursor: 'pointer',
-  letterSpacing: '0.04em',
+  letterSpacing: '0.03em',
 };
 
 const PANEL_LABELS = [
   'Mid Portrait', 'Full Body Front', 'Full Body Left', 'Full Body Right', 'Full Body Back',
   'Face Close-up Front', 'Face Close-up Back', 'Face 3/4 Left', 'Face 3/4 Right',
 ];
+
+const PINBOARD_WIDTH = 2016;
+const PINBOARD_HEIGHT = 700;
+const PINBOARD_PADDING = 28;
+const PINBOARD_GAP = 14;
+const DEFAULT_COLLAGE_RATIO = 1;
 
 const buildSheetPrompt = (desc, hasRef) => {
   const charClause = hasRef
@@ -44,33 +50,212 @@ Do not crop any face or costume details. Maintain perfectly consistent character
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// Returns the rendered image rect (accounting for objectFit:contain letterboxing)
-// in the coordinate space of the container (all values in px, relative to container top-left).
 function _renderedRect(img, containerW, containerH) {
   const natAR = img.naturalWidth / img.naturalHeight;
-  const cAR   = containerW / containerH;
+  const cAR = containerW / containerH;
   let rendW, rendH, offX, offY;
   if (natAR > cAR) {
     rendW = containerW; rendH = containerW / natAR;
-    offX  = 0;          offY  = (containerH - rendH) / 2;
+    offX = 0; offY = (containerH - rendH) / 2;
   } else {
     rendH = containerH; rendW = containerH * natAR;
-    offX  = (containerW - rendW) / 2; offY = 0;
+    offX = (containerW - rendW) / 2; offY = 0;
   }
   return { offX, offY, rendW, rendH };
 }
 
+function getImageRatio(ratio) {
+  if (!Number.isFinite(ratio) || ratio <= 0) return DEFAULT_COLLAGE_RATIO;
+  return Math.max(0.2, Math.min(5, ratio));
+}
+
+function getStoredImageRatio(imageData) {
+  if (!imageData || typeof imageData !== 'object') return null;
+
+  if (Number.isFinite(imageData.width) && Number.isFinite(imageData.height) && imageData.height > 0) {
+    return imageData.width / imageData.height;
+  }
+
+  if (Array.isArray(imageData.box_2d) && imageData.box_2d.length === 4) {
+    const [ymin, xmin, ymax, xmax] = imageData.box_2d;
+    const width = xmax - xmin;
+    const height = ymax - ymin;
+    if (width > 0 && height > 0) return width / height;
+  }
+
+  return null;
+}
+
+function parseCharacterImage(img, index) {
+  const text = typeof img === 'string' ? img.trim() : '';
+  let parsed = null;
+
+  if (text.charAt(0) === '{') {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+  }
+
+  const imageData = parsed || (img && typeof img === 'object' ? img : null);
+  const src = imageData ? (imageData.url || null) : (text.charAt(0) === '{' ? null : text || null);
+  const label = imageData?.label || `POSE ${index + 1}`;
+
+  return { imageData, src, label };
+}
+
+function getPinboardImageSize(ratio, count, index, scale = 1) {
+  const safeRatio = getImageRatio(ratio);
+  const boardArea = PINBOARD_WIDTH * PINBOARD_HEIGHT;
+  const fill = count === 1 ? 0.25 : Math.min(0.13, Math.max(0.065, 0.56 / Math.max(1, count)));
+  const emphasis = index === 0 ? 1.12 : index % 3 === 0 ? 1.04 : 1;
+  const area = boardArea * fill * emphasis * scale * scale;
+  let width = Math.sqrt(area * safeRatio);
+  let height = width / safeRatio;
+  const usableWidth = PINBOARD_WIDTH - PINBOARD_PADDING * 2;
+  const usableHeight = PINBOARD_HEIGHT - PINBOARD_PADDING * 2;
+  const maxWidth = Math.min(usableWidth, count === 1 ? 820 : index === 0 ? 620 : 560);
+  const maxHeight = Math.min(usableHeight, count === 1 ? 620 : index === 0 ? 560 : 520);
+  const maxScale = Math.min(1, maxWidth / width, maxHeight / height);
+  width *= maxScale;
+  height *= maxScale;
+  const minShortSide = count <= 1 ? 150 : count <= 4 ? 118 : count <= 8 ? 92 : 74;
+  const shortSide = Math.min(width, height);
+  if (shortSide < minShortSide) {
+    const growScale = minShortSide / shortSide;
+    width *= growScale;
+    height *= growScale;
+  }
+
+  return { width, height };
+}
+
+function getPinboardCandidates() {
+  const cx = PINBOARD_WIDTH / 2;
+  const cy = PINBOARD_HEIGHT / 2;
+  const candidates = [{ x: cx, y: cy }];
+  const directions = [
+    0, Math.PI, -Math.PI / 2, Math.PI / 2,
+    -Math.PI / 4, -3 * Math.PI / 4, Math.PI / 4, 3 * Math.PI / 4,
+    -Math.PI / 8, Math.PI / 8, -7 * Math.PI / 8, 7 * Math.PI / 8,
+  ];
+
+  for (let radius = 210; radius <= 980; radius += 115) {
+    directions.forEach(angle => {
+      candidates.push({
+        x: cx + Math.cos(angle) * radius,
+        y: cy + Math.sin(angle) * radius * 0.62,
+      });
+    });
+  }
+
+  return candidates;
+}
+
+function boxesOverlap(a, b, gap = PINBOARD_GAP) {
+  return !(
+    a.x + a.width + gap <= b.x ||
+    b.x + b.width + gap <= a.x ||
+    a.y + a.height + gap <= b.y ||
+    b.y + b.height + gap <= a.y
+  );
+}
+
+function getOverlapArea(a, b) {
+  const x = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const y = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  return x * y;
+}
+
+function fitsPinboard(box) {
+  return (
+    box.x >= PINBOARD_PADDING &&
+    box.y >= PINBOARD_PADDING &&
+    box.x + box.width <= PINBOARD_WIDTH - PINBOARD_PADDING &&
+    box.y + box.height <= PINBOARD_HEIGHT - PINBOARD_PADDING
+  );
+}
+
+function tryBuildPinboard(items, sizeScale) {
+  const candidates = getPinboardCandidates();
+  const placed = [];
+
+  for (const item of items) {
+    const size = getPinboardImageSize(item.ratio, items.length, item.index, sizeScale);
+    let best = null;
+
+    candidates.forEach(candidate => {
+      const box = {
+        ...item,
+        x: candidate.x - size.width / 2,
+        y: candidate.y - size.height / 2,
+        width: size.width,
+        height: size.height,
+      };
+      if (!fitsPinboard(box)) return;
+
+      const overlap = placed.reduce((sum, placedBox) => sum + getOverlapArea(box, placedBox), 0);
+      const hasOverlap = placed.some(placedBox => boxesOverlap(box, placedBox));
+      const centerDistance = Math.hypot(candidate.x - PINBOARD_WIDTH / 2, candidate.y - PINBOARD_HEIGHT / 2);
+      const score = overlap * 40 + (hasOverlap ? 100000 : 0) + centerDistance;
+
+      if (!best || score < best.score) best = { ...box, score, hasOverlap };
+    });
+
+    if (!best) return null;
+    placed.push(best);
+  }
+
+  if (placed.length <= 1) return placed;
+
+  const bounds = placed.reduce((acc, box) => ({
+    minX: Math.min(acc.minX, box.x),
+    minY: Math.min(acc.minY, box.y),
+    maxX: Math.max(acc.maxX, box.x + box.width),
+    maxY: Math.max(acc.maxY, box.y + box.height),
+  }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+
+  const groupWidth = bounds.maxX - bounds.minX;
+  const groupHeight = bounds.maxY - bounds.minY;
+  const targetX = (PINBOARD_WIDTH - groupWidth) / 2;
+  const targetY = (PINBOARD_HEIGHT - groupHeight) / 2;
+  let dx = targetX - bounds.minX;
+  let dy = targetY - bounds.minY;
+
+  dx = Math.max(PINBOARD_PADDING - bounds.minX, Math.min(dx, PINBOARD_WIDTH - PINBOARD_PADDING - bounds.maxX));
+  dy = Math.max(PINBOARD_PADDING - bounds.minY, Math.min(dy, PINBOARD_HEIGHT - PINBOARD_PADDING - bounds.maxY));
+
+  return placed.map(box => ({ ...box, x: box.x + dx, y: box.y + dy }));
+}
+
+function buildPinboardLayout(items) {
+  if (!items.length) return [];
+
+  for (let scale = 1; scale >= 0.58; scale -= 0.06) {
+    const placed = tryBuildPinboard(items, scale);
+    if (placed && placed.every((box, index) => !placed.slice(0, index).some(other => boxesOverlap(box, other)))) {
+      return placed;
+    }
+  }
+
+  return tryBuildPinboard(items, 0.58) || [];
+}
+
 // ─── ZoomCropModal ────────────────────────────────────────────────────────────
 
-function ZoomCropModal({ imageUrl, label, onClose, onApply, initialBox, showLabelInput }) {
+function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox, showLabelInput, recropUrl, recropBox }) {
   const containerRef = useRef(null);
-  const imgRef      = useRef(null);
-  const [zoom, setZoom]         = useState(1);
-  const [pan,  setPan]          = useState({ x: 0, y: 0 });
-  const [drag, setDrag]         = useState(null);
-  const [cropBox,   setCropBox] = useState(null);
-  const [cropMode,  setCropMode]  = useState(!!initialBox);
-  const [applying,  setApplying]  = useState(false);
+  const imgRef = useRef(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [drag, setDrag] = useState(null);
+  const [cropBox, setCropBox] = useState(null);
+  const [cropMode, setCropMode] = useState(!!initialBox);
+  const [applying, setApplying] = useState(false);
+  const [editorImageUrl, setEditorImageUrl] = useState(imageUrl);
+  const [editorInitialBox, setEditorInitialBox] = useState(initialBox || null);
+  const [showEditorLabel, setShowEditorLabel] = useState(!!showLabelInput);
   const [labelInput, setLabelInput] = useState(label || '');
 
   useEffect(() => {
@@ -79,9 +264,8 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, initialBox, showLabe
     return () => { document.body.style.overflow = prev; };
   }, []);
 
-  // Pre-select the crop region from normalised box_2d coords once the image renders
   useEffect(() => {
-    if (!initialBox) return;
+    if (!editorInitialBox) return;
     const img = imgRef.current;
     if (!img) return;
 
@@ -89,7 +273,7 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, initialBox, showLabe
       const cRect = containerRef.current?.getBoundingClientRect();
       if (!cRect || !img.naturalWidth) return;
       const { offX, offY, rendW, rendH } = _renderedRect(img, cRect.width, cRect.height);
-      const [ymin, xmin, ymax, xmax] = initialBox;
+      const [ymin, xmin, ymax, xmax] = editorInitialBox;
       setCropBox({
         x: offX + (xmin / 1000) * rendW,
         y: offY + (ymin / 1000) * rendH,
@@ -100,7 +284,7 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, initialBox, showLabe
 
     if (img.complete && img.naturalWidth) apply();
     else img.addEventListener('load', apply, { once: true });
-  }, [initialBox]);
+  }, [editorInitialBox, editorImageUrl]);
 
   const onWheel = (e) => {
     e.preventDefault();
@@ -141,17 +325,12 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, initialBox, showLabe
   const applyCrop = () => {
     if (!cropBox || cropBox.w < 4 || cropBox.h < 4 || !imgRef.current) return;
     setApplying(true);
-    const img   = imgRef.current;
+    const img = imgRef.current;
     const cRect = containerRef.current.getBoundingClientRect();
-    const cw    = cRect.width;
-    const ch    = cRect.height;
+    const cw = cRect.width;
+    const ch = cRect.height;
     const { offX, offY, rendW, rendH } = _renderedRect(img, cw, ch);
 
-    // cropBox is in container coords. Account for zoom/pan:
-    // CSS transform `scale(zoom) translate(pan.x/zoom, pan.y/zoom)` at center means
-    // container point (px,py) → rendered image point:
-    //   rx = cw/2 + (px - cw/2 - pan.x) / zoom
-    //   ry = ch/2 + (py - ch/2 - pan.y) / zoom
     const toImg = (px, py) => ({
       x: (cw / 2 + (px - cw / 2 - pan.x) / zoom - offX) / rendW * img.naturalWidth,
       y: (ch / 2 + (py - ch / 2 - pan.y) / zoom - offY) / rendH * img.naturalHeight,
@@ -162,23 +341,45 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, initialBox, showLabe
 
     const natX = Math.max(0, tl.x);
     const natY = Math.max(0, tl.y);
-    const natW = Math.min(img.naturalWidth  - natX, br.x - tl.x);
+    const natW = Math.min(img.naturalWidth - natX, br.x - tl.x);
     const natH = Math.min(img.naturalHeight - natY, br.y - tl.y);
     if (natW < 1 || natH < 1) { setApplying(false); return; }
 
     const canvas = document.createElement('canvas');
-    canvas.width  = Math.round(natW);
+    canvas.width = Math.round(natW);
     canvas.height = Math.round(natH);
     const tmp = new Image();
     tmp.crossOrigin = 'anonymous';
     tmp.onload = () => {
       canvas.getContext('2d').drawImage(tmp, Math.round(natX), Math.round(natY), Math.round(natW), Math.round(natH), 0, 0, Math.round(natW), Math.round(natH));
-      canvas.toBlob(blob => { onApply(blob, labelInput.trim() || label); setApplying(false); }, 'image/jpeg', 0.95);
+      canvas.toBlob(blob => {
+        onApply(blob, labelInput.trim() || label, { width: canvas.width, height: canvas.height });
+        setApplying(false);
+      }, 'image/jpeg', 0.95);
     };
-    tmp.src = imageUrl;
+    tmp.src = editorImageUrl;
   };
 
   const canApply = cropBox && cropBox.w > 4 && cropBox.h > 4;
+  const viewingRecropSource = recropUrl && editorImageUrl === recropUrl;
+  const openRecropSource = () => {
+    setEditorImageUrl(recropUrl);
+    setEditorInitialBox(recropBox || null);
+    setShowEditorLabel(true);
+    setCropMode(true);
+    setCropBox(null);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+  const openCurrentImage = () => {
+    setEditorImageUrl(imageUrl);
+    setEditorInitialBox(null);
+    setShowEditorLabel(false);
+    setCropMode(false);
+    setCropBox(null);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
 
   return (
     <div
@@ -186,46 +387,58 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, initialBox, showLabe
       onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
     >
       {/* Toolbar */}
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <span style={{ color: '#555', fontSize: '10px', fontWeight: 800, letterSpacing: '0.12em', marginRight: '4px' }}>{label?.toUpperCase()}</span>
-        <button onClick={() => setZoom(z => Math.min(10, z * 1.25))} style={MODAL_BTN}>+ ZOOM</button>
-        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} style={MODAL_BTN}>{Math.round(zoom * 100)}% · RESET</button>
-        <button onClick={() => setZoom(z => Math.max(0.5, z * 0.8))} style={MODAL_BTN}>− ZOOM</button>
-        <div style={{ width: '1px', height: '18px', background: '#252525' }} />
+      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <span style={{ color: '#444', fontSize: '10px', fontWeight: 700, letterSpacing: '0.12em', marginRight: '4px' }}>{label?.toUpperCase()}</span>
+        <span style={{ color: '#333', fontSize: '11px', marginRight: '4px' }}>Scroll to zoom · Drag to pan</span>
+        <div style={{ width: '1px', height: '18px', background: '#222' }} />
+        {recropUrl && (
+          viewingRecropSource ? (
+            <button onClick={openCurrentImage} style={MODAL_BTN}>View Image</button>
+          ) : (
+            <button onClick={openRecropSource} style={{ ...MODAL_BTN, background: 'var(--teal)', color: '#000', borderColor: 'var(--teal)' }}>
+              Re-crop
+            </button>
+          )
+        )}
         <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={{ ...MODAL_BTN, background: cropMode ? '#00B8D4' : undefined, color: cropMode ? '#000' : undefined, borderColor: cropMode ? '#00B8D4' : undefined }}>
-          ✂ {cropMode ? 'DRAW NEW SELECTION' : 'CROP MODE'}
+          {cropMode ? 'Draw New Selection' : 'Crop Mode'}
         </button>
-        {canApply && showLabelInput && (
+        {canApply && showEditorLabel && (
           <input
             value={labelInput}
             onChange={e => setLabelInput(e.target.value)}
             placeholder="Label (e.g. BACK VIEW)"
             onClick={e => e.stopPropagation()}
-            style={{ ...MODAL_BTN, width: '170px', outline: 'none', caretColor: '#fff', background: 'rgba(255,255,255,0.05)', color: '#fff' }}
+            style={{ ...MODAL_BTN, width: '160px', outline: 'none', caretColor: '#fff', background: 'rgba(255,255,255,0.04)', color: '#fff' }}
           />
         )}
         {canApply && (
-          <button onClick={applyCrop} disabled={applying} style={{ ...MODAL_BTN, background: '#FF6F00', color: '#fff', border: 'none' }}>
-            {applying ? 'SAVING...' : '✓ SAVE CROP'}
+          <button onClick={applyCrop} disabled={applying} style={{ ...MODAL_BTN, background: 'var(--orange)', color: '#000', border: 'none' }}>
+            {applying ? 'Saving...' : 'Save Crop'}
           </button>
         )}
-        <div style={{ width: '1px', height: '18px', background: '#252525' }} />
-        <button onClick={onClose} style={{ ...MODAL_BTN, color: '#ff6666', borderColor: 'rgba(255,100,100,0.2)' }}>✕ CLOSE</button>
+        <div style={{ width: '1px', height: '18px', background: '#222' }} />
+        {onDelete && (
+          <button onClick={onDelete} style={{ ...MODAL_BTN, color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}>
+            Delete Image
+          </button>
+        )}
+        <button onClick={onClose} style={{ ...MODAL_BTN, color: '#bbb', borderColor: 'rgba(255,255,255,0.1)' }}>Close</button>
       </div>
 
       {/* Viewport */}
       <div
         ref={containerRef}
-        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: '#0c0c0c', borderRadius: '16px', border: '1px solid #1a1a1a', cursor: cropMode ? 'crosshair' : drag?.type === 'pan' ? 'grabbing' : 'grab' }}
+        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: '#0c0c0c', borderRadius: '12px', border: '1px solid #1a1a1a', cursor: cropMode ? 'crosshair' : drag?.type === 'pan' ? 'grabbing' : 'grab' }}
         onMouseDown={onMouseDown}
         onWheel={onWheel}
       >
         <img
-          ref={imgRef} src={imageUrl} alt={label} draggable={false}
+          ref={imgRef} src={editorImageUrl} alt={label} draggable={false}
           style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'center center', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
         />
         {cropBox && cropBox.w > 0 && (
-          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '2px solid #00B8D4', background: 'rgba(0,184,212,0.1)', pointerEvents: 'none', boxSizing: 'border-box' }} />
+          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '1px solid #00B8D4', background: 'rgba(0,184,212,0.08)', pointerEvents: 'none', boxSizing: 'border-box' }} />
         )}
         <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: '#2a2a2a', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
           {cropMode
@@ -240,26 +453,27 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, initialBox, showLabe
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CharactersScreen({ onNavigate, projectData = [], onDataUpdate, projectId }) {
-  const [activeTab,      setActiveTab]      = useState(0);
-  const [globalLibrary,  setGlobalLibrary]  = useState([]);
-  const [showCreateModal,setShowCreateModal] = useState(false);
-  const [showEditModal,  setShowEditModal]   = useState(false);
-  const [createName,     setCreateName]      = useState('');
-  const [createDesc,     setCreateDesc]      = useState('');
-  const [createRefImage, setCreateRefImage]  = useState(null); // { base64, mimeType, previewUrl }
-  const [editName,       setEditName]        = useState('');
-  const [editDesc,       setEditDesc]        = useState('');
+  const [activeTab, setActiveTab] = useState(0);
+  const [globalLibrary, setGlobalLibrary] = useState([]);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createDesc, setCreateDesc] = useState('');
+  const [createRefImage, setCreateRefImage] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
   const [isProcessingSheet, setIsProcessingSheet] = useState(false);
-  const [isGenerating,   setIsGenerating]    = useState(false);
-  const [generatingChar, setGeneratingChar]  = useState(null);
-  const [zoomCropTarget, setZoomCropTarget]  = useState(null);
-  const [activeCategory, setActiveCategory]  = useState('project');
-  const [renamingPanel,  setRenamingPanel]   = useState(null); // { charIdx, imgIdx }
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingChar, setGeneratingChar] = useState(null);
+  const [zoomCropTarget, setZoomCropTarget] = useState(null);
+  const [activeCategory, setActiveCategory] = useState('project');
+  const [renamingPanel, setRenamingPanel] = useState(null);
 
   const [pendingSheetFile, setPendingSheetFile] = useState(null);
   const [showSheetCropModal, setShowSheetCropModal] = useState(false);
   const [sheetPreviewUrl, setSheetPreviewUrl] = useState(null);
   const [charProgressStep, setCharProgressStep] = useState(-1);
+  const [imgRatios, setImgRatios] = useState({});
 
   const CHARACTER_STEPS = [
     'Preparing character profile',
@@ -270,19 +484,92 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     'Uploading to library'
   ];
 
-  const fileInputRef    = useRef(null);
+  const fileInputRef = useRef(null);
   const refFileInputRef = useRef(null);
-  const supabase = createClient();
+  const collageRef = useRef(null);
+  const [collageSize, setCollageSize] = useState({ width: PINBOARD_WIDTH, height: PINBOARD_HEIGHT });
+  const supabase = useMemo(() => createClient(), []);
   const projectCharacters = projectData || [];
+  const displayedCharacters = activeCategory === 'project'
+    ? [...projectCharacters, ...(generatingChar ? [generatingChar] : [])]
+    : globalLibrary;
+  const activeChar = displayedCharacters[activeTab] || null;
+  const isGeneratingActive = activeChar?.id === 'generating';
+  const busy = isProcessingSheet || isGenerating;
 
-  useEffect(() => { fetchGlobalLibrary(); }, []);
-
-  const fetchGlobalLibrary = async () => {
+  const loadGlobalLibrary = useCallback(async () => {
     const { data, error } = await supabase.from('characters_library').select('*').order('created_at', { ascending: false });
-    if (!error && data) setGlobalLibrary(data);
-  };
+    return !error && data ? data : null;
+  }, [supabase]);
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
+  const refreshGlobalLibrary = useCallback(async () => {
+    const data = await loadGlobalLibrary();
+    if (data) setGlobalLibrary(data);
+  }, [loadGlobalLibrary]);
+
+  useEffect(() => {
+    let isActive = true;
+    loadGlobalLibrary().then(data => {
+      if (isActive && data) setGlobalLibrary(data);
+    });
+    return () => { isActive = false; };
+  }, [loadGlobalLibrary]);
+
+  useEffect(() => {
+    const node = collageRef.current;
+    if (!node) return;
+
+    let frame = null;
+    const measure = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const rect = node.getBoundingClientRect();
+        const nextSize = {
+          width: Math.round(rect.width) || PINBOARD_WIDTH,
+          height: Math.round(rect.height) || PINBOARD_HEIGHT,
+        };
+        setCollageSize(prev => (
+          prev.width === nextSize.width && prev.height === nextSize.height ? prev : nextSize
+        ));
+      });
+    };
+
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(node);
+    window.addEventListener('resize', measure);
+    measure();
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeChar?.images?.length) return undefined;
+
+    const sources = activeChar.images
+      .map((img, index) => parseCharacterImage(img, index))
+      .filter(item => item.src);
+
+    if (!sources.length) return undefined;
+
+    let cancelled = false;
+    sources.forEach(({ src, imageData }) => {
+      if (imgRatios[src] || getStoredImageRatio(imageData)) return;
+
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled || !img.naturalWidth || !img.naturalHeight) return;
+        const ratio = img.naturalWidth / img.naturalHeight;
+        setImgRatios(prev => prev[src] === ratio ? prev : { ...prev, [src]: ratio });
+      };
+      img.src = src;
+    });
+
+    return () => { cancelled = true; };
+  }, [activeChar?.images, imgRatios]);
 
   const base64ToBlob = (b64, mime) => {
     const bytes = atob(b64);
@@ -299,7 +586,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
   };
 
   const callNBPro = async (payload) => {
-    const res  = await fetch('/api/generate-character-pose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await fetch('/api/generate-character-pose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     return res.json();
   };
 
@@ -312,14 +599,13 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         user_id: user.id,
         name: charObj.name,
         description: charObj.description,
-        images: charObj.images, // JSONB array
+        images: charObj.images,
         source: source,
         sheet_url: charObj.sheetUrl || null
       });
 
       if (insErr) throw insErr;
-      await fetchGlobalLibrary();
-      console.log(`Character ${charObj.name} saved to global library.`);
+      await refreshGlobalLibrary();
     } catch (err) {
       console.error('Failed to save to global library:', err);
     }
@@ -348,15 +634,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     reader.readAsDataURL(file);
   };
 
-  // ── Upload sheet flow ────────────────────────────────────────────────────────
-
   const handleSheetUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
-    // Reset input immediately
     e.target.value = '';
-    
     const previewUrl = URL.createObjectURL(file);
     setSheetPreviewUrl(previewUrl);
     setPendingSheetFile(file);
@@ -364,9 +645,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
   };
 
   const handleCloseSheetCropModal = () => {
-    if (sheetPreviewUrl) {
-      URL.revokeObjectURL(sheetPreviewUrl);
-    }
+    if (sheetPreviewUrl) URL.revokeObjectURL(sheetPreviewUrl);
     setSheetPreviewUrl(null);
     setPendingSheetFile(null);
     setShowSheetCropModal(false);
@@ -406,9 +685,9 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         const [ymin, xmin, ymax, xmax] = pose.box_2d;
         const sx = Math.max(0, (xmin / 1000) * img.width);
         const sy = Math.max(0, (ymin / 1000) * img.height);
-        const sw = Math.min((xmax / 1000) * img.width,  img.width)  - sx;
+        const sw = Math.min((xmax / 1000) * img.width, img.width) - sx;
         const sh = Math.min((ymax / 1000) * img.height, img.height) - sy;
-        
+
         if (sw <= 0 || sh <= 0) return;
 
         const cv = document.createElement('canvas');
@@ -419,22 +698,23 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         let finalB64 = cropB64, finalMime = 'image/jpeg';
         try {
           const nb = await callNBPro({ base64: cropB64, mimeType: 'image/jpeg', label });
-          if (nb.success && nb.base64) { 
-            finalB64 = nb.base64; 
-            finalMime = 'image/png'; 
+          if (nb.success && nb.base64) {
+            finalB64 = nb.base64;
+            finalMime = 'image/png';
           }
         } catch (e) {
           console.warn("NB Pro refinement failed for pose, using raw crop", e);
         }
 
         const blob = base64ToBlob(finalB64, finalMime);
-        const ext  = finalMime.split('/')[1] || 'png';
-        const url  = await uploadBlob(blob, finalMime, `${projectId}/generated/${Date.now()}-section-${i}.${ext}`);
-        
-        finalImages[i] = { url, label, box_2d: pose.box_2d };
+        const ext = finalMime.split('/')[1] || 'png';
+        const url = await uploadBlob(blob, finalMime, `${projectId}/generated/${Date.now()}-section-${i}.${ext}`);
+
+        const imageData = { url, label, box_2d: pose.box_2d, width: Math.round(sw), height: Math.round(sh) };
+        finalImages[i] = imageData;
         setGeneratingChar(prev => {
           const newImgs = [...prev.images];
-          newImgs[i] = { url, label, box_2d: pose.box_2d };
+          newImgs[i] = imageData;
           return { ...prev, images: newImgs };
         });
       }));
@@ -443,8 +723,6 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       const updatedChars = [...projectCharacters, newChar];
       await onDataUpdate({ characters: updatedChars });
       setActiveTab(updatedChars.length - 1);
-
-      // Save to global library independently
       saveToGlobalLibrary(newChar, 'upload');
     } catch (err) {
       console.error('Sheet processing failed:', err);
@@ -452,18 +730,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     } finally {
       setIsProcessingSheet(false);
       setGeneratingChar(null);
-      
-      // Cleanup preview state
-      if (sheetPreviewUrl) {
-        URL.revokeObjectURL(sheetPreviewUrl);
-      }
+      if (sheetPreviewUrl) URL.revokeObjectURL(sheetPreviewUrl);
       setSheetPreviewUrl(null);
       setPendingSheetFile(null);
       setShowSheetCropModal(false);
     }
   };
-
-  // ── Generate character sheet flow ─────────────────────────────────────────────
 
   const handleGenerateAngles = async () => {
     if (!createName.trim()) return alert('Enter a character name');
@@ -491,18 +763,16 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       const finalImages = [];
       let referenceBase64 = null;
 
-      // Generate SEQUENTIALLY to maintain character consistency via reference image
       for (let i = 0; i < angles.length; i++) {
         setCharProgressStep(i + 1);
         const angle = angles[i];
         try {
-          const payload = { 
+          const payload = {
             characterDescription: desc,
             angleDescription: angle.prompt,
             label: angle.label
           };
 
-          // Use the FIRST generated image as a reference for all others
           if (referenceBase64) {
             payload.base64 = referenceBase64;
             payload.mimeType = 'image/png';
@@ -517,7 +787,6 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
           const { imageBase64, error } = await resp.json();
           if (error) throw new Error(error);
 
-          // Lock this character's look using the first generated image
           if (i === 0) referenceBase64 = imageBase64;
 
           const blob = base64ToBlob(imageBase64, 'image/png');
@@ -543,8 +812,6 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       const updatedChars = [...projectCharacters, newChar];
       await onDataUpdate({ characters: updatedChars });
       setActiveTab(updatedChars.length - 1);
-
-      // Save to global library independently
       saveToGlobalLibrary(newChar, 'ai');
     } catch (err) {
       console.error('Generation failed:', err);
@@ -556,8 +823,6 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     }
   };
 
-  // ── Edit save ─────────────────────────────────────────────────────────────────
-
   const handleEditSave = async () => {
     if (!editName.trim()) return alert('Name cannot be empty');
     const updatedChars = [...projectCharacters];
@@ -566,22 +831,21 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     setShowEditModal(false);
   };
 
-  // ── Apply crop ────────────────────────────────────────────────────────────────
-
-  const handleApplyCrop = async (blob, newLabel) => {
+  const handleApplyCrop = async (blob, newLabel, cropMeta = null) => {
     if (!zoomCropTarget) return;
     const { charIdx, imgIdx } = zoomCropTarget;
     try {
       const url = await uploadBlob(blob, 'image/jpeg', `${projectId}/crops/${Date.now()}-crop.jpg`);
       const char = projectCharacters[charIdx];
       const images = [...char.images];
+      const sizeMeta = cropMeta?.width && cropMeta?.height
+        ? { width: cropMeta.width, height: cropMeta.height }
+        : {};
       if (imgIdx === null) {
-        // Add new panel from sheet
-        images.push({ url, label: newLabel || 'CUSTOM CROP' });
+        images.push({ url, label: newLabel || 'CUSTOM CROP', ...sizeMeta });
       } else {
-        // Replace existing panel
         const existing = images[imgIdx];
-        images[imgIdx] = { url, label: newLabel || (typeof existing === 'string' ? `Section ${imgIdx + 1}` : existing.label) };
+        images[imgIdx] = { url, label: newLabel || (typeof existing === 'string' ? `Section ${imgIdx + 1}` : existing.label), ...sizeMeta };
       }
       const updatedChars = [...projectCharacters];
       updatedChars[charIdx] = { ...char, images };
@@ -589,8 +853,6 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       setZoomCropTarget(null);
     } catch (err) { alert('Crop upload failed: ' + err.message); }
   };
-
-  // ── Delete ────────────────────────────────────────────────────────────────────
 
   const handleDelete = async () => {
     if (!activeChar || activeChar.id === 'generating') return;
@@ -602,7 +864,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       } else {
         const { error } = await supabase.from('characters_library').delete().eq('id', activeChar.id);
         if (error) throw error;
-        await fetchGlobalLibrary();
+        await refreshGlobalLibrary();
         setActiveTab(Math.max(0, activeTab - 1));
       }
     } catch (err) { alert('Delete failed: ' + err.message); }
@@ -630,81 +892,100 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     await onDataUpdate({ characters: updatedChars });
   };
 
-  // ── Derived state ─────────────────────────────────────────────────────────────
-
-  const displayedCharacters = activeCategory === 'project'
-    ? [...projectCharacters, ...(generatingChar ? [generatingChar] : [])]
-    : globalLibrary;
-  const activeChar = displayedCharacters[activeTab] || null;
-  const isGeneratingActive = activeChar?.id === 'generating';
-  const busy = isProcessingSheet || isGenerating;
-  const _n        = activeChar?.images?.length || 0;
-  const gridCols  = Math.max(2, Math.ceil(Math.sqrt(_n)));
-
-  // ── Render ────────────────────────────────────────────────────────────────────
+  const inputStyle = {
+    width: '100%',
+    padding: '10px 13px',
+    border: '1px solid var(--border-mid)',
+    borderRadius: '8px',
+    background: '#0f0f0f',
+    color: '#fff',
+    fontSize: '13px',
+    fontFamily: 'var(--font-body)',
+    boxSizing: 'border-box',
+    outline: 'none',
+    transition: 'border-color 0.15s',
+  };
 
   return (
-    <div className="screen active" id="s4" style={{ height: 'calc(100vh - 64px)', overflow: 'hidden', background: '#080808' }}>
+    <div className="screen active" id="s4" style={{ height: 'calc(100dvh - 52px)', overflow: 'hidden', background: '#080808' }}>
       <style>{`
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-        .skeleton-shimmer { background:linear-gradient(90deg,#111 25%,#1e1e1e 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
-        .img-card-actions { opacity:0; transition:opacity 0.15s; }
-        .img-card:hover .img-card-actions { opacity:1; }
-        .img-card-delete { opacity:0; transition:opacity 0.15s; }
-        .img-card:hover .img-card-delete { opacity:1; }
+        .skeleton-shimmer { background:linear-gradient(90deg,#111 25%,#1a1a1a 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
+        .img-card {
+          --pin-card-scale: 1;
+          transition: transform 0.16s ease, filter 0.16s ease;
+        }
+        .img-card:hover {
+          --pin-card-scale: 1.06;
+          z-index: 20;
+          filter: brightness(1.04);
+        }
       `}</style>
 
       <div style={{ display: 'flex', height: '100%' }}>
 
         {/* ── Sidebar ── */}
-        <div style={{ width: '272px', minWidth: '272px', background: '#0D0D0D', borderRight: '1px solid #1A1A1A', display: 'flex', flexDirection: 'column', padding: '28px', height: '100%', overflowY: 'auto' }}>
-          <div style={{ marginBottom: '28px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'var(--teal)' }} />
-              <span style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 800, letterSpacing: '0.15em' }}>CHARACTER STUDIO</span>
+        <div style={{ width: '256px', minWidth: '256px', background: '#0D0D0D', borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', padding: '24px', height: '100%', overflowY: 'auto' }}>
+
+          <div style={{ marginBottom: '24px' }}>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-display)', marginBottom: '8px' }}>
+              Character Studio
             </div>
-            <h2 style={{ color: '#FFF', fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 800, lineHeight: 1.1 }}>
+            <h2 style={{ color: '#FFF', fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 700, lineHeight: 1.2, marginBottom: '8px', letterSpacing: '-0.01em' }}>
               Build your <span style={{ color: 'var(--teal)' }}>Cast</span>
             </h2>
-            <p style={{ color: '#555', fontSize: '12px', marginTop: '10px', lineHeight: 1.5 }}>
+            <p style={{ color: '#444', fontSize: '12px', lineHeight: 1.5 }}>
               {busy && generatingChar
-                ? `Generating ${generatingChar.images.filter(x => x.url).length}/${generatingChar.images.length}...`
-                : busy ? 'Detecting sections...' : 'Upload a sheet or generate with AI.'}
+                ? `Generating ${generatingChar.images.filter(x => x.url).length}/${generatingChar.images.length} poses...`
+                : busy ? 'Detecting sections...' : 'Upload a sheet or generate with AI'}
             </p>
           </div>
 
-          <div style={{ display: 'flex', background: '#151515', borderRadius: '12px', padding: '4px', marginBottom: '24px', border: '1px solid #1e1e1e' }}>
+          {/* Category toggle */}
+          <div style={{ display: 'flex', background: '#111', borderRadius: '8px', padding: '3px', marginBottom: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
             {['project', 'global'].map(cat => (
               <button key={cat} onClick={() => { setActiveCategory(cat); setActiveTab(0); }} style={{
-                flex: 1, padding: '9px', borderRadius: '8px', border: 'none',
-                background: activeCategory === cat ? '#222' : 'transparent',
-                color: activeCategory === cat ? (cat === 'project' ? 'var(--teal)' : 'var(--orange)') : '#555',
-                fontWeight: 700, fontSize: '10px', cursor: 'pointer', letterSpacing: '0.04em',
+                flex: 1, padding: '7px', borderRadius: '6px', border: 'none',
+                background: activeCategory === cat ? '#1e1e1e' : 'transparent',
+                color: activeCategory === cat ? (cat === 'project' ? 'var(--teal)' : 'var(--orange)') : '#444',
+                fontWeight: 700, fontSize: '10px', cursor: 'pointer', letterSpacing: '0.04em', fontFamily: 'var(--font-display)',
+                transition: 'background 0.15s, color 0.15s',
               }}>
-                {cat === 'project' ? 'PROJECT CAST' : 'GLOBAL HISTORY'}
+                {cat === 'project' ? 'Project' : 'History'}
               </button>
             ))}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Actions */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
-            <button className="btn-orange" style={{ width: '100%', padding: '15px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '12px', fontWeight: 700 }}
-              onClick={() => fileInputRef.current.click()} disabled={busy}>
-              {isProcessingSheet ? '⌛ PROCESSING...' : '📁 UPLOAD SHEET'}
+            <button
+              className="btn-orange"
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+              onClick={() => fileInputRef.current.click()}
+              disabled={busy}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+              {isProcessingSheet ? 'Processing...' : 'Upload Sheet'}
             </button>
-            <button onClick={() => setShowCreateModal(true)} disabled={busy}
-              style={{ width: '100%', padding: '15px', borderRadius: '12px', background: 'transparent', border: '1px solid #252525', color: '#777', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
-              ✨ GENERATE NEW
+            <button
+              onClick={() => setShowCreateModal(true)}
+              disabled={busy}
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#888', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'background 0.15s, color 0.15s' }}
+              onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#ccc'; }}
+              onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#888'; }}
+            >
+              Generate with AI
             </button>
- 
+
             {isGenerating && (
               <ProgressBar steps={CHARACTER_STEPS} currentStep={charProgressStep} />
             )}
           </div>
 
-          <div style={{ marginTop: 'auto', paddingTop: '32px' }}>
-            <button className="btn-teal" style={{ width: '100%', padding: '16px', borderRadius: '14px', fontWeight: 800, fontSize: '13px' }} onClick={() => onNavigate(5)}>
-              CONTINUE TO LOCATIONS →
+          <div style={{ marginTop: 'auto', paddingTop: '24px' }}>
+            <button className="btn-teal" style={{ width: '100%', padding: '13px', borderRadius: '8px', fontSize: '12px' }} onClick={() => onNavigate(5)}>
+              Continue to Locations →
             </button>
           </div>
         </div>
@@ -713,56 +994,61 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         <div style={{ flex: 1, background: '#080808', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
           {/* Header */}
-          <div style={{ flexShrink: 0, zIndex: 10, background: 'rgba(8,8,8,0.92)', backdropFilter: 'blur(20px)', padding: '22px 40px', borderBottom: '1px solid #1A1A1A' }}>
-            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '14px' }}>
+          <div style={{ flexShrink: 0, background: 'rgba(8,8,8,0.95)', backdropFilter: 'blur(16px)', padding: '18px 32px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            {/* Character tabs */}
+            <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '14px' }}>
               {displayedCharacters.map((char, i) => (
                 <div key={char.id || i} onClick={() => setActiveTab(i)} style={{
-                  whiteSpace: 'nowrap', borderRadius: '100px', padding: '7px 18px',
-                  fontSize: '11px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
-                  background: activeTab === i ? 'var(--teal)' : '#151515',
-                  color: activeTab === i ? '#000' : '#666',
-                  border: activeTab === i ? 'none' : '1px solid #1e1e1e',
+                  whiteSpace: 'nowrap', borderRadius: '6px', padding: '5px 14px',
+                  fontSize: '11px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.12s',
+                  background: activeTab === i ? 'var(--teal)' : '#141414',
+                  color: activeTab === i ? '#000' : '#555',
+                  border: activeTab === i ? 'none' : '1px solid rgba(255,255,255,0.05)',
+                  fontFamily: 'var(--font-display)',
                 }}>
                   {char.name}
                   {char.id === 'generating' && (
-                    <span style={{ marginLeft: '6px', opacity: 0.6, fontSize: '9px' }}>
+                    <span style={{ marginLeft: '5px', opacity: 0.5, fontSize: '9px' }}>
                       {char.images.filter(x => x.url).length}/{char.images.length}
                     </span>
                   )}
                 </div>
               ))}
               {activeCategory === 'project' && !isGeneratingActive && (
-                <div onClick={() => setShowCreateModal(true)} style={{ borderRadius: '100px', padding: '7px 14px', background: 'rgba(0,184,212,0.07)', color: 'var(--teal)', fontSize: '14px', cursor: 'pointer' }}>+</div>
+                <div onClick={() => setShowCreateModal(true)} style={{ borderRadius: '6px', padding: '5px 12px', background: 'rgba(0,184,212,0.06)', color: 'var(--teal)', fontSize: '16px', cursor: 'pointer', lineHeight: 1.4, border: '1px solid rgba(0,184,212,0.15)' }}>+</div>
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
+            {/* Character info row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h1 style={{ color: '#FFF', fontFamily: 'var(--font-display)', fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em' }}>
+                <h1 style={{ color: '#FFF', fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, letterSpacing: '-0.02em' }}>
                   {activeChar ? activeChar.name : 'Ready for Casting'}
                 </h1>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                  <span style={{ fontSize: '9px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', background: activeCategory === 'global' ? 'var(--orange)' : 'var(--teal)', color: '#000' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '5px' }}>
+                  <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 7px', borderRadius: '3px', background: activeCategory === 'global' ? 'rgba(0,229,255,0.1)' : 'rgba(0,184,212,0.1)', color: activeCategory === 'global' ? 'var(--orange)' : 'var(--teal)' }}>
                     {activeCategory === 'global' ? 'GLOBAL' : 'PROJECT'}
                   </span>
-                  <span style={{ color: '#3a3a3a', fontSize: '12px' }}>{activeChar?.description || 'No description'}</span>
+                  <span style={{ color: '#333', fontSize: '12px' }}>{activeChar?.description || 'No description'}</span>
                 </div>
               </div>
               {activeChar && !isGeneratingActive && activeCategory === 'project' && (
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   {activeChar.sheetUrl && (
                     <button
                       onClick={() => setZoomCropTarget({ charIdx: activeTab, imgIdx: null, url: activeChar.sheetUrl, label: '', showLabelInput: true })}
-                      style={{ background: 'rgba(0,184,212,0.07)', border: '1px solid rgba(0,184,212,0.2)', color: 'var(--teal)', padding: '8px 14px', borderRadius: '10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                      + ADD FROM SHEET
+                      style={{ background: 'rgba(0,184,212,0.07)', border: '1px solid rgba(0,184,212,0.18)', color: 'var(--teal)', padding: '7px 12px', borderRadius: '7px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--font-display)' }}>
+                      + Add from Sheet
                     </button>
                   )}
-                  <button onClick={() => { setEditName(activeChar.name); setEditDesc(activeChar.description || ''); setShowEditModal(true); }}
-                    style={{ background: 'transparent', border: '1px solid #222', color: '#777', padding: '8px 16px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                  <button
+                    onClick={() => { setEditName(activeChar.name); setEditDesc(activeChar.description || ''); setShowEditModal(true); }}
+                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#666', padding: '7px 14px', borderRadius: '7px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'background 0.15s' }}>
                     Edit
                   </button>
-                  <button onClick={handleDelete}
-                    style={{ background: 'rgba(255,0,0,0.04)', border: '1px solid rgba(255,0,0,0.1)', color: '#ff4444', padding: '8px 16px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                  <button
+                    onClick={handleDelete}
+                    style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.12)', color: '#ef4444', padding: '7px 14px', borderRadius: '7px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
                     Delete
                   </button>
                 </div>
@@ -770,121 +1056,144 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
             </div>
           </div>
 
-          {/* Image grid */}
-          <div style={{ height: 'calc(100vh - 280px)', overflow: 'hidden', padding: '16px 28px', boxSizing: 'border-box', flexShrink: 0 }}>
-            {activeChar?.images?.length > 0 ? (
-              activeCategory === 'global' ? (
-                <div style={{ height: '100%', display: 'flex', flexWrap: 'wrap', gap: '8px', overflowY: 'auto', alignContent: 'flex-start' }}>
-                  {activeChar.images.map((img, i) => {
-                    const _imgObj = (typeof img === 'string' && img.charAt(0) === '{') ? (() => { try { return JSON.parse(img); } catch { return null; } })() : null;
-                    const src   = _imgObj ? (_imgObj.url || null) : (typeof img === 'string' ? img : img?.url);
-                    const label = _imgObj ? (_imgObj.label || `POSE ${i + 1}`) : (typeof img === 'string' ? `POSE ${i + 1}` : img?.label);
-                    if (!src) return null;
-                    return (
-                      <div key={i} className="img-card" style={{
-                        height: '160px', flexShrink: 0, background: '#0f0f0f',
-                        borderRadius: '10px', border: '1px solid #1c1c1c',
-                        overflow: 'hidden', position: 'relative', boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
-                      }}>
-                        <img src={src} alt={label} style={{ height: '100%', width: 'auto', display: 'block' }} />
-                        <div style={{ position: 'absolute', top: '6px', right: '6px' }}>
-                          <div style={{ padding: '3px 6px', background: 'rgba(0,0,0,0.7)', borderRadius: '4px', fontSize: '8px', color: '#bbb', backdropFilter: 'blur(8px)', fontWeight: 800, border: '1px solid rgba(255,255,255,0.05)', whiteSpace: 'nowrap' }}>
-                            {label.toUpperCase()}
+          {/* Image collage */}
+          <div style={{ flex: '0 0 auto', height: 'clamp(520px, calc(100dvh - 244px), 760px)', overflow: 'hidden', padding: '8px 24px 18px', boxSizing: 'border-box' }}>
+            <div ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {activeChar?.images?.length > 0 ? (() => {
+                const charIdx = activeCategory === 'project' ? activeTab : -1;
+                const collageItems = activeChar.images.map((img, i) => {
+                  const { imageData, src, label } = parseCharacterImage(img, i);
+                  const loading = !src;
+                  return {
+                    key: `${src || 'loading'}-${i}`,
+                    raw: imageData || img,
+                    index: i,
+                    src,
+                    label,
+                    loading,
+                    ratio: src ? (imgRatios[src] || getStoredImageRatio(imageData) || DEFAULT_COLLAGE_RATIO) : DEFAULT_COLLAGE_RATIO,
+                  };
+                });
+                const boxes = buildPinboardLayout(collageItems);
+                const boardScale = Math.max(
+                  0.1,
+                  Math.min(
+                    collageSize.width / PINBOARD_WIDTH,
+                    collageSize.height / PINBOARD_HEIGHT,
+                  ),
+                );
+                const boardWidth = PINBOARD_WIDTH * boardScale;
+                const boardHeight = PINBOARD_HEIGHT * boardScale;
+
+                return (
+                  <div style={{
+                    width: `${boardWidth}px`,
+                    height: `${boardHeight}px`,
+                    position: 'relative',
+                    overflow: 'hidden',
+                    border: `${Math.max(2, 4 * boardScale)}px solid #1a1a1a`,
+                    borderRadius: `${Math.max(6, 12 * boardScale)}px`,
+                    backgroundColor: '#050505',
+                    backgroundImage: 'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',
+                    backgroundPosition: '0 0',
+                    backgroundSize: `${Math.max(10, 20 * boardScale)}px ${Math.max(10, 20 * boardScale)}px`,
+                    boxShadow: '0 28px 80px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(255,255,255,0.02)',
+                    boxSizing: 'border-box',
+                  }}>
+                    <div style={{ position: 'absolute', inset: `${18 * boardScale}px`, border: '1px solid rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
+                    {boxes.map(item => {
+                      const cardPadding = Math.max(1, 2 * boardScale);
+                      return (
+                        <div
+                          key={item.key}
+                          className="img-card"
+                          onClick={e => {
+                            e.stopPropagation();
+                            if (item.loading || charIdx < 0) return;
+                            setZoomCropTarget({
+                              charIdx,
+                              imgIdx: item.index,
+                              url: item.src,
+                              label: item.label,
+                              recropUrl: activeChar?.sheetUrl || null,
+                              recropBox: item.raw && typeof item.raw === 'object' ? item.raw.box_2d : null,
+                            });
+                          }}
+                          style={{
+                            background: 'rgba(255,255,255,0.9)',
+                            borderRadius: `${Math.max(2, 3 * boardScale)}px`,
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                            overflow: 'hidden',
+                            position: 'absolute',
+                            left: `${item.x * boardScale}px`,
+                            top: `${item.y * boardScale}px`,
+                            width: `${item.width * boardScale}px`,
+                            height: `${item.height * boardScale}px`,
+                            minWidth: 0,
+                            minHeight: 0,
+                            boxSizing: 'border-box',
+                            padding: `${cardPadding}px`,
+                            cursor: !item.loading && charIdx >= 0 ? 'pointer' : 'default',
+                            transform: 'scale(var(--pin-card-scale))',
+                            transformOrigin: 'center center',
+                          }}>
+                          {item.loading
+                            ? <div className="skeleton-shimmer" style={{ width: '100%', height: '100%' }} />
+                            : <img
+                              key={item.src}
+                              src={item.src}
+                              alt={item.label}
+                              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#f7f7f7' }}
+                              onLoad={e => {
+                                const ratio = e.currentTarget.naturalWidth / e.currentTarget.naturalHeight;
+                                setImgRatios(prev => prev[item.src] === ratio ? prev : { ...prev, [item.src]: ratio });
+                              }}
+                            />
+                          }
+                          {/* Label badge */}
+                          <div style={{ position: 'absolute', top: '8px', right: '8px', maxWidth: 'calc(100% - 16px)' }}>
+                            {renamingPanel?.charIdx === charIdx && renamingPanel?.imgIdx === item.index ? (
+                              <input
+                                autoFocus
+                                defaultValue={item.label}
+                                onBlur={e => handleRenameLabel(charIdx, item.index, e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') handleRenameLabel(charIdx, item.index, e.target.value);
+                                  if (e.key === 'Escape') setRenamingPanel(null);
+                                }}
+                                onClick={e => e.stopPropagation()}
+                                style={{ background: 'rgba(0,0,0,0.92)', border: '1px solid var(--teal)', color: '#fff', borderRadius: '4px', padding: '2px 7px', fontSize: '8px', fontWeight: 700, outline: 'none', width: '100px', maxWidth: '100%', letterSpacing: '0.05em' }}
+                              />
+                            ) : (
+                              <div
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  if (!item.loading && charIdx >= 0) {
+                                    setRenamingPanel({ charIdx, imgIdx: item.index });
+                                  }
+                                }}
+                                title={charIdx >= 0 ? 'Click to rename' : ''}
+                                style={{ padding: '2px 7px', background: 'rgba(0,0,0,0.75)', borderRadius: '3px', fontSize: '8px', color: item.loading ? '#222' : '#ddd', backdropFilter: 'blur(8px)', fontWeight: 700, cursor: charIdx >= 0 ? 'text' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'var(--font-display)' }}
+                              >
+                                {item.label.toUpperCase()}
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                );
+              })() : (
+                <div style={{ width: `${Math.min(PINBOARD_WIDTH, collageSize.width - 24)}px`, aspectRatio: `${PINBOARD_WIDTH} / ${PINBOARD_HEIGHT}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.06)', borderRadius: '8px', background: '#0a0a0a' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 600, fontFamily: 'var(--font-display)', marginBottom: '4px' }}>No images yet</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Upload a character sheet or generate with AI</div>
                 </div>
-              ) : (
-              <div style={{ height: '100%', overflow: 'hidden', columnCount: gridCols, columnGap: '8px' }}>
-                {activeChar.images.map((img, i) => {
-                  const _imgObj = (typeof img === 'string' && img.charAt(0) === '{') ? (() => { try { return JSON.parse(img); } catch { return null; } })() : null;
-                  const src     = _imgObj ? (_imgObj.url || null) : (typeof img === 'string' ? img : img?.url);
-                  const label   = _imgObj ? (_imgObj.label || `POSE ${i + 1}`) : (typeof img === 'string' ? `POSE ${i + 1}` : img?.label);
-                  const loading = src === null;
-                  const charIdx = activeCategory === 'project' ? activeTab : -1;
-                  return (
-                    <div key={i} className="img-card" style={{
-                      breakInside: 'avoid', marginBottom: '8px', background: '#0f0f0f', borderRadius: '14px',
-                      border: `1px solid ${loading ? '#161616' : '#1c1c1c'}`,
-                      overflow: 'hidden', position: 'relative', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-                    }}>
-                      {loading
-                        ? <div className="skeleton-shimmer" style={{ width: '100%', paddingBottom: '133%' }} />
-                        : <img key={src} src={src} alt={label} style={{ width: '100%', height: 'auto', display: 'block' }} />
-                      }
-                      {/* Label badge — click to rename */}
-                      <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
-                        {renamingPanel?.charIdx === charIdx && renamingPanel?.imgIdx === i ? (
-                          <input
-                            autoFocus
-                            defaultValue={label}
-                            onBlur={e => handleRenameLabel(charIdx, i, e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') handleRenameLabel(charIdx, i, e.target.value);
-                              if (e.key === 'Escape') setRenamingPanel(null);
-                            }}
-                            onClick={e => e.stopPropagation()}
-                            style={{ background: 'rgba(0,0,0,0.92)', border: '1px solid #00B8D4', color: '#fff', borderRadius: '6px', padding: '3px 8px', fontSize: '9px', fontWeight: 800, outline: 'none', width: '110px', letterSpacing: '0.06em' }}
-                          />
-                        ) : (
-                          <div
-                            onClick={() => !loading && charIdx >= 0 && setRenamingPanel({ charIdx, imgIdx: i })}
-                            title={charIdx >= 0 ? 'Click to rename' : ''}
-                            style={{ padding: '4px 9px', background: 'rgba(0,0,0,0.7)', borderRadius: '6px', fontSize: '9px', color: loading ? '#2a2a2a' : '#bbb', backdropFilter: 'blur(8px)', fontWeight: 800, border: '1px solid rgba(255,255,255,0.05)', cursor: charIdx >= 0 ? 'text' : 'default', whiteSpace: 'nowrap' }}
-                          >
-                            {label.toUpperCase()}
-                          </div>
-                        )}
-                      </div>
-                      {/* Delete button (top-left, visible on hover) */}
-                      {!loading && charIdx >= 0 && (
-                        <button
-                          className="img-card-delete"
-                          onClick={() => handleDeleteImage(charIdx, i)}
-                          style={{ position: 'absolute', top: '10px', left: '10px', background: 'rgba(255,40,40,0.85)', border: 'none', color: '#fff', borderRadius: '6px', width: '26px', height: '26px', fontSize: '14px', fontWeight: 900, cursor: 'pointer', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
-                        >
-                          ×
-                        </button>
-                      )}
-                      {/* Action buttons (visible on hover) */}
-                      {!loading && charIdx >= 0 && (
-                        <div className="img-card-actions" style={{ position: 'absolute', bottom: '10px', right: '10px', display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
-                          {/* Re-crop from original sheet */}
-                          {activeChar?.sheetUrl && (
-                            <button
-                              onClick={() => setZoomCropTarget({
-                                charIdx, imgIdx: i, url: activeChar.sheetUrl, label,
-                                initialBox: typeof img === 'object' ? img.box_2d : null,
-                                showLabelInput: true,
-                              })}
-                              style={{ background: 'rgba(0,184,212,0.85)', border: 'none', color: '#000', borderRadius: '8px', padding: '6px 10px', fontSize: '10px', fontWeight: 800, cursor: 'pointer', backdropFilter: 'blur(8px)', whiteSpace: 'nowrap' }}
-                            >
-                              ✂ RE-CROP
-                            </button>
-                          )}
-                          {/* Zoom / free-crop on the already-cropped image */}
-                          <button
-                            onClick={() => setZoomCropTarget({ charIdx, imgIdx: i, url: src, label })}
-                            style={{ background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(255,255,255,0.08)', color: '#ccc', borderRadius: '8px', padding: '6px 10px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)' }}
-                          >
-                            ⤢ ZOOM / CROP
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              )
-            ) : (
-              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '2px dashed #161616', borderRadius: '28px' }}>
-                <div style={{ fontSize: '44px', marginBottom: '18px', filter: 'grayscale(1) opacity(0.2)' }}>🎭</div>
-                <h3 style={{ color: '#2e2e2e', fontSize: '17px', fontWeight: 700 }}>No images yet</h3>
-                <p style={{ color: '#232323', fontSize: '13px', marginTop: '6px' }}>Upload a character sheet or generate with AI.</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -892,53 +1201,54 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       {/* ── Create Modal ── */}
       {showCreateModal && (
         <div className="auth-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '440px', background: '#0e0e0e', border: '1px solid #222', borderRadius: '24px' }} onClick={e => e.stopPropagation()}>
+          <div className="auth-modal" style={{ maxWidth: '440px', background: '#0e0e0e' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowCreateModal(false)}>×</button>
-            <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 800, marginBottom: '4px' }}>Generate Character</div>
-            <div style={{ color: '#3a3a3a', fontSize: '12px', marginBottom: '22px' }}>Generates a 9-panel 21:9 reference sheet, then splits and refines each panel.</div>
+            <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, marginBottom: '4px', letterSpacing: '-0.01em' }}>Generate Character</div>
+            <div style={{ color: '#3a3a3a', fontSize: '12px', marginBottom: '20px', lineHeight: 1.5 }}>Generates a 9-panel reference sheet, then splits and refines each panel.</div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>CHARACTER NAME</label>
-                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)}
-                  style={{ width: '100%', padding: '13px', border: '1px solid #222', borderRadius: '11px', background: '#0a0a0a', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }} />
+                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>CHARACTER NAME</label>
+                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)} style={inputStyle} onFocus={e => e.target.style.borderColor = 'rgba(0,184,212,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               <div>
-                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>CHARACTER DESCRIPTION</label>
+                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>DESCRIPTION</label>
                 <textarea placeholder="Ancient Indian warrior, 40s, grey beard, dark red dhoti, gold jewellery..." value={createDesc} onChange={e => setCreateDesc(e.target.value)}
-                  style={{ width: '100%', minHeight: '100px', padding: '13px', border: '1px solid #222', borderRadius: '11px', background: '#0a0a0a', color: '#fff', fontSize: '13px', resize: 'none', fontFamily: 'var(--font-body)', boxSizing: 'border-box' }} />
+                  style={{ ...inputStyle, minHeight: '90px', resize: 'none' }} onFocus={e => e.target.style.borderColor = 'rgba(0,184,212,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
 
               {/* Reference image */}
               <div>
-                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>
-                  REFERENCE IMAGE <span style={{ color: '#444', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>(optional — locks character appearance)</span>
+                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>
+                  REFERENCE IMAGE <span style={{ color: '#333', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
                 </label>
                 <input type="file" ref={refFileInputRef} onChange={handleRefImageSelect} style={{ display: 'none' }} accept="image/*" />
                 {createRefImage ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: '#0a0a0a', border: '1px solid #2a2a2a', borderRadius: '11px' }}>
-                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '8px', flexShrink: 0 }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px' }}>
+                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: '#050505', borderRadius: '6px', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: '#bbb', fontSize: '11px', fontWeight: 700 }}>Reference uploaded</div>
-                      <div style={{ color: '#444', fontSize: '10px', marginTop: '2px' }}>All angles will match this character</div>
+                      <div style={{ color: '#bbb', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
+                      <div style={{ color: '#333', fontSize: '10px', marginTop: '2px' }}>All angles will match this character</div>
                     </div>
-                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'rgba(255,68,68,0.1)', border: '1px solid rgba(255,68,68,0.2)', color: '#ff6666', borderRadius: '7px', padding: '5px 9px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>✕ REMOVE</button>
+                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: '5px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>Remove</button>
                   </div>
                 ) : (
                   <button onClick={() => refFileInputRef.current.click()}
-                    style={{ width: '100%', padding: '11px', borderRadius: '10px', background: 'transparent', border: '1px dashed #252525', color: '#555', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                    style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'transparent', border: '1px dashed rgba(255,255,255,0.08)', color: '#444', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
                     + Upload Reference Image
                   </button>
                 )}
               </div>
 
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {/* Panel labels */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                 {PANEL_LABELS.map(label => (
-                  <span key={label} style={{ fontSize: '10px', padding: '3px 9px', borderRadius: '20px', background: 'rgba(0,184,212,0.07)', color: 'var(--teal)', border: '1px solid rgba(0,184,212,0.12)' }}>{label}</span>
+                  <span key={label} style={{ fontSize: '9px', padding: '2px 8px', borderRadius: '3px', background: 'rgba(0,184,212,0.06)', color: 'var(--teal)', border: '1px solid rgba(0,184,212,0.1)', fontFamily: 'var(--font-display)', fontWeight: 600 }}>{label}</span>
                 ))}
               </div>
-              <button className="btn-orange" style={{ width: '100%', padding: '14px', borderRadius: '11px', fontWeight: 700, fontSize: '13px' }} onClick={handleGenerateAngles}>
-                ✨ GENERATE 9-PANEL SHEET
+
+              <button className="btn-orange" style={{ width: '100%', padding: '13px', fontSize: '12px' }} onClick={handleGenerateAngles}>
+                Generate 9-Panel Character Sheet
               </button>
             </div>
           </div>
@@ -948,29 +1258,27 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       {/* ── Edit Modal ── */}
       {showEditModal && activeChar && (
         <div className="auth-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '440px', background: '#0e0e0e', border: '1px solid #222', borderRadius: '24px' }} onClick={e => e.stopPropagation()}>
+          <div className="auth-modal" style={{ maxWidth: '440px', background: '#0e0e0e' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowEditModal(false)}>×</button>
-            <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 800, marginBottom: '22px' }}>Edit Character</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, marginBottom: '20px', letterSpacing: '-0.01em' }}>Edit Character</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>NAME</label>
-                <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
-                  style={{ width: '100%', padding: '13px', border: '1px solid #222', borderRadius: '11px', background: '#0a0a0a', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }} />
+                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>NAME</label>
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={inputStyle} onFocus={e => e.target.style.borderColor = 'rgba(0,184,212,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               <div>
-                <label style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>DESCRIPTION</label>
-                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)}
-                  style={{ width: '100%', minHeight: '80px', padding: '13px', border: '1px solid #222', borderRadius: '11px', background: '#0a0a0a', color: '#fff', fontSize: '13px', resize: 'none', fontFamily: 'var(--font-body)', boxSizing: 'border-box' }} />
+                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>DESCRIPTION</label>
+                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} style={{ ...inputStyle, minHeight: '72px', resize: 'none' }} onFocus={e => e.target.style.borderColor = 'rgba(0,184,212,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
-              <div style={{ borderTop: '1px solid #181818', paddingTop: '16px' }}>
-                <label style={{ fontSize: '10px', fontWeight: 800, color: '#333', letterSpacing: '0.1em', display: 'block', marginBottom: '8px' }}>REPLACE IMAGES</label>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px' }}>
+                <label style={{ fontSize: '10px', fontWeight: 700, color: '#2a2a2a', letterSpacing: '0.1em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>REPLACE IMAGES</label>
                 <button onClick={() => { setShowEditModal(false); fileInputRef.current.click(); }}
-                  style={{ width: '100%', padding: '11px', borderRadius: '10px', background: 'transparent', border: '1px solid #252525', color: '#555', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
-                  📁 Upload New Character Sheet
+                  style={{ width: '100%', padding: '10px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.07)', color: '#444', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
+                  Upload New Character Sheet
                 </button>
               </div>
-              <button className="btn-teal" style={{ width: '100%', padding: '14px', borderRadius: '11px', fontWeight: 700, fontSize: '13px' }} onClick={handleEditSave}>
-                SAVE CHANGES
+              <button className="btn-teal" style={{ width: '100%', padding: '13px', fontSize: '12px' }} onClick={handleEditSave}>
+                Save Changes
               </button>
             </div>
           </div>
@@ -984,40 +1292,43 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
           label={zoomCropTarget.label}
           onClose={() => setZoomCropTarget(null)}
           onApply={handleApplyCrop}
+          onDelete={() => {
+            handleDeleteImage(zoomCropTarget.charIdx, zoomCropTarget.imgIdx);
+            setZoomCropTarget(null);
+          }}
           initialBox={zoomCropTarget.initialBox || null}
           showLabelInput={zoomCropTarget.showLabelInput || false}
+          recropUrl={zoomCropTarget.recropUrl || null}
+          recropBox={zoomCropTarget.recropBox || null}
         />
       )}
 
       {/* ── Sheet Crop Choice Modal ── */}
       {showSheetCropModal && sheetPreviewUrl && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={handleCloseSheetCropModal}>
-          <div style={{ background: '#0c0c0c', width: '100%', maxWidth: '520px', borderRadius: '16px', border: '1px solid #1a1a1a', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }} onClick={e => e.stopPropagation()}>
-            <button onClick={handleCloseSheetCropModal} style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', color: '#555', fontSize: '20px', cursor: 'pointer', zIndex: 10 }}>✕</button>
-            <div style={{ padding: '32px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: 'var(--teal)' }} />
-                <span style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 800, letterSpacing: '0.12em' }}>CROP SELECTION</span>
-              </div>
-              <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 800, marginBottom: '6px' }}>How would you like to crop?</h3>
-              <p style={{ color: '#555', fontSize: '12px', marginBottom: '24px', lineHeight: 1.5 }}>Our AI can automatically detect and refine 9+ character poses from your sheet, or you can do it yourself.</p>
-              
-              <div style={{ width: '100%', height: '280px', background: '#080808', borderRadius: '12px', overflow: 'hidden', border: '1px solid #151515', marginBottom: '28px' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={handleCloseSheetCropModal}>
+          <div style={{ background: '#0c0c0c', width: '100%', maxWidth: '500px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }} onClick={e => e.stopPropagation()}>
+            <button onClick={handleCloseSheetCropModal} style={{ position: 'absolute', top: '14px', right: '14px', background: 'none', border: 'none', color: '#444', fontSize: '18px', cursor: 'pointer', zIndex: 10 }}>✕</button>
+            <div style={{ padding: '28px' }}>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>Crop Selection</div>
+              <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 700, marginBottom: '6px', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>How would you like to crop?</h3>
+              <p style={{ color: '#444', fontSize: '12px', marginBottom: '20px', lineHeight: 1.6 }}>Our AI can automatically detect and refine 9+ character poses from your sheet.</p>
+
+              <div style={{ width: '100%', height: '260px', background: '#080808', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
                 <img src={sheetPreviewUrl} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Preview" />
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <button 
-                  onClick={() => processSheetFile(pendingSheetFile)} 
-                  style={{ ...MODAL_BTN, background: '#00B8D4', color: '#000', border: 'none', padding: '18px', borderRadius: '14px', fontSize: '13px', fontWeight: 800 }}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button
+                  onClick={() => processSheetFile(pendingSheetFile)}
+                  style={{ ...MODAL_BTN, background: 'var(--teal)', color: '#000', border: 'none', padding: '16px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, fontFamily: 'var(--font-display)' }}
                 >
-                  ✨ CROP WITH AI (AUTO-DETECT)
+                  Auto-detect with AI
                 </button>
                 <div style={{ position: 'relative' }}>
-                  <button disabled style={{ ...MODAL_BTN, opacity: 0.45, width: '100%', padding: '18px', borderRadius: '14px', fontSize: '13px', cursor: 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    ✂ CROP MANUALLY
+                  <button disabled style={{ ...MODAL_BTN, opacity: 0.35, width: '100%', padding: '16px', borderRadius: '9px', fontSize: '13px', cursor: 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    Crop Manually
                   </button>
-                  <span style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', background: '#1a1a1a', color: '#444', fontSize: '9px', fontWeight: 900, padding: '3px 8px', borderRadius: '5px', letterSpacing: '0.06em' }}>COMING SOON</span>
+                  <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: '#1a1a1a', color: '#333', fontSize: '9px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', letterSpacing: '0.06em', fontFamily: 'var(--font-display)' }}>COMING SOON</span>
                 </div>
               </div>
             </div>

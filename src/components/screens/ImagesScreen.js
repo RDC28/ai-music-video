@@ -8,19 +8,14 @@ export default function ImagesScreen({ onNavigate, isActive, projectData, onData
   const modalCanvasRef = useRef(null);
   const [editModalIndex, setEditModalIndex] = useState(null);
   const [isApproving, setIsApproving] = useState(false);
-  
-  // Use props data or fallback to empty array
+
   const shots = projectData || [];
 
   useEffect(() => {
     if (!isActive) return;
     const timer = setTimeout(() => {
       canvasRefs.current.forEach((canvas, i) => {
-        if (canvas) {
-          // If we have a real image URL, we would draw it here
-          // For now, using the generative placeholder logic
-          drawClubScene(canvas, i * 3 + 7);
-        }
+        if (canvas) drawClubScene(canvas, i * 3 + 7);
       });
     }, 50);
     return () => clearTimeout(timer);
@@ -34,8 +29,6 @@ export default function ImagesScreen({ onNavigate, isActive, projectData, onData
 
   const handleApproveAll = async () => {
     setIsApproving(true);
-    // In a real flow, this would mark all shots as "image_ready"
-    // and save any final prompts/metadata to the project state.
     await onDataUpdate({
       images_approved: true,
       current_step: 9
@@ -44,176 +37,229 @@ export default function ImagesScreen({ onNavigate, isActive, projectData, onData
     onNavigate(9);
   };
 
+  const inputStyle = {
+    width: '100%',
+    padding: '10px 14px',
+    border: '1px solid var(--border-mid)',
+    borderRadius: '8px',
+    background: 'var(--surface)',
+    color: 'var(--dark)',
+    fontSize: '13px',
+    fontFamily: 'var(--font-body)',
+    outline: 'none',
+    transition: 'border-color 0.15s',
+    boxSizing: 'border-box',
+    resize: 'none',
+  };
+
   return (
     <div className="screen active" id="s6" style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-      
-      {/* Main Content */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <div
-          style={{
-            position: 'sticky',
-            top: '64px',
-            zIndex: 10,
-            display: 'flex',
-            justifyContent: 'flex-end',
-            padding: '8px 28px',
-            paddingTop: '16px',
-            background: 'var(--cream)',
-            margin: '0 0 12px 0'
-          }}
-        >
-          <button 
-            className="btn-approve" 
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
+
+        {/* Page Header */}
+        <div style={{
+          padding: '20px 28px',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <div>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '-0.01em', marginBottom: '3px' }}>
+              Generate Images
+            </h1>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              Review and generate AI images for each shot in your list
+            </p>
+          </div>
+          <button
+            className="btn-teal"
             onClick={handleApproveAll}
             disabled={isApproving}
+            style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
           >
-            {isApproving ? 'SAVING...' : 'APPROVE ALL'}
+            {isApproving ? 'Saving...' : 'Approve All'}
             {!isApproving && (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12l5 5L20 7"></path>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12l5 5L20 7"/>
               </svg>
             )}
           </button>
         </div>
 
-        <div className="img-layout" id="imgList">
+        {/* Shot image list */}
+        <div id="imgList" style={{ flex: 1, overflowY: 'auto' }}>
           {shots.length > 0 ? shots.map((shot, i) => (
-            <div 
-              key={i} 
-              className="img-item"
+            <div
+              key={i}
               style={{
-                background: editModalIndex === i ? 'rgba(61, 140, 122, 0.08)' : 'transparent',
-                borderLeft: editModalIndex === i ? '4px solid var(--teal)' : '4px solid transparent',
-                paddingLeft: '16px',
-                paddingRight: '16px',
-                borderRadius: editModalIndex === i ? '0 12px 12px 0' : '0',
-                transition: 'all 0.2s ease',
-                borderBottomColor: editModalIndex === i ? 'transparent' : 'var(--border)'
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                padding: '16px 28px',
+                borderBottom: '1px solid var(--border)',
+                background: editModalIndex === i ? 'rgba(0,184,212,0.04)' : 'transparent',
+                borderLeft: `3px solid ${editModalIndex === i ? 'var(--teal)' : 'transparent'}`,
+                transition: 'all 0.2s',
               }}
             >
-              <div className="img-info">
-                <div className="shot-title" style={{ color: editModalIndex === i ? 'var(--teal)' : 'var(--dark)' }}>
-                  {i + 1}. {shot.n || shot.title || `Shot ${i+1}`}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  color: editModalIndex === i ? 'var(--teal)' : 'var(--dark)',
+                  marginBottom: '4px',
+                  letterSpacing: '-0.01em',
+                }}>
+                  {i + 1}. {shot.n || shot.title || `Shot ${i + 1}`}
                 </div>
-                <div className="shot-prompt">
-                  &quot;{(shot.p || shot.prompt || "No prompt available").substring(0, 120)}...&quot;
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  &quot;{(shot.p || shot.prompt || 'No prompt available').substring(0, 120)}...&quot;
                 </div>
               </div>
-              <div className="img-thumb">
+
+              <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', flexShrink: 0 }}>
                 <canvas
                   ref={(el) => (canvasRefs.current[i] = el)}
                   width={240}
                   height={140}
+                  style={{ display: 'block' }}
                 />
               </div>
+
               <button
-                className="btn-teal"
+                className="btn-outline"
                 style={{
-                  fontSize: '10px',
-                  padding: '7px 14px',
+                  fontSize: '11px',
+                  padding: '6px 14px',
                   whiteSpace: 'nowrap',
-                  opacity: editModalIndex === i ? 0.5 : 1,
-                  cursor: editModalIndex === i ? 'default' : 'pointer'
+                  flexShrink: 0,
+                  opacity: editModalIndex === i ? 0.4 : 1,
+                  cursor: editModalIndex === i ? 'default' : 'pointer',
                 }}
                 onClick={() => setEditModalIndex(i)}
               >
-                {editModalIndex === i ? 'EDITING...' : 'EDIT & GENERATE'}
+                {editModalIndex === i ? 'Editing...' : 'Edit & Generate'}
               </button>
             </div>
           )) : (
-            <div style={{ padding: '100px', textAlign: 'center', color: '#666', width: '100%' }}>
-              No shots generated yet. Please go back to the Script screen.
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', gap: '12px' }}>
+              <div style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>
+                No shots generated yet.
+              </div>
+              <button className="btn-outline" onClick={() => onNavigate(6)} style={{ fontSize: '12px' }}>
+                ← Go Back to Shot List
+              </button>
             </div>
           )}
         </div>
       </div>
 
-      {/* Side Panel */}
+      {/* Edit Side Panel */}
       {editModalIndex !== null && (
         <div style={{
           position: 'sticky',
-          top: '90px',
-          width: '450px',
-          height: 'calc(100vh - 114px)',
+          top: 0,
+          width: '440px',
+          height: '100%',
           background: 'var(--card)',
-          border: '2px solid var(--border)',
-          borderRight: 'none',
-          borderRadius: '24px 0 0 24px',
-          boxShadow: '-8px 0 24px rgba(42, 38, 34, 0.05)',
-          padding: '32px',
+          borderLeft: '1px solid var(--border-mid)',
+          padding: '28px',
           display: 'flex',
           flexDirection: 'column',
-          animation: 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+          animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
           overflowY: 'auto',
-          flexShrink: 0
+          flexShrink: 0,
         }}>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-            <div className="card-title" style={{ border: 'none', padding: 0, margin: 0 }}>Edit &amp; Generate Image</div>
-            <button className="auth-close" style={{ position: 'static' }} onClick={() => setEditModalIndex(null)}>×</button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: 'var(--dark)' }}>
+              Edit &amp; Generate Image
+            </div>
+            <button
+              onClick={() => setEditModalIndex(null)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                fontSize: '20px',
+                cursor: 'pointer',
+                lineHeight: 1,
+                padding: '2px 6px',
+                borderRadius: '4px',
+              }}
+            >×</button>
           </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '11px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '0.05em', marginBottom: '8px', display: 'block' }}>
-                  CURRENT IMAGE
-                </label>
-                <div style={{ borderRadius: '12px', overflow: 'hidden', border: '2px solid var(--border)', aspectRatio: '16/9', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#111' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>
+                  Current
+                </div>
+                <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', aspectRatio: '16/9', background: 'var(--surface)' }}>
                   <canvas ref={modalCanvasRef} width={560} height={315} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
               </div>
-
               <div>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '11px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.05em', marginBottom: '8px', display: 'block' }}>
-                  NEW PREVIEW
-                </label>
-                <div style={{ borderRadius: '12px', overflow: 'hidden', border: '2px dashed var(--teal)', aspectRatio: '16/9', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(61, 140, 122, 0.05)' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>
+                  New Preview
+                </div>
+                <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(0,184,212,0.25)', aspectRatio: '16/9', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,184,212,0.04)' }}>
                   <span style={{ fontSize: '10px', color: 'var(--teal)', fontWeight: 600 }}>Not generated yet</span>
                 </div>
               </div>
             </div>
 
-            <div style={{ height: '2px', background: 'var(--border)', width: '100%', margin: '4px 0' }}></div>
+            <div style={{ height: '1px', background: 'var(--border)' }} />
 
-            <label style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 800, color: 'var(--dark)', letterSpacing: '0.05em' }}>
-              REPLACE WITH
-            </label>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>
+              Replace With
+            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)' }}>
-                  1. UPLOAD YOUR OWN
-                </label>
-                <div style={{ border: '2px dashed var(--border)', borderRadius: '12px', background: 'rgba(42,38,34,0.03)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '24px', cursor: 'pointer', minHeight: '100px' }}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="17 8 12 3 7 8"></polyline>
-                    <line x1="12" y1="3" x2="12" y2="15"></line>
-                  </svg>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--dark)' }}>Browse Files</span>
-                </div>
+            {/* Upload own */}
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--dark)', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
+                1. Upload Your Own
               </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: 'var(--dark)' }}>
-                  2. GENERATE WITH PROMPT
-                </label>
-                <textarea 
-                  defaultValue={shots[editModalIndex]?.p || shots[editModalIndex]?.prompt || ""} 
-                  style={{ width: '100%', padding: '12px', border: '2px solid var(--border)', borderRadius: '12px', fontFamily: 'var(--font-body)', fontSize: '12px', resize: 'none', outline: 'none', minHeight: '120px' }}
-                  onFocus={(e) => e.target.style.borderColor = 'var(--teal)'}
-                  onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
-                />
-                <button className="btn-orange" style={{ width: '100%', fontSize: '12px', padding: '10px' }}>
-                  Generate New
-                </button>
+              <div style={{
+                border: '1px dashed var(--border-mid)',
+                borderRadius: '8px',
+                background: 'var(--surface)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '20px',
+                cursor: 'pointer',
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)' }}>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Browse Files</span>
               </div>
+            </div>
+
+            {/* Generate with prompt */}
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--dark)', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
+                2. Generate with Prompt
+              </div>
+              <textarea
+                defaultValue={shots[editModalIndex]?.p || shots[editModalIndex]?.prompt || ''}
+                style={{ ...inputStyle, minHeight: '100px' }}
+                onFocus={(e) => e.target.style.borderColor = 'var(--teal)'}
+                onBlur={(e) => e.target.style.borderColor = 'var(--border-mid)'}
+              />
+              <button className="btn-orange" style={{ width: '100%', fontSize: '12px', padding: '10px', marginTop: '8px' }}>
+                Generate New
+              </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

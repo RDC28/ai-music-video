@@ -26,7 +26,6 @@ export default function DashboardScreen() {
         .from('projects')
         .select('*')
         .order('updated_at', { ascending: false });
-      
       if (data) setProjects(data);
     }
     setIsLoading(false);
@@ -42,7 +41,6 @@ export default function DashboardScreen() {
 
     if (confirmed) {
       try {
-        // 1. Storage Cleanup: Delete all files in the project folder
         const { data: files } = await supabase.storage
           .from('assets')
           .list(projectId);
@@ -52,7 +50,6 @@ export default function DashboardScreen() {
           await supabase.storage.from('assets').remove(filesToRemove);
         }
 
-        // 2. Database Cleanup: Delete the project row
         const { error } = await supabase
           .from('projects')
           .delete()
@@ -60,7 +57,6 @@ export default function DashboardScreen() {
 
         if (error) throw error;
 
-        // 3. UI Update
         setProjects(projects.filter(p => p.id !== projectId));
       } catch (err) {
         alert("Failed to delete project: " + err.message);
@@ -70,14 +66,14 @@ export default function DashboardScreen() {
 
   const startNewProject = async (e) => {
     if (e) e.preventDefault();
-    
+
     if (!newProjectTitle.trim()) {
       alert("Please enter a project title");
       return;
     }
 
     setIsCreating(true);
-    
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       alert("Please login first");
@@ -87,9 +83,9 @@ export default function DashboardScreen() {
 
     const { data, error } = await supabase
       .from('projects')
-      .insert([{ 
-        user_id: user.id, 
-        title: newProjectTitle.trim() 
+      .insert([{
+        user_id: user.id,
+        title: newProjectTitle.trim()
       }])
       .select()
       .single();
@@ -105,83 +101,134 @@ export default function DashboardScreen() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--cream)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--bg)' }}>
       <DashboardNav />
 
-      <main style={{ padding: '48px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-        <div className="profile-card projects-card">
-          <div className="projects-header">
-            <div className="card-title">Your Projects</div>
-            <button 
+      <main style={{ padding: '40px 48px', maxWidth: '1200px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+
+        {/* Section header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+          <div>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '-0.01em', marginBottom: '4px' }}>
+              Your Projects
+            </h2>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              {isLoading ? 'Loading...' : `${projects.length} project${projects.length !== 1 ? 's' : ''}`}
+            </p>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            disabled={isCreating}
+            className="btn-teal"
+            style={{ fontSize: '12px', padding: '8px 18px' }}
+          >
+            {isCreating ? 'Creating...' : '+ New Project'}
+          </button>
+        </div>
+
+        {/* Project grid */}
+        {isLoading ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+            {[1, 2, 3].map(i => (
+              <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', height: '200px', opacity: 0.5 }} />
+            ))}
+          </div>
+        ) : projects.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+            {projects.map((project) => (
+              <div
+                key={project.id}
+                style={{ position: 'relative' }}
+                onMouseOver={e => e.currentTarget.querySelector('[data-delete]').style.opacity = '1'}
+                onMouseOut={e => e.currentTarget.querySelector('[data-delete]').style.opacity = '0'}
+              >
+                <Link
+                  href={`/create/${project.id}`}
+                  onClick={() => localStorage.setItem('activeScreen', '1')}
+                  style={{ textDecoration: 'none', display: 'block' }}
+                >
+                  <div style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    transition: 'border-color 0.15s',
+                  }}
+                    onMouseOver={e => e.currentTarget.style.borderColor = 'rgba(0,229,255,0.2)'}
+                    onMouseOut={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                  >
+                    <div style={{
+                      height: '140px',
+                      background: `linear-gradient(135deg, #1A0A1A, ${project.status === 'completed' ? '#1a3a30' : '#2a1205'})`,
+                    }} />
+                    <div style={{ padding: '14px 16px' }}>
+                      <div style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 700, color: 'var(--dark)', marginBottom: '4px', letterSpacing: '-0.01em' }}>
+                        {project.title}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        Updated {new Date(project.updated_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+
+                <button
+                  data-delete
+                  onClick={(e) => handleDelete(e, project.id)}
+                  style={{
+                    position: 'absolute',
+                    top: '10px',
+                    right: '10px',
+                    background: 'rgba(255, 60, 60, 0.85)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '26px',
+                    height: '26px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    zIndex: 2,
+                    fontSize: '14px',
+                    opacity: '0',
+                    transition: 'opacity 0.15s',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                  title="Delete Project"
+                >×</button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{
+            background: 'var(--card)',
+            border: '1px solid var(--border)',
+            borderRadius: '14px',
+            padding: '60px 40px',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '16px',
+          }}>
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.2, color: 'var(--dark)' }}>
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--dark)', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>No projects yet</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Create your first music video to get started</div>
+            </div>
+            <button
               onClick={() => setShowModal(true)}
               disabled={isCreating}
-              className="btn-teal" 
-              style={{ padding: '8px 16px', fontSize: '12px', border: 'none', cursor: isCreating ? 'wait' : 'pointer' }}
+              className="btn-orange"
+              style={{ fontSize: '12px' }}
             >
-              {isCreating ? 'Creating...' : '+ New Project'}
+              {isCreating ? 'Creating...' : 'Create Your First Video'}
             </button>
           </div>
-          
-          <div className="projects-grid">
-            {isLoading ? (
-              <div style={{ padding: '20px', color: '#666' }}>Loading your masterpieces...</div>
-            ) : projects.length > 0 ? (
-              projects.map((project) => (
-                <div key={project.id} style={{ position: 'relative' }}>
-                  <Link 
-                    href={`/create/${project.id}`} 
-                    onClick={() => localStorage.setItem('activeScreen', '1')}
-                    style={{ textDecoration: 'none' }} 
-                    className="project-item"
-                  >
-                    <div className="project-thumb">
-                      <div style={{ 
-                        width: '100%', 
-                        height: '100%', 
-                        background: `linear-gradient(45deg, #1A0A1A, ${project.status === 'completed' ? '#3D8C7A' : '#F05A28'})` 
-                      }} />
-                    </div>
-                    <div className="project-info">
-                      <strong>{project.title}</strong>
-                      <span>Last updated: {new Date(project.updated_at).toLocaleDateString()}</span>
-                    </div>
-                  </Link>
-                  
-                  <button 
-                    onClick={(e) => handleDelete(e, project.id)}
-                    style={{
-                      position: 'absolute',
-                      top: '12px',
-                      right: '12px',
-                      background: 'rgba(255, 77, 77, 0.9)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '50%',
-                      width: '28px',
-                      height: '28px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      zIndex: 2,
-                      fontSize: '14px',
-                    }}
-                    title="Delete Project"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))
-            ) : (
-              <div style={{ padding: '40px', textAlign: 'center', gridColumn: '1 / -1' }}>
-                <p style={{ color: '#666', marginBottom: '16px' }}>You haven&apos;t created any projects yet.</p>
-                <button onClick={() => setShowModal(true)} disabled={isCreating} className="btn-orange" style={{ padding: '10px 20px', border: 'none', cursor: 'pointer' }}>
-                  {isCreating ? 'Creating...' : 'Create your first video'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </main>
 
       {/* New Project Modal */}
@@ -189,31 +236,43 @@ export default function DashboardScreen() {
         <div className="auth-overlay" onClick={() => setShowModal(false)}>
           <div className="auth-modal" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowModal(false)}>×</button>
-            <div className="card-title">New Project</div>
-            <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#666' }}>PROJECT TITLE</label>
-                <input 
-                  type="text" 
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--dark)', marginBottom: '20px' }}>
+              New Project
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>
+                  Project Title
+                </label>
+                <input
+                  type="text"
                   autoFocus
                   placeholder="e.g. My Epic Music Video"
                   value={newProjectTitle}
                   onChange={(e) => setNewProjectTitle(e.target.value)}
                   style={{
-                    padding: '12px',
+                    width: '100%',
+                    padding: '10px 14px',
                     borderRadius: '8px',
-                    border: '2px solid var(--border)',
+                    border: '1px solid var(--border-mid)',
                     fontSize: '14px',
                     outline: 'none',
+                    background: 'var(--surface)',
+                    color: 'var(--dark)',
+                    fontFamily: 'var(--font-body)',
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.15s',
                   }}
+                  onFocus={(e) => e.target.style.borderColor = 'var(--teal)'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--border-mid)'}
                   onKeyDown={(e) => e.key === 'Enter' && startNewProject()}
                 />
               </div>
-              <button 
-                className="btn-orange" 
+              <button
+                className="btn-orange"
                 onClick={startNewProject}
                 disabled={isCreating || !newProjectTitle.trim()}
-                style={{ padding: '12px' }}
+                style={{ padding: '12px', width: '100%' }}
               >
                 {isCreating ? 'Creating...' : 'Start Creation'}
               </button>
