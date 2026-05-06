@@ -149,7 +149,8 @@ export default function CreateProject({ params }) {
         <ImagesScreen 
           onNavigate={goTo} 
           isActive={activeScreen === 8} 
-          projectData={projectData?.project_state?.shot_list || []}
+          projectId={projectId}
+          projectData={projectData?.project_state}
           onDataUpdate={updateProjectData}
         />
       )}
@@ -157,6 +158,7 @@ export default function CreateProject({ params }) {
         <VideosScreen 
           onNavigate={goTo} 
           isActive={activeScreen === 9}
+          projectId={projectId}
           projectData={projectData?.project_state}
           onDataUpdate={updateProjectData}
         />
