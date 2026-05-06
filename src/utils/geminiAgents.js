@@ -1,15 +1,34 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import {
+  getFallbackModels,
+  runWithModelFallback,
+  TEXT_MODEL_FALLBACKS,
+} from "@/utils/googleModelFallbacks";
 import { normalizeShotList } from "@/utils/shotList";
 
 const genAI = process.env.GOOGLE_AI_API_KEY
   ? new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
   : null;
 
-function getModel() {
+function getModel(modelName) {
   if (!genAI) {
     throw new Error("GOOGLE_AI_API_KEY is not configured. Add it to your environment before using AI generation.");
   }
-  return genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  return genAI.getGenerativeModel({ model: modelName });
+}
+
+async function generateText(parts, label, primaryModel = process.env.GOOGLE_TEXT_MODEL) {
+  const models = getFallbackModels(primaryModel, TEXT_MODEL_FALLBACKS);
+  const { result, model } = await runWithModelFallback({
+    label,
+    models,
+    operation: async (modelName) => {
+      const activeModel = getModel(modelName);
+      return activeModel.generateContent(parts);
+    },
+  });
+  const response = await result.response;
+  return { text: response.text(), model };
 }
 
 function extractJsonObject(text, label = "Gemini response") {
@@ -67,8 +86,6 @@ function compactLocations(locations = []) {
 export const geminiAgent = {
   // 1. Script Agent: Turns a raw idea into a structured script and seeds characters/locations
   async generateScript(prompt, transcript = null) {
-    const model = getModel();
-    
     const context = transcript ? `Here is the song transcript for timing and context: ${JSON.stringify(transcript)}` : '';
 
     const systemPrompt = `
@@ -108,15 +125,15 @@ export const geminiAgent = {
       - Ensure the 'lyrics_timeline' is populated with the word-by-word timestamps from the provided transcript.
     `;
 
-    const result = await model.generateContent([systemPrompt, context, prompt]);
-    const response = await result.response;
-    const text = response.text();
+    const { text } = await generateText(
+      [systemPrompt, context, prompt],
+      "Script generation"
+    );
     
     return extractJsonObject(text, "script generation response");
   },
 
   async generateShotList(projectState = {}) {
-    const model = getModel();
     const transcript = projectState.analysis?.lyrics || projectState.script?.lyrics_timeline || [];
     const script = projectState.script || {};
     const context = {
@@ -167,9 +184,12 @@ The shot list must treat these as unavoidable inputs:
 Create a coherent shot list that covers the full song in chronological order. Each shot must attach to a script scene and a vocal/timestamp cue when timing exists. Use only provided character and location names unless no usable names exist. Do not invent random cast or sets.
 
 Shot count guidance:
-- Use the transcript and script pacing. Most shots should be 3 to 7 seconds.
-- Use shorter shots for dense word/vocal moments and longer shots for instrumental or atmospheric beats.
+- Do not mirror the script scene count. A single script scene can and should become multiple smaller shots when that improves image/video quality.
+- Every shot duration must be exactly one of these Veo-friendly lengths: 4, 6, or 8 seconds. Never create a shot longer than 8 seconds.
+- Split any script scene, lyric phrase, or instrumental beat longer than 8 seconds into multiple shots with fresh prompts and distinct camera/action beats.
+- Use 4 second shots for dense word/vocal moments, 6 second shots for standard narrative beats, and 8 second shots only for atmospheric or establishing beats.
 - Avoid gaps and overlapping time ranges when timestamps are available.
+- When timing exists, set end = start + duration. If exact lyrical boundaries do not fit perfectly, prefer a clean 4/6/8 second shot over preserving the original scene length.
 
 Return STRICTLY one JSON object:
 {
@@ -179,8 +199,8 @@ Return STRICTLY one JSON object:
       "n": "Short production shot title",
       "p": "Detailed cinematic image/video prompt with exact characters, exact location, action, lighting, lens/framing, mood, and continuity details",
       "start": 0.0,
-      "end": 4.2,
-      "duration": 4.2,
+      "end": 4.0,
+      "duration": 4,
       "lyrics": "The lyric or vocal fragment driving this shot",
       "words": [{ "word": "lyric", "start": 0.0, "end": 0.4 }],
       "characters": ["Exact Character Name"],
@@ -195,23 +215,24 @@ Return STRICTLY one JSON object:
 }
 `;
 
-    const result = await model.generateContent([
-      systemPrompt,
-      `PROJECT CONTEXT JSON:\n${JSON.stringify(context)}`
-    ]);
-    const response = await result.response;
-    const text = response.text();
+    const { text } = await generateText(
+      [
+        systemPrompt,
+        `PROJECT CONTEXT JSON:\n${JSON.stringify(context)}`
+      ],
+      "Shot list generation"
+    );
     return extractJsonObject(text, "shot list generation response");
   },
 
   // ... (keep generateCharacters for backward compatibility or individual edits)
   async generateCharacters(scriptJson) {
-    const model = getModel();
     // ... logic remains similar but updated model
     const systemPrompt = `Analyze the script and define consistent visual characters. Return ONLY a JSON array of character objects: [{ "name": "Name", "visual_prompt": "description" }]`;
-    const result = await model.generateContent([systemPrompt, JSON.stringify(scriptJson)]);
-    const response = await result.response;
-    const text = response.text();
+    const { text } = await generateText(
+      [systemPrompt, JSON.stringify(scriptJson)],
+      "Character JSON generation"
+    );
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     return jsonMatch ? JSON.parse(jsonMatch[0]) : [];
   }

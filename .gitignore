@@ -60,3 +60,17 @@ Desktop.ini
 *.log
 *.sqlite
 *.db
+
+# Python
+**/__pycache__/
+**/venv/
+.env*
+!.env.example
+
+# Project specific
+/graphify-out/
+/scratch/
+pass.txt
+concept_ui.pdf
+music_video_app_full_shell.html
+test-gemini-api.js

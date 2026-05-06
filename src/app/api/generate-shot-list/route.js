@@ -1,5 +1,5 @@
 import { geminiAgent } from "@/utils/geminiAgents";
-import { normalizeShotList } from "@/utils/shotList";
+import { normalizeShotListForVeo } from "@/utils/shotList";
 import { NextResponse } from "next/server";
 
 export async function POST(req) {
@@ -11,7 +11,7 @@ export async function POST(req) {
     }
 
     const result = await geminiAgent.generateShotList(projectState);
-    const shots = normalizeShotList(result);
+    const shots = normalizeShotListForVeo(result);
 
     if (!shots.length) {
       return NextResponse.json({ error: "Gemini returned an empty shot list" }, { status: 502 });

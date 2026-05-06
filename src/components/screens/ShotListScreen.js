@@ -10,7 +10,7 @@ import {
   SlidersHorizontal,
   Trash2,
 } from 'lucide-react';
-import { getShotTimingLabel, normalizeShot, normalizeShotList } from '@/utils/shotList';
+import { getShotTimingLabel, normalizeShot, normalizeShotList, snapToVeoDuration } from '@/utils/shotList';
 
 const inputStyle = {
   width: '100%',
@@ -110,7 +110,7 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
     const nextShot = {
       n: `Shot ${shots.length + 1}`,
       p: '',
-      duration: 5,
+      duration: 6,
       characters: [],
       locations: [],
       movement: 'static',
@@ -131,14 +131,14 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
     const { charactersText, locationsText, ...draftFields } = editDraft;
     const start = editDraft.start === '' ? undefined : Number(editDraft.start);
     const end = editDraft.end === '' ? undefined : Number(editDraft.end);
-    const duration = editDraft.duration === '' ? 5 : Number(editDraft.duration);
+    const duration = snapToVeoDuration(editDraft.duration === '' ? 6 : Number(editDraft.duration));
     const next = [...shots];
     next[editingIndex] = normalizeShot({
       ...shots[editingIndex],
       ...draftFields,
       start: Number.isFinite(start) ? start : undefined,
-      end: Number.isFinite(end) ? end : undefined,
-      duration: Number.isFinite(duration) ? duration : 5,
+      end: Number.isFinite(start) ? Number((start + duration).toFixed(2)) : (Number.isFinite(end) ? end : undefined),
+      duration: Number.isFinite(duration) ? duration : 6,
       characters: splitTags(charactersText || ''),
       locations: splitTags(locationsText || ''),
     }, editingIndex);

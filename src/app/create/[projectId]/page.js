@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback, useMemo } from 'react';
 import { createClient } from '@/utils/supabase';
 import { useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
@@ -17,26 +17,18 @@ import AssembleScreen from '@/components/screens/AssembleScreen';
 
 export default function CreateProject({ params }) {
   const { projectId } = use(params);
-  const [activeScreen, setActiveScreen] = useState(1);
+  const [activeScreen, setActiveScreen] = useState(() => {
+    if (typeof window === 'undefined') return 1;
+    return Number(localStorage.getItem('activeScreen')) || 1;
+  });
   const [projectData, setProjectData] = useState(null);
   const [profile, setProfile] = useState(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
-  useEffect(() => {
-    if (projectId) {
-      fetchData(projectId);
-    }
-    
-    const savedScreen = localStorage.getItem('activeScreen');
-    if (savedScreen) {
-      setActiveScreen(Number(savedScreen));
-    }
-  }, [projectId]);
-
-  const fetchData = async (id) => {
+  const fetchData = useCallback(async (id) => {
     // Fetch project
     const { data: project, error: projectError } = await supabase
       .from('projects')
@@ -64,7 +56,14 @@ export default function CreateProject({ params }) {
     }
 
     setIsInitialLoading(false);
-  };
+  }, [router, supabase]);
+
+  useEffect(() => {
+    if (projectId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchData(projectId);
+    }
+  }, [fetchData, projectId]);
 
   const goTo = (n) => {
     setActiveScreen(n);
@@ -94,9 +93,10 @@ export default function CreateProject({ params }) {
   const userName = profile?.full_name?.split(' ')[0]?.toUpperCase() || 'USER';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
       <TopBar activeScreen={activeScreen} onNavigate={goTo} userName={userName} projectName={projectData?.title} />
 
+      <main className="workflow-shell">
       {activeScreen === 1 && <LandingScreen onNavigate={goTo} userName={userName} />}
       {activeScreen === 2 && (
         <UploadAudioScreen 
@@ -171,6 +171,7 @@ export default function CreateProject({ params }) {
           projectData={projectData?.project_state}
         />
       )}
+      </main>
     </div>
   );
 }

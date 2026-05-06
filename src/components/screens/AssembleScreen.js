@@ -310,7 +310,7 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
   const playheadPosition = currentTime * zoom + TIMELINE_PADDING;
 
   return (
-    <div className="screen active" id="s8" style={{ height: 'calc(100vh - 162px)', overflow: 'hidden', flexDirection: 'row', width: '100%', minHeight: 0 }}>
+    <div className="screen active" id="s8" style={{ height: '100%', overflow: 'hidden', flexDirection: 'row', width: '100%', minHeight: 0 }}>
       {audioUrl && (
         <audio
           ref={audioRef}
@@ -320,8 +320,8 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
         />
       )}
 
-      <div style={{ width: '260px', height: '100%', flexShrink: 0, background: 'var(--card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ width: '260px', height: '100%', flexShrink: 0, background: 'var(--card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>
             Generated Clips
           </div>
@@ -330,11 +330,12 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', alignContent: 'start' }}>
+        <div className="visible-scrollbar editor-clip-library">
           {shots.map((shot, index) => {
             const isReady = Boolean(shot.video_url);
             return (
               <div
+                className="editor-clip-card"
                 key={`${shot.n}-${index}`}
                 draggable={isReady}
                 onDragStart={(event) => handleLibraryDragStart(event, index)}
@@ -347,14 +348,17 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
                 }}
                 style={{
                   border: `1px solid ${isReady ? 'var(--border-mid)' : 'var(--border)'}`,
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   overflow: 'hidden',
                   background: 'var(--surface)',
                   cursor: isReady ? 'grab' : 'default',
                   opacity: isReady ? 1 : 0.58,
+                  position: 'relative',
+                  boxShadow: '0 8px 22px rgba(0,0,0,0.24)',
                 }}
               >
-                <div style={{ aspectRatio: '16/9', position: 'relative', background: '#050505' }}>
+                <div className="editor-clip-frame">
+                  <div style={{ position: 'absolute', inset: 0 }}>
                   {shot.video_url ? (
                     <video
                       src={shot.video_url}
@@ -368,18 +372,22 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
                   ) : shot.image_url ? (
                     <img src={shot.image_url} alt={shot.n || `Shot ${index + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   ) : (
-                    <canvas ref={(element) => (libraryCanvasRefs.current[index] = element)} width={160} height={90} style={{ width: '100%', height: '100%', display: 'block' }} />
+                    <canvas ref={(element) => (libraryCanvasRefs.current[index] = element)} width={320} height={180} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   )}
-                  <div style={{ position: 'absolute', left: '6px', bottom: '5px', fontSize: '9px', fontWeight: 800, color: isReady ? '#0A0A0A' : 'var(--text-muted)', background: isReady ? 'var(--teal)' : 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'var(--font-display)' }}>
-                    {isReady ? 'READY' : 'MISSING'}
                   </div>
-                </div>
-                <div style={{ padding: '7px 8px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--dark)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {index + 1}. {shot.n || `Shot ${index + 1}`}
-                  </div>
-                  <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '3px' }}>
-                    {formatSeconds(shotDuration(shot))}
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 42%, rgba(0,0,0,0.76) 100%)', pointerEvents: 'none' }} />
+                  <div style={{ position: 'absolute', left: '8px', right: '8px', bottom: '7px', minWidth: 0 }}>
+                    <div style={{ fontSize: '10px', fontWeight: 800, color: '#fff', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 1px 8px rgba(0,0,0,0.78)' }}>
+                      {index + 1}. {shot.n || `Shot ${index + 1}`}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                      <span style={{ fontSize: '8px', fontWeight: 900, color: isReady ? '#071012' : 'rgba(255,255,255,0.68)', background: isReady ? 'var(--teal)' : 'rgba(0,0,0,0.58)', padding: '2px 5px', borderRadius: '4px', fontFamily: 'var(--font-display)' }}>
+                        {isReady ? 'READY' : 'MISSING'}
+                      </span>
+                      <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.68)' }}>
+                        {formatSeconds(shotDuration(shot))}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

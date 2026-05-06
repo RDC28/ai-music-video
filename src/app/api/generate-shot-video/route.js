@@ -4,6 +4,11 @@ import { mkdir, readFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
 import { createAdminClient } from "@/utils/supabase-admin";
+import {
+  getFallbackModels,
+  runWithModelFallback,
+  VIDEO_MODEL_FALLBACKS,
+} from "@/utils/googleModelFallbacks";
 import { normalizeShot } from "@/utils/shotList";
 
 export const runtime = "nodejs";
@@ -67,6 +72,12 @@ function serializeError(error) {
     status: getErrorStatus(error) || null,
     retryable: isRetryableError(error),
   };
+}
+
+function shouldFallbackVideoModel(error) {
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("still processing")) return false;
+  return isRetryableError(error);
 }
 
 async function withTimeout(promiseFactory, timeoutMs, label) {
@@ -221,7 +232,9 @@ Rules:
 2. Preserve continuity with the named characters, locations, source image, wardrobe, lighting, lens language, and emotional arc.
 3. Keep camera motion believable and editorially useful. Avoid morphing faces, extra limbs, warped hands, flicker, and impossible geometry.
 4. Do not invent extra main characters unless the shot explicitly asks for background extras.
-5. Make the clip ready to cut into a music video: clear first frame, readable action, stable composition, cinematic depth, and consistent color grade.
+5. GENERATE SILENT VIDEO. Do not include sound, ambient noise, dialogue, or music. The video will be layered over a separate audio track.
+6. AVOID: text, subtitles, captions, logo, watermark, title card, UI, split screen, deformed hands, warped face, extra limbs, face morphing, flicker, or bad anatomy.
+7. Make the clip ready to cut into a music video: clear first frame, readable action, stable composition, cinematic depth, and consistent color grade.
 `;
 }
 
@@ -340,7 +353,19 @@ async function downloadGeneratedVideo(generatedVideo, tmpPath) {
   }
 
   if (video.uri && /^https?:\/\//i.test(video.uri)) {
-    const response = await withTimeout(() => fetch(video.uri), 60000, "Generated video download");
+    const isGoogleApi = video.uri.includes("generativelanguage.googleapis.com") || video.uri.includes("googleapis.com");
+    const authenticatedUrl = isGoogleApi && !video.uri.includes("key=")
+      ? `${video.uri}${video.uri.includes("?") ? "&" : "?"}key=${process.env.GOOGLE_AI_API_KEY}`
+      : video.uri;
+
+    const response = await withTimeout(
+      () => fetch(authenticatedUrl, {
+        headers: isGoogleApi ? { "x-goog-api-key": process.env.GOOGLE_AI_API_KEY } : {},
+      }),
+      60000,
+      "Generated video download"
+    );
+
     if (!response.ok) {
       const err = new Error(`Generated video download failed with ${response.status}`);
       err.status = response.status;
@@ -401,39 +426,44 @@ export async function POST(req) {
       usedSourceImage: sourceImageWasUsed,
     });
 
-    const request = {
-      model: compact(model, 120) || DEFAULT_VIDEO_MODEL,
-      prompt,
-      config: {
-        numberOfVideos: 1,
-        durationSeconds: normalizeDuration(durationSeconds || normalizedShot.duration),
-        aspectRatio: normalizeAspectRatio(aspectRatio),
-        resolution: normalizeResolution(resolution),
-        personGeneration: "allow_adult",
-        negativePrompt: "text, subtitles, captions, logo, watermark, title card, UI, split screen, deformed hands, warped face, extra limbs, face morphing, flicker, bad anatomy",
-        enhancePrompt: true,
-        generateAudio: Boolean(generateAudio),
-      },
+    const requestConfig = {
+      numberOfVideos: 1,
+      durationSeconds: normalizeDuration(durationSeconds || normalizedShot.duration),
+      aspectRatio: normalizeAspectRatio(aspectRatio),
+      resolution: normalizeResolution(resolution),
     };
 
-    if (sourceImage) request.image = sourceImage;
+    const videoGeneration = await runWithModelFallback({
+      label: `Shot ${shotIndex + 1} video generation`,
+      models: getFallbackModels(compact(model, 120) || DEFAULT_VIDEO_MODEL, VIDEO_MODEL_FALLBACKS),
+      shouldFallback: shouldFallbackVideoModel,
+      operation: async (modelName) => {
+        const request = {
+          model: modelName,
+          prompt,
+          config: requestConfig,
+        };
+        if (sourceImage) request.image = sourceImage;
 
-    const submittedOperation = await withRetry(
-      () => withTimeout(
-        () => ai.models.generateVideos(request),
-        VIDEO_SUBMIT_TIMEOUT_MS,
-        "Video model submission"
-      ),
-      {
-        label: `Shot ${shotIndex + 1} video submission`,
-        attempts: MAX_SUBMIT_RETRIES,
-        baseDelayMs: 1800,
-      }
-    );
-    if (request.image?.imageBytes) request.image.imageBytes = undefined;
+        const submittedOperation = await withRetry(
+          () => withTimeout(
+            () => ai.models.generateVideos(request),
+            VIDEO_SUBMIT_TIMEOUT_MS,
+            `Video model submission (${modelName})`
+          ),
+          {
+            label: `Shot ${shotIndex + 1} video submission (${modelName})`,
+            attempts: MAX_SUBMIT_RETRIES,
+            baseDelayMs: 1800,
+          }
+        );
+
+        return pollVideoOperation(submittedOperation);
+      },
+    });
     sourceImage = null;
 
-    const completedOperation = await pollVideoOperation(submittedOperation);
+    const completedOperation = videoGeneration.result;
     const generatedVideo = completedOperation.response?.generatedVideos?.[0];
     const mimeType = generatedVideo?.video?.mimeType || "video/mp4";
     const extension = videoExtension(mimeType);
@@ -491,8 +521,8 @@ export async function POST(req) {
         video_url: publicUrl,
         video_path: storagePath,
         video_prompt: compact(promptOverride || normalizedShot.video_prompt || normalizedShot.p, 2000),
-        video_model: request.model,
-        video_duration_seconds: request.config.durationSeconds,
+        video_model: videoGeneration.model,
+        video_duration_seconds: requestConfig.durationSeconds,
         video_operation: completedOperation.name || null,
         video_source_image_used: sourceImageWasUsed,
         video_generated_at: new Date().toISOString(),

@@ -234,6 +234,15 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   const selectedShot = editModalIndex !== null ? shots[editModalIndex] : null;
 
   useEffect(() => {
+    const list = normalizeShotList(Array.isArray(projectData) ? projectData : projectData?.shot_list || []);
+    if (JSON.stringify(list) !== JSON.stringify(shots)) {
+      // Keep local generation state aligned when the saved project shot list changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShots(list);
+    }
+  }, [projectData, shots]);
+
+  useEffect(() => {
     if (!isActive) return;
     const timer = setTimeout(() => {
       canvasRefs.current.forEach((canvas, i) => {
@@ -284,7 +293,6 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
         durationSeconds: Number(durationDraft) || undefined,
         aspectRatio: '16:9',
         resolution: '720p',
-        generateAudio: false,
       }),
     });
 
@@ -324,6 +332,13 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
 
     for (const index of indices) {
       try {
+        // Respect RPM limit (approx 2/min for Veo 3.1) by adding a small throttle between shots
+        if (successCount > 0 || failureCount > 0) {
+          setQueueSummary(`${label}: Throttling for 35s to respect API rate limits...`);
+          await sleep(35000);
+        }
+
+        setQueueSummary(`${label}: Generating shot ${index + 1}...`);
         nextShots = await requestShotVideo(index, promptOverrides[index], nextShots);
         successCount += 1;
       } catch (error) {
@@ -457,7 +472,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   const failedCount = shots.filter(shot => !shot.video_url && shot.video_error).length;
 
   return (
-    <div className="screen active" id="s7" style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+    <div className="screen active" id="s7" style={{ flexDirection: 'row', alignItems: 'flex-start', height: '100%', minHeight: 0, overflow: 'hidden' }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
         <div style={{
@@ -478,6 +493,14 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 ? `${generatedCount}/${shots.length} generated · ${remainingCount} remaining${failedCount ? ` · ${failedCount} failed` : ''}`
                 : 'Generate and review AI video clips for each shot'}
             </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+              <span style={{ fontSize: '10px', background: 'rgba(0,184,212,0.12)', color: 'var(--teal)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, border: '1px solid rgba(0,184,212,0.2)' }}>
+                VEO 3.1
+              </span>
+              <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid var(--border)' }}>
+                MUTED FOR AUDIO SYNC
+              </span>
+            </div>
             {queueSummary && (
               <p style={{ fontSize: '11px', color: 'rgba(234,234,234,0.58)', marginTop: '5px' }}>
                 {queueSummary}
@@ -531,46 +554,31 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
           </div>
         </div>
 
-        <div id="vidList" style={{ flex: 1, overflowY: 'auto' }}>
+        <div id="vidList" className="visible-scrollbar video-gallery-grid" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px 28px 112px', display: 'grid', gap: '18px', alignContent: 'start', scrollbarGutter: 'stable' }}>
           {shots.length > 0 ? shots.map((shot, i) => (
             <div
+              className="video-gallery-card"
               key={`${shot.n}-${i}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => openEditor(i)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  openEditor(i);
+                }
+              }}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '16px',
-                padding: '16px 28px',
-                borderBottom: '1px solid var(--border)',
-                background: editModalIndex === i ? 'rgba(0,184,212,0.04)' : 'transparent',
-                borderLeft: `3px solid ${editModalIndex === i ? 'var(--teal)' : 'transparent'}`,
-                transition: 'all 0.2s',
+                border: `1px solid ${editModalIndex === i ? 'rgba(0,229,255,0.58)' : 'var(--border-mid)'}`,
+                borderRadius: '14px',
+                background: 'var(--surface)',
+                overflow: 'hidden',
+                cursor: 'pointer',
+                boxShadow: editModalIndex === i ? '0 0 0 1px rgba(0,229,255,0.22), 0 16px 48px rgba(0,184,212,0.12)' : '0 12px 40px rgba(0,0,0,0.22)',
+                transition: 'border-color 0.18s, box-shadow 0.18s, transform 0.18s',
               }}
             >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '13px',
-                  fontWeight: 700,
-                  color: editModalIndex === i ? 'var(--teal)' : 'var(--dark)',
-                  marginBottom: '4px',
-                  letterSpacing: '-0.01em',
-                }}>
-                  {i + 1}. {shot.n || shot.title || `Shot ${i + 1}`}
-                </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  &quot;{(shot.video_prompt || shot.p || shot.prompt || 'No prompt available').substring(0, 150)}...&quot;
-                </div>
-                {!shot.video_url && shot.video_error && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '7px', color: '#ff8a8a', fontSize: '11px' }}>
-                    <AlertTriangle size={13} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      Failed after {shot.video_error.attempts || 1} attempt{shot.video_error.attempts === 1 ? '' : 's'}: {shot.video_error.message}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', flexShrink: 0, width: '240px', height: '140px', background: 'var(--surface)', position: 'relative' }}>
+              <div className="video-gallery-frame">
                 {shot.video_url ? (
                   <video
                     src={shot.video_url}
@@ -585,42 +593,58 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 ) : (
                   <canvas
                     ref={(el) => (canvasRefs.current[i] = el)}
-                    width={240}
-                    height={140}
-                    style={{ display: 'block' }}
+                    width={640}
+                    height={360}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   />
                 )}
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                  <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'rgba(0,0,0,0.54)', border: '1px solid rgba(255,255,255,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                    <Play size={14} fill="white" />
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.16) 0%, transparent 42%, rgba(0,0,0,0.76) 100%)', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', left: '12px', right: '12px', bottom: '10px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 1px 10px rgba(0,0,0,0.8)' }}>
+                      {i + 1}. {shot.n || shot.title || `Shot ${i + 1}`}
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', marginTop: '2px' }}>
+                      {shot.video_url ? 'Video ready' : shot.video_error ? 'Needs retry' : 'Ready to generate'}
+                    </div>
+                  </div>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(0,0,0,0.56)', border: '1px solid rgba(255,255,255,0.24)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
+                    <Play size={12} fill="white" />
                   </div>
                 </div>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openEditor(i);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: '10px',
+                    right: '10px',
+                    fontSize: '10px',
+                    padding: '5px 9px',
+                    borderColor: editModalIndex === i ? 'rgba(0,229,255,0.78)' : 'rgba(255,255,255,0.22)',
+                    background: 'rgba(0,0,0,0.58)',
+                    color: '#fff',
+                  }}
+                >
+                  {editModalIndex === i ? 'Editing' : shot.video_url ? 'Edit' : shot.video_error ? 'Retry' : 'Generate'}
+                </button>
                 {generatingIndex === i && (
                   <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.62)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--orange)', fontSize: '11px', fontWeight: 700 }}>
+                    <Loader2 size={15} style={{ animation: 'spin 1s linear infinite', marginRight: '8px' }} />
                     Generating...
                   </div>
                 )}
                 {!shot.video_url && shot.video_error && generatingIndex !== i && (
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff8a8a', fontSize: '11px', fontWeight: 700 }}>
-                    Needs retry
+                  <div style={{ position: 'absolute', left: '10px', top: '10px', display: 'flex', alignItems: 'center', gap: '5px', color: '#ffb0b0', background: 'rgba(82,0,0,0.68)', border: '1px solid rgba(255,138,138,0.28)', borderRadius: '999px', padding: '5px 8px', fontSize: '10px', fontWeight: 800 }}>
+                    <AlertTriangle size={11} />
+                    Retry
                   </div>
                 )}
               </div>
-
-              <button
-                className="btn-outline"
-                style={{
-                  fontSize: '11px',
-                  padding: '6px 14px',
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                  opacity: editModalIndex === i ? 0.4 : 1,
-                  cursor: editModalIndex === i ? 'default' : 'pointer',
-                }}
-                onClick={() => openEditor(i)}
-              >
-                {editModalIndex === i ? 'Editing...' : shot.video_url ? 'Edit & Re-generate' : shot.video_error ? 'Retry Generate' : 'Edit & Generate'}
-              </button>
             </div>
           )) : (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', gap: '12px' }}>
@@ -775,6 +799,9 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                   <option value="6">6s</option>
                   <option value="8">8s</option>
                 </select>
+              </div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic' }}>
+                Note: Veo 3.1 generates 4s, 6s, or 8s clips. Audio is disabled by default to sync with your main track.
               </div>
 
               <button

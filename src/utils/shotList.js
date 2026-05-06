@@ -14,6 +14,51 @@ const toNumber = (value, fallback = null) => {
   return fallback;
 };
 
+export const VEO_SHOT_DURATIONS = [4, 6, 8];
+
+export const snapToVeoDuration = (value, fallback = 6) => {
+  const requested = toNumber(value, fallback);
+  return VEO_SHOT_DURATIONS.reduce((best, option) => (
+    Math.abs(option - requested) < Math.abs(best - requested) ? option : best
+  ), fallback);
+};
+
+const partitionToVeoDurations = (value) => {
+  const requested = Math.max(toNumber(value, 6), 4);
+  if (requested <= 8) return [snapToVeoDuration(requested)];
+
+  const maxSegments = Math.ceil(requested / 4) + 2;
+  let best = null;
+
+  const visit = (parts, total) => {
+    if (parts.length > maxSegments) return;
+    if (total >= requested - 0.01) {
+      const score = {
+        overshoot: Math.max(0, total - requested),
+        distance: Math.abs(total - requested),
+        segments: parts.length,
+      };
+      if (
+        !best ||
+        score.distance < best.score.distance ||
+        (score.distance === best.score.distance && score.overshoot < best.score.overshoot) ||
+        (score.distance === best.score.distance && score.overshoot === best.score.overshoot && score.segments < best.score.segments)
+      ) {
+        best = { parts, score };
+      }
+      return;
+    }
+
+    VEO_SHOT_DURATIONS
+      .slice()
+      .reverse()
+      .forEach(duration => visit([...parts, duration], total + duration));
+  };
+
+  visit([], 0);
+  return best?.parts?.length ? best.parts : [8];
+};
+
 const toStringList = (value) => {
   if (!value) return [];
   if (Array.isArray(value)) {
@@ -131,6 +176,40 @@ export function normalizeShotList(input) {
   return raw
     .map((shot, index) => normalizeShot(shot, index))
     .filter(shot => shot.n || shot.p);
+}
+
+export function normalizeShotListForVeo(input) {
+  const shots = normalizeShotList(input);
+  let cursor = 0;
+
+  return shots.flatMap((shot, index) => {
+    const sourceStart = toNumber(shot.start, cursor);
+    const requestedDuration = toNumber(
+      shot.duration,
+      toNumber(shot.end) !== null && toNumber(shot.start) !== null
+        ? toNumber(shot.end) - toNumber(shot.start)
+        : 6
+    );
+    const durations = partitionToVeoDurations(requestedDuration);
+    let localStart = sourceStart;
+
+    const pieces = durations.map((duration, partIndex) => {
+      const isSplit = durations.length > 1;
+      const nextShot = normalizeShot({
+        ...shot,
+        n: isSplit ? `${shot.n} ${partIndex + 1}` : shot.n,
+        start: Number(localStart.toFixed(2)),
+        end: Number((localStart + duration).toFixed(2)),
+        duration,
+        source_scene: shot.source_scene || shot.n,
+      }, index + partIndex);
+      localStart += duration;
+      return nextShot;
+    });
+
+    cursor = localStart;
+    return pieces;
+  });
 }
 
 export function getShotTimingLabel(shot) {

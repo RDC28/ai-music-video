@@ -1,6 +1,11 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/utils/supabase-admin";
+import {
+  getFallbackModels,
+  IMAGE_MODEL_FALLBACKS,
+  runWithModelFallback,
+} from "@/utils/googleModelFallbacks";
 import { normalizeShot } from "@/utils/shotList";
 
 export const runtime = "nodejs";
@@ -178,39 +183,44 @@ export async function POST(req) {
     }
 
     const normalizedShot = normalizeShot(shot, shotIndex);
-    const model = genAI.getGenerativeModel({ model: "gemini-3-pro-image-preview" });
     const prompt = buildPrompt({ shot: normalizedShot, projectState, promptOverride });
 
-    let generatedImage = await withRetry(async () => {
-      const result = await withTimeout(
-        () => model.generateContent({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { responseModalities: ["IMAGE"] },
-        }),
-        IMAGE_GENERATION_TIMEOUT_MS,
-        "Image model request"
-      );
-
-      const response = await result.response;
-      const imagePart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
-      const generatedBase64 = imagePart?.inlineData?.data;
-
-      if (!generatedBase64) {
-        const reason = response.candidates?.[0]?.finishReason;
-        const err = new Error(reason ? `Image model returned no image data (${reason})` : "Image model returned no image data");
-        err.retryable = reason !== "SAFETY";
-        throw err;
-      }
-
-      return {
-        imageBase64: generatedBase64,
-        mimeType: imagePart.inlineData.mimeType || "image/png",
-      };
-    }, {
+    const imageGeneration = await runWithModelFallback({
       label: `Shot ${shotIndex + 1} image generation`,
-      attempts: MAX_RETRIES,
-      baseDelayMs: 1100,
+      models: getFallbackModels(process.env.GOOGLE_IMAGE_MODEL, IMAGE_MODEL_FALLBACKS),
+      operation: async (modelName) => withRetry(async () => {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await withTimeout(
+          () => model.generateContent({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { responseModalities: ["IMAGE"] },
+          }),
+          IMAGE_GENERATION_TIMEOUT_MS,
+          `Image model request (${modelName})`
+        );
+
+        const response = await result.response;
+        const imagePart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
+        const generatedBase64 = imagePart?.inlineData?.data;
+
+        if (!generatedBase64) {
+          const reason = response.candidates?.[0]?.finishReason;
+          const err = new Error(reason ? `Image model returned no image data (${reason})` : "Image model returned no image data");
+          err.retryable = reason !== "SAFETY";
+          throw err;
+        }
+
+        return {
+          imageBase64: generatedBase64,
+          mimeType: imagePart.inlineData.mimeType || "image/png",
+        };
+      }, {
+        label: `Shot ${shotIndex + 1} image generation (${modelName})`,
+        attempts: MAX_RETRIES,
+        baseDelayMs: 1100,
+      }),
     });
+    let generatedImage = imageGeneration.result;
 
     const extension = generatedImage.mimeType.includes("jpeg") || generatedImage.mimeType.includes("jpg") ? "jpg" : "png";
     const storagePath = `${projectId}/images/shot-${String(shotIndex + 1).padStart(3, "0")}-${Date.now()}.${extension}`;
@@ -249,6 +259,7 @@ export async function POST(req) {
         image_url: publicUrl,
         image_path: storagePath,
         image_prompt: compact(promptOverride || normalizedShot.p, 1800),
+        image_model: imageGeneration.model,
         image_generated_at: new Date().toISOString(),
         image_error: null,
       },

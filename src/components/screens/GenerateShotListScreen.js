@@ -12,7 +12,7 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
-import { countTranscriptWords, getShotTimingLabel, normalizeShotList } from '@/utils/shotList';
+import { countTranscriptWords, getShotTimingLabel, normalizeShotListForVeo } from '@/utils/shotList';
 
 const panelStyle = {
   background: 'var(--card)',
@@ -40,12 +40,12 @@ function parseLooseShotLines(text) {
       const parts = cleaned.split(/\s[-:]\s/);
       const title = parts.length > 1 ? parts[0].trim() : `Shot ${index + 1}`;
       const prompt = parts.length > 1 ? parts.slice(1).join(' - ').trim() : cleaned;
-      return { n: title || `Shot ${index + 1}`, p: prompt, duration: 5 };
+      return { n: title || `Shot ${index + 1}`, p: prompt, duration: 6 };
     });
 }
 
 export default function GenerateShotListScreen({ onNavigate, projectData, onDataUpdate }) {
-  const initialShots = normalizeShotList(projectData?.shot_list || []);
+  const initialShots = normalizeShotListForVeo(projectData?.shot_list || []);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [previewShots, setPreviewShots] = useState(() => initialShots);
@@ -112,7 +112,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
       parsed = parseLooseShotLines(text);
     }
 
-    const shots = normalizeShotList(parsed);
+    const shots = normalizeShotListForVeo(parsed);
     if (!shots.length) {
       window.alert("Could not find shots. Upload JSON with shots/shot_list, or paste one shot per line.");
       return;
@@ -142,7 +142,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
       const result = await response.json();
       if (!response.ok || result.error) throw new Error(result.error || 'Shot list generation failed');
 
-      const shots = normalizeShotList(result.shots);
+      const shots = normalizeShotListForVeo(result.shots);
       if (!shots.length) throw new Error('AI returned an empty shot list');
 
       setPreviewShots(shots);
@@ -192,6 +192,8 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
           timed_words: wordCount,
           characters: characters.length,
           locations: locations.length,
+          veo_durations: [4, 6, 8],
+          max_shot_duration: 8,
         },
       },
       current_step: 7,

@@ -1,8 +1,15 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createAdminClient } from "@/utils/supabase-admin";
+import {
+  getFallbackModels,
+  runWithModelFallback,
+  TRANSCRIPT_MODEL_FALLBACKS,
+} from "@/utils/googleModelFallbacks";
 import { NextResponse } from "next/server";
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
+const genAI = process.env.GOOGLE_AI_API_KEY
+  ? new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
+  : null;
 
 export async function POST(req) {
   try {
@@ -10,6 +17,10 @@ export async function POST(req) {
 
     if (!projectId || !audioUrl) {
       return NextResponse.json({ error: "Missing projectId or audioUrl" }, { status: 400 });
+    }
+
+    if (!genAI) {
+      return NextResponse.json({ error: "GOOGLE_AI_API_KEY is not configured" }, { status: 500 });
     }
 
     console.log(`Starting analysis for project ${projectId} with audio ${audioUrl}`);
@@ -20,11 +31,6 @@ export async function POST(req) {
     
     const audioBuffer = Buffer.from(await audioResp.arrayBuffer());
     const mimeType = audioResp.headers.get("content-type") || "audio/mpeg";
-
-    // 2. Initialize Gemini 2.5 Flash
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash"
-    });
 
     const prompt = `
       Analyze this audio track (it's a song/music piece). 
@@ -57,18 +63,23 @@ export async function POST(req) {
       }
     `;
 
-    // 3. Generate Content
     console.log("Sending to Gemini...");
-    const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          data: audioBuffer.toString("base64"),
-          mimeType: mimeType
-        }
-      }
-    ]);
-
+    const { result, model } = await runWithModelFallback({
+      label: "Transcript/audio analysis",
+      models: getFallbackModels(process.env.GOOGLE_TRANSCRIPT_MODEL, TRANSCRIPT_MODEL_FALLBACKS),
+      operation: async (modelName) => {
+        const activeModel = genAI.getGenerativeModel({ model: modelName });
+        return activeModel.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: audioBuffer.toString("base64"),
+              mimeType: mimeType
+            }
+          }
+        ]);
+      },
+    });
     const response = await result.response;
     const text = response.text();
     
@@ -81,7 +92,7 @@ export async function POST(req) {
       throw new Error("Could not find JSON in Gemini response: " + text);
     }
 
-    console.log("Analysis complete:", analysis.theme);
+    console.log(`Analysis complete using ${model}:`, analysis.theme);
 
     // 4. Update the project in Supabase
     const supabase = createAdminClient();
@@ -97,7 +108,10 @@ export async function POST(req) {
 
     const newState = {
       ...project.project_state,
-      analysis: analysis,
+      analysis: {
+        ...analysis,
+        analysis_model: model,
+      },
       current_step: 2 // Move to next step logically
     };
 
@@ -108,7 +122,7 @@ export async function POST(req) {
 
     if (updateError) throw updateError;
 
-    return NextResponse.json({ success: true, analysis });
+    return NextResponse.json({ success: true, analysis: newState.analysis });
 
   } catch (error) {
     console.error("Analysis API Error:", error);

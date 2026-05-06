@@ -43,13 +43,147 @@ body {
 }
 
 /* ===== SCREEN BASE ===== */
+.workflow-shell {
+  flex: 1;
+  min-height: 0;
+  height: calc(100dvh - 52px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .screen {
   display: none;
   flex: 1;
   flex-direction: column;
   animation: fadeIn 0.25s ease;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 .screen.active { display: flex; }
+
+.workflow-shell > .screen.active {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.workflow-scroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.visible-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 229, 255, 0.42) rgba(255, 255, 255, 0.04);
+}
+
+.visible-scrollbar::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+  height: 8px;
+}
+
+.visible-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+
+.visible-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.38);
+  border-radius: 999px;
+}
+
+.visible-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 229, 255, 0.56);
+}
+
+.video-gallery-grid {
+  grid-template-columns: repeat(2, minmax(280px, 560px));
+  justify-content: center;
+  align-items: start;
+}
+
+.video-gallery-card {
+  width: 100%;
+  max-width: 560px;
+  min-height: 315px;
+}
+
+.video-gallery-frame {
+  position: relative;
+  width: 100%;
+  height: 315px !important;
+  min-height: 315px !important;
+  aspect-ratio: 16 / 9;
+  background: #050505;
+  overflow: hidden;
+}
+
+.editor-clip-library {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 12px 96px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-content: start;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.editor-clip-card {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 64px;
+}
+
+.editor-clip-frame {
+  position: relative;
+  width: 100%;
+  height: 64px !important;
+  min-height: 64px !important;
+  aspect-ratio: 16 / 9;
+  background: #050505;
+  overflow: hidden;
+}
+
+@media (max-width: 980px) {
+  .video-gallery-grid {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .video-gallery-card {
+    max-width: 640px;
+  }
+
+  .video-gallery-frame {
+    height: min(56.25vw, 360px) !important;
+    min-height: 180px !important;
+  }
+}
+
+@media (max-height: 760px) {
+  .editor-clip-card {
+    min-height: 60px;
+  }
+
+  .editor-clip-frame {
+    height: 60px !important;
+    min-height: 60px !important;
+  }
+}
+
+.workflow-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 12;
+  background: linear-gradient(180deg, transparent 0%, var(--card) 22%);
+  padding-top: 12px;
+}
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
@@ -97,7 +231,8 @@ body {
   display: flex;
   gap: 1px;
   align-items: center;
-  overflow: hidden;
+  overflow-x: auto;
+  min-width: 0;
 }
 
 .topbar-step {
@@ -361,6 +496,10 @@ body {
 #s1 .heart-icon { display: none; }
 #s1 .quote-marks { display: none; }
 
+#s1 {
+  overflow-y: auto;
+}
+
 /* ===== SCREEN 2 — Upload Audio ===== */
 #s2 .center-content {
   flex: 1;
@@ -369,6 +508,9 @@ body {
   justify-content: center;
   flex-direction: column;
   gap: 20px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 20px;
 }
 
 #s2 .upload-zone {
@@ -398,6 +540,37 @@ body {
   margin-top: 10px;
 }
 
+@media (max-height: 760px) {
+  #s2 .center-content {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 980px) {
+  .topbar-wrapper {
+    padding: 0 14px;
+  }
+
+  .topbar-step {
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+
+  #s6 > div[style*="width: 440px"],
+  #s7 > div[style*="width: 440px"] {
+    width: 360px !important;
+  }
+}
+
+@media (max-height: 720px) {
+  #s5 [style*="padding: 18px 28px"],
+  #s6 [style*="padding: 20px 28px"],
+  #s7 [style*="padding: 20px 28px"] {
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+  }
+}
+
 /* ===== SCREEN 3 — Brain Dump ===== */
 #s3 .brain-content {
   flex: 1;
@@ -405,6 +578,8 @@ body {
   flex-direction: column;
   padding: 24px 32px;
   gap: 20px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 #s3 .option-label {

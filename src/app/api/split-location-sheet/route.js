@@ -1,4 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import {
+  getFallbackModels,
+  runWithModelFallback,
+  TEXT_MODEL_FALLBACKS,
+} from "@/utils/googleModelFallbacks";
 import { NextResponse } from "next/server";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
@@ -126,11 +131,17 @@ For every panel:
 Return ONLY a valid JSON array, no markdown, no explanation.`;
 
 async function callGeminiDirect(imageBuffer, mimeType) {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-  const result = await model.generateContent([
-    GEMINI_PROMPT,
-    { inlineData: { data: imageBuffer.toString("base64"), mimeType } },
-  ]);
+  const { result, model } = await runWithModelFallback({
+    label: "Location sheet direct detection",
+    models: getFallbackModels(process.env.GOOGLE_TEXT_MODEL, TEXT_MODEL_FALLBACKS),
+    operation: async (modelName) => {
+      const activeModel = genAI.getGenerativeModel({ model: modelName });
+      return activeModel.generateContent([
+        GEMINI_PROMPT,
+        { inlineData: { data: imageBuffer.toString("base64"), mimeType } },
+      ]);
+    },
+  });
   const text = result.response.text().trim();
   const start = text.indexOf('[');
   const end   = text.lastIndexOf(']');
@@ -144,15 +155,19 @@ async function callGeminiDirect(imageBuffer, mimeType) {
   }));
 
   panels = nms(panels);
-  console.log(`[Gemini direct - Locations] panels=${panels.length}`);
+  console.log(`[Gemini direct - Locations] model=${model} panels=${panels.length}`);
   return sortPanels(panels);
 }
 
 async function validateLocationSheet(imageBuffer, mimeType) {
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent([
-      `Analyze whether this uploaded image is primarily a location/environment reference sheet.
+    const { result, model } = await runWithModelFallback({
+      label: "Location sheet validation",
+      models: getFallbackModels(process.env.GOOGLE_TEXT_MODEL, TEXT_MODEL_FALLBACKS),
+      operation: async (modelName) => {
+        const activeModel = genAI.getGenerativeModel({ model: modelName });
+        return activeModel.generateContent([
+          `Analyze whether this uploaded image is primarily a location/environment reference sheet.
 
 Return ONLY JSON:
 {
@@ -162,8 +177,11 @@ Return ONLY JSON:
 }
 
 Mark false when the image is mostly character/body/face reference panels, product portraits, or non-environment imagery. Mark true when it is mostly architecture, rooms, landscapes, streets, interiors, exteriors, or environmental reference panels.`,
-      { inlineData: { data: imageBuffer.toString("base64"), mimeType } },
-    ]);
+          { inlineData: { data: imageBuffer.toString("base64"), mimeType } },
+        ]);
+      },
+    });
+    console.log(`[split-location-sheet] validation model=${model}`);
     const text = result.response.text().trim();
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");

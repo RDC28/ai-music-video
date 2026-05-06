@@ -1,10 +1,46 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import {
+  getFallbackModels,
+  IMAGE_MODEL_FALLBACKS,
+  runWithModelFallback,
+} from "@/utils/googleModelFallbacks";
 import { NextResponse } from "next/server";
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
+const genAI = process.env.GOOGLE_AI_API_KEY
+  ? new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
+  : null;
+
+async function generateImage(contents, label) {
+  const { result, model } = await runWithModelFallback({
+    label,
+    models: getFallbackModels(process.env.GOOGLE_LOCATION_IMAGE_MODEL || process.env.GOOGLE_IMAGE_MODEL, IMAGE_MODEL_FALLBACKS),
+    operation: async (modelName) => {
+      const activeModel = genAI.getGenerativeModel({ model: modelName });
+      return activeModel.generateContent({
+        contents,
+        generationConfig: { responseModalities: ["IMAGE"] }
+      });
+    },
+  });
+
+  const response = await result.response;
+  const generatedB64 = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+  if (!generatedB64) {
+    const reason = response.candidates?.[0]?.finishReason;
+    const err = new Error(reason ? `${label} returned no image data (${reason})` : `${label} returned no image data`);
+    err.retryable = reason !== "SAFETY";
+    throw err;
+  }
+
+  return { generatedB64, model };
+}
 
 export async function POST(req) {
   try {
+    if (!genAI) {
+      return NextResponse.json({ error: "GOOGLE_AI_API_KEY is not configured" }, { status: 500 });
+    }
+
     const { 
       base64, 
       mimeType, 
@@ -12,8 +48,6 @@ export async function POST(req) {
       locationDescription, 
       angleDescription 
     } = await req.json();
-
-    const model = genAI.getGenerativeModel({ model: "gemini-3-pro-image-preview" });
 
     // 1. REFERENCE-LOCKED GENERATION (Sequential Flow)
     if (base64 && locationDescription && angleDescription) {
@@ -31,22 +65,15 @@ export async function POST(req) {
         3. Maintain the consistent lighting and atmosphere.
       `;
 
-      const result = await model.generateContent({
-        contents: [{
+      const { generatedB64, model } = await generateImage([{
           role: "user",
           parts: [
             { text: prompt },
             { inlineData: { mimeType: mimeType || "image/png", data: base64 } }
           ]
-        }],
-        generationConfig: { responseModalities: ["IMAGE"] }
-      });
-      
-      const response = await result.response;
-      const generatedB64 = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+        }], `Location reference-locked view (${label || "view"})`);
 
-      if (!generatedB64) throw new Error("NB Pro location reference-locked generation failed.");
-      return NextResponse.json({ success: true, imageBase64: generatedB64 });
+      return NextResponse.json({ success: true, imageBase64: generatedB64, image_model: model });
     }
 
     // 2. MASTER WIDE SHOT GENERATION (First Angle)
@@ -58,16 +85,12 @@ export async function POST(req) {
       ANGLE/VIEW: ${angleDescription}
       STYLE: Photorealistic, cinematic lighting, epic composition, isolated as a pristine architectural or environmental asset.`;
 
-      const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
-        generationConfig: { responseModalities: ["IMAGE"] }
-      });
-      
-      const response = await result.response;
-      const generatedB64 = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+      const { generatedB64, model } = await generateImage(
+        [{ role: "user", parts: [{ text: fullPrompt }] }],
+        `Location master generation (${label || "wide"})`
+      );
 
-      if (!generatedB64) throw new Error("NB Pro location master generation failed.");
-      return NextResponse.json({ success: true, imageBase64: generatedB64 });
+      return NextResponse.json({ success: true, imageBase64: generatedB64, image_model: model });
     } 
 
     // 3. REFINEMENT MODE (From Sheet Crops)
@@ -81,22 +104,15 @@ export async function POST(req) {
         3. Output exactly ONE single high-quality view.
       `;
 
-      const result = await model.generateContent({
-        contents: [{
+      const { generatedB64, model } = await generateImage([{
           role: "user",
           parts: [
             { text: refinementPrompt },
             { inlineData: { mimeType: mimeType || "image/jpeg", data: base64 } }
           ]
-        }],
-        generationConfig: { responseModalities: ["IMAGE"] }
-      });
-      
-      const response = await result.response;
-      const refinedB64 = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+        }], `Location crop refinement (${label || "crop"})`);
 
-      if (!refinedB64) throw new Error("NB Pro location refinement failed.");
-      return NextResponse.json({ success: true, imageBase64: refinedB64 });
+      return NextResponse.json({ success: true, imageBase64: generatedB64, image_model: model });
     }
 
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
