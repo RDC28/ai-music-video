@@ -6,3 +6,5 @@ scikit-image
 opencv-python-headless
 google-genai
 python-multipart
+certifi
+shotstack-sdk

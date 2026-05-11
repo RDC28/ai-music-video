@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import DashboardNav from '@/components/DashboardNav';
 import { createClient } from '@/utils/supabase';
 
@@ -9,14 +9,9 @@ export default function BillingScreen() {
   const [transactions, setTransactions] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingTx, setIsLoadingTx] = useState(true);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
-  useEffect(() => {
-    fetchProfile();
-    fetchTransactions();
-  }, []);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data } = await supabase
@@ -26,9 +21,9 @@ export default function BillingScreen() {
         .single();
       setProfile(data);
     }
-  };
+  }, [supabase]);
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data } = await supabase
@@ -40,7 +35,12 @@ export default function BillingScreen() {
       setTransactions(data || []);
     }
     setIsLoadingTx(false);
-  };
+  }, [supabase]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void Promise.all([fetchProfile(), fetchTransactions()]);
+  }, [fetchProfile, fetchTransactions]);
 
   const handleTopUp = async (priceId, credits) => {
     setIsProcessing(true);
@@ -53,13 +53,13 @@ export default function BillingScreen() {
 
       const { url, error } = await res.json();
       if (url) {
-        window.location.href = url;
+        window.location.assign(url);
       } else {
         throw new Error(error);
       }
     } catch (err) {
       console.error("Payment failed:", err);
-      alert("Failed to start checkout. Make sure you added your STRIPE_SECRET_KEY to .env.local!");
+      alert("Checkout could not be started. Please try again in a moment.");
     } finally {
       setIsProcessing(false);
     }
@@ -72,109 +72,164 @@ export default function BillingScreen() {
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <DashboardNav />
 
-      <main style={{ padding: '40px 48px', maxWidth: '900px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-
+      <main
+        style={{
+          padding: '56px 56px 80px',
+          maxWidth: '1040px',
+          margin: '0 auto',
+          width: '100%',
+          boxSizing: 'border-box',
+        }}
+      >
         {/* Page title */}
-        <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '-0.01em', marginBottom: '4px' }}>
-            Billing &amp; Usage
+        <div style={{ marginBottom: '40px' }}>
+          <div className="kicker" style={{ marginBottom: '12px' }}>Studio · Account</div>
+          <h2 className="editorial-title editorial-h1" style={{ marginBottom: '10px' }}>
+            Billing &amp; <span className="text-grad">credits.</span>
           </h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Manage your credits and subscription
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', maxWidth: '540px', lineHeight: 1.65 }}>
+            Top up your studio credits and review every transaction.
           </p>
         </div>
 
         {/* Stats row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '40px' }}>
-          <div style={{
-            background: 'rgba(0,184,212,0.06)',
-            border: '1px solid rgba(0,184,212,0.15)',
-            borderRadius: '12px',
-            padding: '24px',
-          }}>
-            <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
-              Current Balance
-            </div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '32px', fontWeight: 800, color: 'var(--dark)', letterSpacing: '-0.02em' }}>
-              {profile?.credits ?? 0}
-              <span style={{ fontSize: '16px', fontWeight: 500, color: 'var(--text-muted)', marginLeft: '6px' }}>credits</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '48px' }}>
+          <div
+            className="premium-panel"
+            style={{
+              padding: '28px',
+              background:
+                'linear-gradient(155deg, rgba(0,229,255,0.14), rgba(0,184,212,0.04)), linear-gradient(180deg, rgba(14,17,22,0.95), rgba(11,14,19,0.86))',
+              borderColor: 'rgba(0,229,255,0.24)',
+            }}
+          >
+            <div className="kicker">── Current balance</div>
+            <div
+              className="metric-display"
+              style={{ fontSize: 'clamp(48px, 6vw, 76px)', marginTop: '16px' }}
+            >
+              <span className="text-grad">{profile?.credits ?? 0}</span>
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  color: 'var(--text-muted)',
+                  marginLeft: '12px',
+                  letterSpacing: '0.16em',
+                  textTransform: 'uppercase',
+                  WebkitTextFillColor: 'currentcolor',
+                  background: 'none',
+                }}
+              >
+                credits
+              </span>
             </div>
           </div>
-          <div style={{
-            background: 'var(--card)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '24px',
-          }}>
-            <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
-              Plan Type
+          <div className="premium-panel" style={{ padding: '28px' }}>
+            <div className="kicker kicker--muted">── Plan type</div>
+            <div
+              className="metric-display"
+              style={{ fontSize: 'clamp(28px, 3vw, 40px)', marginTop: '16px', fontStyle: 'italic' }}
+            >
+              Pay-as-you-go.
             </div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 700, color: 'var(--dark)' }}>
-              Pay-As-You-Go
+            <div style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '13px', lineHeight: 1.6 }}>
+              No subscription. Credits never expire.
             </div>
           </div>
         </div>
 
         {/* Pricing section */}
-        <div style={{ marginBottom: '40px' }}>
-          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 700, color: 'var(--dark)', marginBottom: '16px', letterSpacing: '-0.01em' }}>
-            Top Up Credits
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+        <div style={{ marginBottom: '48px' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <h3 className="editorial-title editorial-h3" style={{ fontSize: '24px' }}>
+              Top up <span className="text-grad">credits.</span>
+            </h3>
+            <div className="mono-label">── 03 Plans</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
             {plans.map((plan) => (
               <div
                 key={plan.label}
+                className="premium-panel"
                 style={{
-                  background: plan.popular ? 'rgba(0,184,212,0.05)' : 'var(--card)',
-                  border: plan.popular ? '1px solid rgba(0,184,212,0.25)' : '1px solid var(--border)',
-                  borderRadius: '12px',
-                  padding: '24px',
+                  padding: '28px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '12px',
+                  gap: '14px',
                   textAlign: 'center',
                   position: 'relative',
+                  borderColor: plan.popular ? 'rgba(0,229,255,0.32)' : undefined,
+                  background: plan.popular
+                    ? 'linear-gradient(155deg, rgba(0,229,255,0.14), rgba(0,184,212,0.04)), linear-gradient(180deg, rgba(14,17,22,0.95), rgba(11,14,19,0.86))'
+                    : undefined,
+                  boxShadow: plan.popular ? 'var(--glow-soft), var(--shadow-premium)' : 'var(--shadow-premium)',
+                  overflow: 'visible',
                 }}
               >
                 {plan.popular && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '-1px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    background: 'var(--teal)',
-                    color: '#0A0A0A',
-                    fontSize: '9px',
-                    fontWeight: 700,
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    padding: '3px 10px',
-                    borderRadius: '0 0 6px 6px',
-                    fontFamily: 'var(--font-display)',
-                  }}>
-                    Most Popular
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '-12px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: 'linear-gradient(135deg, var(--orange), var(--teal))',
+                      color: '#04060A',
+                      fontSize: '9.5px',
+                      fontWeight: 600,
+                      letterSpacing: '0.18em',
+                      textTransform: 'uppercase',
+                      padding: '5px 14px',
+                      borderRadius: '999px',
+                      fontFamily: 'var(--font-mono)',
+                      boxShadow: '0 8px 22px rgba(0,229,255,0.35)',
+                    }}
+                  >
+                    ◇ Most popular
                   </div>
                 )}
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: plan.popular ? 'var(--teal)' : 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginTop: plan.popular ? '8px' : 0 }}>
+                <div className={`kicker ${plan.popular ? 'kicker--orange' : 'kicker--muted'}`} style={{ justifyContent: 'center', marginTop: plan.popular ? '6px' : 0 }}>
                   {plan.label}
                 </div>
-                <div>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '28px', fontWeight: 800, color: 'var(--dark)' }}>{plan.credits.toLocaleString()}</span>
-                  <span style={{ fontSize: '13px', color: 'var(--text-muted)', marginLeft: '4px' }}>credits</span>
+                <div className="metric-display" style={{ fontSize: 'clamp(36px, 4vw, 52px)' }}>
+                  <span className={plan.popular ? 'text-grad' : ''}>{plan.credits.toLocaleString()}</span>
                 </div>
-                <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--dark)', fontFamily: 'var(--font-display)' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    color: 'var(--text-muted)',
+                    letterSpacing: '0.16em',
+                    textTransform: 'uppercase',
+                    marginTop: '-6px',
+                  }}
+                >
+                  credits
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontStyle: 'italic',
+                    fontSize: '22px',
+                    fontWeight: 500,
+                    color: 'var(--dark)',
+                    letterSpacing: '-0.02em',
+                  }}
+                >
                   {plan.price}
                 </div>
                 <button
                   className={plan.btnClass}
                   onClick={() => handleTopUp(plan.priceId, plan.credits)}
                   disabled={isProcessing}
-                  style={{ width: '100%', fontSize: '12px' }}
+                  style={{ width: '100%', fontSize: '12px', justifyContent: 'center', marginTop: '6px' }}
                 >
-                  {isProcessing ? 'Processing...' : 'Buy Now'}
+                  {isProcessing ? 'Opening checkout…' : 'Buy credits'}
                 </button>
               </div>
             ))}
@@ -183,12 +238,15 @@ export default function BillingScreen() {
 
         {/* Transaction history */}
         <div>
-          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 700, color: 'var(--dark)', marginBottom: '16px', letterSpacing: '-0.01em' }}>
-            Transaction History
-          </h3>
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <h3 className="editorial-title editorial-h3" style={{ fontSize: '24px' }}>
+              Transaction history.
+            </h3>
+            <div className="mono-label">Last 10</div>
+          </div>
+          <div className="premium-panel" style={{ overflow: 'hidden' }}>
             {isLoadingTx ? (
-              <div style={{ padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>Loading history...</div>
+              <div style={{ padding: '28px', color: 'var(--text-muted)', fontSize: '13px' }}>Loading history…</div>
             ) : transactions.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {transactions.map((tx, i) => (
@@ -198,32 +256,56 @@ export default function BillingScreen() {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      padding: '14px 20px',
+                      padding: '18px 24px',
                       borderBottom: i < transactions.length - 1 ? '1px solid var(--border)' : 'none',
+                      transition: 'background 0.18s',
                     }}
+                    onMouseOver={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                    onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
                   >
                     <div>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--dark)', fontFamily: 'var(--font-display)', marginBottom: '2px' }}>
+                      <div
+                        style={{
+                          fontSize: '15px',
+                          fontWeight: 500,
+                          color: 'var(--dark)',
+                          fontFamily: 'var(--font-display)',
+                          fontStyle: 'italic',
+                          marginBottom: '4px',
+                          letterSpacing: '-0.015em',
+                        }}
+                      >
                         {tx.action.charAt(0).toUpperCase() + tx.action.slice(1).replace(/_/g, ' ')}
                       </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          color: 'var(--text-muted)',
+                          fontFamily: 'var(--font-mono)',
+                          letterSpacing: '0.06em',
+                        }}
+                      >
                         {new Date(tx.created_at).toLocaleDateString()} · {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
-                    <div style={{
-                      fontSize: '14px',
-                      fontWeight: 700,
-                      color: tx.amount > 0 ? 'var(--teal)' : 'rgba(255,80,80,0.9)',
-                      fontFamily: 'var(--font-display)',
-                    }}>
+                    <div
+                      style={{
+                        fontSize: '18px',
+                        fontWeight: 500,
+                        color: tx.amount > 0 ? 'var(--teal)' : '#ff8a8a',
+                        fontFamily: 'var(--font-display)',
+                        fontStyle: 'italic',
+                        letterSpacing: '-0.025em',
+                      }}
+                    >
                       {tx.amount > 0 ? '+' : ''}{tx.amount}
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                No transactions yet.
+              <div style={{ padding: '52px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13.5px', fontFamily: 'var(--font-display)', fontStyle: 'italic' }}>
+                Nothing yet.
               </div>
             )}
           </div>

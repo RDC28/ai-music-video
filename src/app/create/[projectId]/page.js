@@ -1,19 +1,61 @@
 'use client';
 
-import { useState, useEffect, use, useCallback, useMemo } from 'react';
+import { useState, useEffect, use, useCallback, useMemo, useTransition } from 'react';
+import dynamic from 'next/dynamic';
 import { createClient } from '@/utils/supabase';
 import { useRouter } from 'next/navigation';
-import TopBar from '@/components/TopBar';
-import LandingScreen from '@/components/screens/LandingScreen';
-import UploadAudioScreen from '@/components/screens/UploadAudioScreen';
-import BrainDumpScreen from '@/components/screens/BrainDumpScreen';
-import CharactersScreen from '@/components/screens/CharactersScreen';
-import LocationsScreen from '@/components/screens/LocationsScreen';
-import GenerateShotListScreen from '@/components/screens/GenerateShotListScreen';
-import ShotListScreen from '@/components/screens/ShotListScreen';
-import ImagesScreen from '@/components/screens/ImagesScreen';
-import VideosScreen from '@/components/screens/VideosScreen';
-import AssembleScreen from '@/components/screens/AssembleScreen';
+import StageRail from '@/components/StageRail';
+import WorkflowBuffer from '@/components/WorkflowBuffer';
+
+const SCREEN_META = {
+  1: { name: 'Home', title: 'Opening home' },
+  2: { name: 'Audio', title: 'Preparing audio' },
+  3: { name: 'Story', title: 'Preparing story' },
+  4: { name: 'Cast', title: 'Preparing cast' },
+  5: { name: 'Locations', title: 'Preparing locations' },
+  6: { name: 'Shot plan', title: 'Preparing shot plan' },
+  7: { name: 'Shots', title: 'Preparing shots' },
+  8: { name: 'Frames', title: 'Preparing frames' },
+  9: { name: 'Clips', title: 'Preparing clips' },
+  10: { name: 'Editor', title: 'Preparing editor' },
+};
+
+const screenFallback = (id) => function ScreenFallback() {
+  const meta = SCREEN_META[id] || SCREEN_META[1];
+  return (
+    <WorkflowBuffer
+      title={meta.title}
+      message="A moment while this view comes into focus."
+    />
+  );
+};
+
+const LandingScreen = dynamic(() => import('@/components/screens/LandingScreen'), { loading: screenFallback(1) });
+const UploadAudioScreen = dynamic(() => import('@/components/screens/UploadAudioScreen'), { loading: screenFallback(2) });
+const BrainDumpScreen = dynamic(() => import('@/components/screens/BrainDumpScreen'), { loading: screenFallback(3) });
+const CharactersScreen = dynamic(() => import('@/components/screens/CharactersScreen'), { loading: screenFallback(4) });
+const LocationsScreen = dynamic(() => import('@/components/screens/LocationsScreen'), { loading: screenFallback(5) });
+const GenerateShotListScreen = dynamic(() => import('@/components/screens/GenerateShotListScreen'), { loading: screenFallback(6) });
+const ShotListScreen = dynamic(() => import('@/components/screens/ShotListScreen'), { loading: screenFallback(7) });
+const ImagesScreen = dynamic(() => import('@/components/screens/ImagesScreen'), { loading: screenFallback(8) });
+const VideosScreen = dynamic(() => import('@/components/screens/VideosScreen'), { loading: screenFallback(9) });
+const AssembleScreen = dynamic(() => import('@/components/screens/AssembleScreen'), { loading: screenFallback(10) });
+
+const prefetchScreenModule = (id) => {
+  switch (id) {
+    case 1: return import('@/components/screens/LandingScreen');
+    case 2: return import('@/components/screens/UploadAudioScreen');
+    case 3: return import('@/components/screens/BrainDumpScreen');
+    case 4: return import('@/components/screens/CharactersScreen');
+    case 5: return import('@/components/screens/LocationsScreen');
+    case 6: return import('@/components/screens/GenerateShotListScreen');
+    case 7: return import('@/components/screens/ShotListScreen');
+    case 8: return import('@/components/screens/ImagesScreen');
+    case 9: return import('@/components/screens/VideosScreen');
+    case 10: return import('@/components/screens/AssembleScreen');
+    default: return Promise.resolve();
+  }
+};
 
 export default function CreateProject({ params }) {
   const { projectId } = use(params);
@@ -24,6 +66,9 @@ export default function CreateProject({ params }) {
   const [projectData, setProjectData] = useState(null);
   const [profile, setProfile] = useState(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isScreenPreparing, setIsScreenPreparing] = useState(false);
+  const [preparingTarget, setPreparingTarget] = useState(activeScreen);
+  const [isPending, startTransition] = useTransition();
   
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -65,10 +110,45 @@ export default function CreateProject({ params }) {
     }
   }, [fetchData, projectId]);
 
-  const goTo = (n) => {
-    setActiveScreen(n);
-    localStorage.setItem('activeScreen', n);
-  };
+  useEffect(() => {
+    if (isInitialLoading) return;
+
+    const nextScreens = [activeScreen + 1, activeScreen + 2]
+      .filter(screen => screen >= 1 && screen <= 10);
+    if (!nextScreens.length) return;
+
+    const run = () => {
+      nextScreens.forEach(screen => {
+        prefetchScreenModule(screen).catch(() => {});
+      });
+    };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(run, { timeout: 1500 });
+      return () => window.cancelIdleCallback(idleId);
+    }
+
+    const timeoutId = window.setTimeout(run, 500);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeScreen, isInitialLoading]);
+
+  useEffect(() => {
+    if (!isScreenPreparing) return;
+    const timeoutId = window.setTimeout(() => setIsScreenPreparing(false), 420);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeScreen, isScreenPreparing]);
+
+  const goTo = useCallback((n) => {
+    const nextScreen = Math.min(10, Math.max(1, Number(n) || 1));
+    if (nextScreen === activeScreen) return;
+
+    setPreparingTarget(nextScreen);
+    setIsScreenPreparing(true);
+    localStorage.setItem('activeScreen', nextScreen);
+    startTransition(() => {
+      setActiveScreen(nextScreen);
+    });
+  }, [activeScreen, startTransition]);
 
   const updateProjectData = async (updates) => {
     if (!projectId) return;
@@ -87,14 +167,25 @@ export default function CreateProject({ params }) {
   };
 
   if (isInitialLoading) {
-    return <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--cream)', color: 'var(--teal)', fontWeight: 700 }}>Validating Project Session...</div>;
+    return (
+      <div className="workflow-app-loading" style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
+        <main className="workflow-shell" style={{ flex: 1, padding: '14px', display: 'flex', flexDirection: 'column' }}>
+          <WorkflowBuffer
+            title="Opening your project"
+            message="Bringing your latest work into view."
+          />
+        </main>
+      </div>
+    );
   }
 
   const userName = profile?.full_name?.split(' ')[0]?.toUpperCase() || 'USER';
+  const preparingMeta = SCREEN_META[preparingTarget] || SCREEN_META[activeScreen] || SCREEN_META[1];
+  const showPreparingOverlay = isScreenPreparing || isPending;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
-      <TopBar activeScreen={activeScreen} onNavigate={goTo} userName={userName} projectName={projectData?.title} />
+    <div className="workflow-app">
+      <StageRail activeScreen={activeScreen} onNavigate={goTo} userName={userName} projectName={projectData?.title} />
 
       <main className="workflow-shell">
       {activeScreen === 1 && <LandingScreen onNavigate={goTo} userName={userName} />}
@@ -104,6 +195,7 @@ export default function CreateProject({ params }) {
           projectId={projectId} 
           existingAudioUrl={projectData?.audio_url}
           projectState={projectData?.project_state}
+          onDataUpdate={updateProjectData}
           onUploadSuccess={() => fetchData(projectId)}
         />
       )}
@@ -167,8 +259,17 @@ export default function CreateProject({ params }) {
         <AssembleScreen 
           onNavigate={goTo} 
           isActive={activeScreen === 10} 
+          projectId={projectId}
           audioUrl={projectData?.audio_url}
           projectData={projectData?.project_state}
+          onDataUpdate={updateProjectData}
+        />
+      )}
+      {showPreparingOverlay && (
+        <WorkflowBuffer
+          variant="overlay"
+          title={`Preparing ${preparingMeta.name}`}
+          message="A moment while this view comes into focus."
         />
       )}
       </main>

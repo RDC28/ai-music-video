@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Film, GripHorizontal, Music, Pause, Play, Scissors, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, Film, GripHorizontal, Loader2, Music, Pause, Play, Scissors, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { drawClubScene } from '@/utils/drawClubScene';
-import { normalizeShotList } from '@/utils/shotList';
+import { getProjectAudioDuration, normalizeShotListForVeo } from '@/utils/shotList';
 
 const TIMELINE_PADDING = 20;
 const MIN_ZOOM = 5;
 const MAX_ZOOM = 90;
+const SHOTSTACK_WORKING_STATUSES = new Set(['queued', 'fetching', 'preprocessing', 'rendering', 'saving', 'pending']);
 
 const toFiniteNumber = (value, fallback = null) => {
   const number = Number(value);
@@ -27,13 +28,43 @@ const formatTime = (time) => {
 
 const formatSeconds = (time) => `${(Number(time) || 0).toFixed(1)}s`;
 
-function shotDuration(shot) {
-  const explicitDuration = toFiniteNumber(shot?.duration);
-  if (explicitDuration !== null && explicitDuration > 0) return explicitDuration;
+async function readJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
 
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text };
+  }
+}
+
+function isShotstackWorking(status) {
+  return SHOTSTACK_WORKING_STATUSES.has(String(status || '').toLowerCase());
+}
+
+function shotstackStatusLabel(status) {
+  const normalized = String(status || '').toLowerCase();
+  if (!normalized) return 'Not Exported';
+  if (normalized === 'done') return 'Ready';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function getExportErrorMessage(error) {
+  const message = String(error?.message || '').toLowerCase();
+  if (message.includes('timeout') || message.includes('temporarily unavailable')) {
+    return 'Export is temporarily unavailable. Please try again soon.';
+  }
+  return 'Export could not be completed. Please try again.';
+}
+
+function shotDuration(shot) {
   const start = toFiniteNumber(shot?.start);
   const end = toFiniteNumber(shot?.end);
   if (start !== null && end !== null && end > start) return Number((end - start).toFixed(2));
+
+  const explicitDuration = toFiniteNumber(shot?.duration);
+  if (explicitDuration !== null && explicitDuration > 0) return explicitDuration;
 
   return 5;
 }
@@ -57,7 +88,7 @@ function buildInitialTimeline(shots) {
 
 function getClipSourceIn(clip, sourceDuration) {
   if (!clip || !sourceDuration || sourceDuration <= clip.duration) return 0;
-  return Number(((sourceDuration - clip.duration) / 2).toFixed(2));
+  return 0;
 }
 
 function getClipSourceOut(clip, sourceDuration) {
@@ -67,7 +98,7 @@ function getClipSourceOut(clip, sourceDuration) {
 }
 
 function readableAudioName(audioUrl) {
-  if (!audioUrl) return 'No Audio Loaded';
+  if (!audioUrl) return 'No Song Loaded';
   try {
     return decodeURIComponent(audioUrl.split('/').pop().split('-').slice(1).join('-')) || 'Audio Track';
   } catch {
@@ -75,7 +106,7 @@ function readableAudioName(audioUrl) {
   }
 }
 
-export default function AssembleScreen({ isActive, audioUrl, projectData }) {
+export default function AssembleScreen({ isActive, projectId, audioUrl, projectData, onDataUpdate }) {
   const libraryCanvasRefs = useRef([]);
   const fallbackPreviewCanvasRef = useRef(null);
   const previewVideoRef = useRef(null);
@@ -83,7 +114,11 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
   const timelineRef = useRef(null);
   const timelineScrollRef = useRef(null);
 
-  const shots = useMemo(() => normalizeShotList(projectData?.shot_list || []), [projectData?.shot_list]);
+  const projectAudioDuration = useMemo(() => getProjectAudioDuration(projectData), [projectData]);
+  const shots = useMemo(
+    () => normalizeShotListForVeo(projectData?.shot_list || [], { audioDuration: projectAudioDuration }),
+    [projectAudioDuration, projectData?.shot_list]
+  );
   const [showExport, setShowExport] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -92,6 +127,12 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
   const [clipStarts, setClipStarts] = useState({});
   const [selectedClipId, setSelectedClipId] = useState(null);
   const [videoDurations, setVideoDurations] = useState({});
+  const [exportResolution, setExportResolution] = useState(projectData?.shotstack_export?.resolution || '1080');
+  const [exportQuality, setExportQuality] = useState(projectData?.shotstack_export?.quality || 'high');
+  const [exportRender, setExportRender] = useState(projectData?.shotstack_export || null);
+  const [exportStatusMessage, setExportStatusMessage] = useState('');
+  const [exportError, setExportError] = useState('');
+  const [isSubmittingExport, setIsSubmittingExport] = useState(false);
 
   const baseTimelineClips = useMemo(() => buildInitialTimeline(shots), [shots]);
 
@@ -113,7 +154,7 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
     [sortedClips]
   );
 
-  const displayDuration = Math.max(audioDuration || 0, timelineEnd, 60);
+  const displayDuration = Math.max(audioDuration || projectAudioDuration || 0, timelineEnd, 60);
   const timelineWidth = Math.max(displayDuration * zoom, 960);
   const activeClip = sortedClips.find(clip => currentTime >= clip.start && currentTime < clip.start + clip.duration)
     || sortedClips.find(clip => clip.id === selectedClipId)
@@ -124,6 +165,10 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
   const selectedShot = selectedClip ? shots[selectedClip.shotIndex] : null;
   const generatedCount = shots.filter(shot => shot.video_url).length;
   const audioFileName = readableAudioName(audioUrl);
+  const exportRenderId = exportRender?.renderId || exportRender?.id || null;
+  const exportRenderStatus = exportRender?.status || '';
+  const exportVideoUrl = exportRender?.hostedUrl || exportRender?.url || null;
+  const isShotstackRendering = isSubmittingExport || isShotstackWorking(exportRenderStatus);
 
   useEffect(() => {
     if (!isActive) return;
@@ -187,6 +232,47 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
     }
   }, [activeClip, activeShot, currentTime, isPlaying, videoDurations]);
 
+  useEffect(() => {
+    if (!exportRenderId || !isShotstackWorking(exportRenderStatus)) return;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/shotstack/render/${encodeURIComponent(exportRenderId)}`);
+        const result = await readJsonResponse(response);
+        if (!response.ok || result.error) {
+          const error = new Error(result.error || `Export status failed with ${response.status}`);
+          error.status = result.status || response.status;
+          throw error;
+        }
+        if (cancelled) return;
+
+        const nextRender = {
+          ...exportRender,
+          ...result,
+          renderId: result.renderId || exportRenderId,
+          resolution: exportResolution,
+          quality: exportQuality,
+          checkedAt: new Date().toISOString(),
+        };
+
+        setExportRender(nextRender);
+        setExportStatusMessage(result.status === 'done' ? 'Export ready.' : `Export ${shotstackStatusLabel(result.status).toLowerCase()}...`);
+        if (result.status === 'done') {
+          await onDataUpdate?.({ shotstack_export: nextRender });
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setExportError(getExportErrorMessage(error));
+      }
+    }, exportRenderStatus === 'queued' ? 6000 : 9000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [exportRender, exportRenderId, exportRenderStatus, exportQuality, exportResolution, onDataUpdate]);
+
   const seekTo = (time) => {
     const safeTime = clamp(time, 0, displayDuration);
     if (audioRef.current) audioRef.current.currentTime = safeTime;
@@ -215,6 +301,34 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
     seekTo(x / zoom);
   };
 
+  const setTimelineZoom = (nextZoom, anchorClientX = null) => {
+    const scrollContainer = timelineScrollRef.current;
+    const clampedZoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
+    if (clampedZoom === zoom) return;
+
+    let nextScrollLeft = null;
+    if (scrollContainer) {
+      const rect = scrollContainer.getBoundingClientRect();
+      const anchorOffset = anchorClientX !== null
+        ? clamp(anchorClientX - rect.left, 0, scrollContainer.clientWidth)
+        : scrollContainer.clientWidth / 2;
+      const anchorTime = Math.max(0, (scrollContainer.scrollLeft + anchorOffset - TIMELINE_PADDING) / zoom);
+      const nextTimelineWidth = Math.max(displayDuration * clampedZoom, 960) + TIMELINE_PADDING * 2;
+      const maxScrollLeft = Math.max(0, nextTimelineWidth - scrollContainer.clientWidth);
+      nextScrollLeft = clamp(anchorTime * clampedZoom - anchorOffset + TIMELINE_PADDING, 0, maxScrollLeft);
+    }
+
+    setZoom(clampedZoom);
+
+    if (nextScrollLeft !== null) {
+      requestAnimationFrame(() => {
+        if (timelineScrollRef.current) {
+          timelineScrollRef.current.scrollLeft = nextScrollLeft;
+        }
+      });
+    }
+  };
+
   const handleMouseDown = (event) => {
     if (event.target.closest('[data-timeline-clip="true"]')) return;
     handleTimelineSeek(event);
@@ -233,6 +347,24 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
     if (!timelineRef.current) return 0;
     const rect = timelineRef.current.getBoundingClientRect();
     return snapTime((event.clientX - rect.left - TIMELINE_PADDING) / zoom);
+  };
+
+  const handleTimelineWheel = (event) => {
+    const scrollContainer = timelineScrollRef.current;
+    if (!scrollContainer) return;
+
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      const zoomDelta = event.deltaY < 0 ? 4 : -4;
+      setTimelineZoom(zoom + zoomDelta, event.clientX);
+      return;
+    }
+
+    const dominantDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (!Number.isFinite(dominantDelta) || dominantDelta === 0) return;
+
+    event.preventDefault();
+    scrollContainer.scrollLeft += dominantDelta;
   };
 
   const handleLibraryDragStart = (event, shotIndex) => {
@@ -305,6 +437,94 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
     a.click();
   };
 
+  const buildShotstackExportClips = () => sortedClips
+    .map((clip) => {
+      const shot = shots[clip.shotIndex];
+      const sourceUrl = shot?.video_url || shot?.image_url;
+      if (!sourceUrl) return null;
+
+      const sourceType = shot.video_url ? 'video' : 'image';
+      const knownDuration = videoDurations[clip.shotIndex] || toFiniteNumber(shot.video_duration_seconds, clip.duration);
+
+      return {
+        id: clip.id,
+        shotIndex: clip.shotIndex,
+        name: shot?.n || `Shot ${clip.shotIndex + 1}`,
+        sourceUrl,
+        sourceType,
+        start: Number(clip.start.toFixed(3)),
+        length: Number(clip.duration.toFixed(3)),
+        trim: sourceType === 'video' ? getClipSourceIn(clip, knownDuration) : 0,
+      };
+    })
+    .filter(Boolean);
+
+  const saveExportRender = async (renderState) => {
+    setExportRender(renderState);
+    await onDataUpdate?.({ shotstack_export: renderState });
+  };
+
+  const handleShotstackExport = async () => {
+    setExportError('');
+    const clips = buildShotstackExportClips();
+    if (!clips.length) {
+      setExportError('Add at least one generated clip or source image before exporting.');
+      return;
+    }
+
+    setIsSubmittingExport(true);
+    setExportStatusMessage('Preparing final export...');
+
+    try {
+      const response = await fetch('/api/shotstack/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          audioUrl,
+          resolution: exportResolution,
+          quality: exportQuality,
+          aspectRatio: '16:9',
+          fps: 25,
+          allowEffects: false,
+          allowTransitions: false,
+          clips,
+        }),
+      });
+      const result = await readJsonResponse(response);
+      if (!response.ok || result.error) {
+        const error = new Error(result.error || `Export failed with ${response.status}`);
+        error.status = result.status || response.status;
+        throw error;
+      }
+
+      const renderState = {
+        renderId: result.renderId,
+        status: result.status || 'queued',
+        message: result.message,
+        resolution: exportResolution,
+        quality: exportQuality,
+        submittedAt: new Date().toISOString(),
+      };
+
+      await saveExportRender(renderState);
+      setExportStatusMessage('Export queued.');
+    } catch (error) {
+      setExportError(getExportErrorMessage(error));
+      setExportStatusMessage('');
+    } finally {
+      setIsSubmittingExport(false);
+    }
+  };
+
+  const handleExportDownload = () => {
+    if (!exportVideoUrl) return;
+    const a = document.createElement('a');
+    a.href = exportVideoUrl;
+    a.download = `music-video-${projectId || 'final'}.mp4`;
+    a.click();
+  };
+
   const tickStep = zoom < 8 ? 20 : 10;
   const ticks = Array.from({ length: Math.ceil(displayDuration / tickStep) + 1 });
   const playheadPosition = currentTime * zoom + TIMELINE_PADDING;
@@ -321,12 +541,13 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
       )}
 
       <div style={{ width: '260px', height: '100%', flexShrink: 0, background: 'var(--card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>
-            Generated Clips
+        <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div className="kicker" style={{ marginBottom: '8px' }}>── Library</div>
+          <div className="editorial-title editorial-h3" style={{ fontSize: '20px' }}>
+            Generated clips.
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '5px' }}>
-            {generatedCount}/{shots.length || 0} videos ready
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            {String(generatedCount).padStart(2,'0')} / {String(shots.length || 0).padStart(2,'0')} ready
           </div>
         </div>
 
@@ -412,7 +633,7 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
                 style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#050505' }}
               />
             ) : activeShot?.image_url ? (
-              <img src={activeShot.image_url} alt={activeShot.n || 'Preview source'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }} />
+              <img src={activeShot.image_url} alt={activeShot.n || 'Preview source'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', background: '#050505' }} />
             ) : (
               <canvas ref={fallbackPreviewCanvasRef} width={800} height={450} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
             )}
@@ -426,14 +647,39 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
             </div>
           </div>
 
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--teal)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-display)', marginBottom: '12px' }}>
-              Clip Inspector
-            </div>
+          <div
+            style={{
+              background:
+                'linear-gradient(160deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012)), var(--card)',
+              border: '1px solid rgba(255,255,255,0.085)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '18px',
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+              boxShadow: 'var(--shadow-card)',
+              backdropFilter: 'blur(12px)',
+            }}
+          >
+            <div className="kicker" style={{ marginBottom: '14px' }}>── Inspector</div>
             {selectedClip ? (
               <>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 800, color: 'var(--dark)', lineHeight: 1.25, marginBottom: '8px' }}>
-                  {selectedClip.shotIndex + 1}. {selectedShot?.n || 'Selected Clip'}
+                <div
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontStyle: 'italic',
+                    fontSize: '20px',
+                    fontWeight: 500,
+                    color: 'var(--dark)',
+                    lineHeight: 1.1,
+                    marginBottom: '10px',
+                    letterSpacing: '-0.022em',
+                  }}
+                >
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontStyle: 'normal', color: 'var(--text-muted)', marginRight: '8px', letterSpacing: '0.08em' }}>
+                    {String(selectedClip.shotIndex + 1).padStart(2, '0')}
+                  </span>
+                  {selectedShot?.n || 'Selected clip'}
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' }}>
                   {selectedShot?.video_prompt || selectedShot?.p || selectedShot?.prompt || 'No prompt available'}
@@ -446,7 +692,7 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
                   <InfoPill label="Source Out" value={formatSeconds(getClipSourceOut(selectedClip, videoDurations[selectedClip.shotIndex]))} />
                 </div>
 
-                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', border: '1px solid rgba(0,184,212,0.2)', background: 'rgba(0,184,212,0.06)', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', border: '1px solid rgba(124,58,237,0.2)', background: 'rgba(124,58,237,0.06)', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                   <Scissors size={15} color="var(--teal)" style={{ marginTop: '1px', flexShrink: 0 }} />
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.45 }}>
                     The clip is fit to the exact shot duration by trimming evenly from the head and tail when the generated video is longer.
@@ -481,7 +727,7 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
         }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, minWidth: '42px', color: 'var(--dark)', fontFamily: 'monospace' }}>{formatTime(currentTime)}</span>
+          <span style={{ fontSize: '12.5px', fontWeight: 500, minWidth: '46px', color: 'var(--dark)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>{formatTime(currentTime)}</span>
           <button
             onClick={togglePlay}
             style={{
@@ -502,16 +748,28 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
           >
             {isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
           </button>
-          <span style={{ fontSize: '12px', fontWeight: 700, minWidth: '42px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{formatTime(displayDuration)}</span>
+          <span style={{ fontSize: '12.5px', fontWeight: 500, minWidth: '46px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>{formatTime(displayDuration)}</span>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginLeft: 'auto', borderLeft: '1px solid var(--border)', paddingLeft: '18px' }}>
-            <button className="btn-outline" onClick={() => setZoom(prev => Math.max(prev - 3, MIN_ZOOM))} style={{ width: '32px', height: '30px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Zoom out">
+            <button className="btn-outline" onClick={() => setTimelineZoom(zoom - 3)} style={{ width: '32px', height: '30px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Zoom out">
               <ZoomOut size={14} />
             </button>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', minWidth: '40px', textAlign: 'center', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>
-              Zoom
-            </span>
-            <button className="btn-outline" onClick={() => setZoom(prev => Math.min(prev + 5, MAX_ZOOM))} style={{ width: '32px', height: '30px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Zoom in">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '180px' }}>
+              <input
+                type="range"
+                min={MIN_ZOOM}
+                max={MAX_ZOOM}
+                step="1"
+                value={zoom}
+                onChange={(event) => setTimelineZoom(Number(event.target.value))}
+                aria-label="Timeline zoom"
+                style={{ flex: 1, accentColor: 'var(--teal)', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', minWidth: '52px', textAlign: 'right', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>
+                {zoom}px/s
+              </span>
+            </div>
+            <button className="btn-outline" onClick={() => setTimelineZoom(zoom + 5)} style={{ width: '32px', height: '30px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Zoom in">
               <ZoomIn size={14} />
             </button>
           </div>
@@ -525,11 +783,16 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
                 Timeline
               </div>
               <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                Drag clips from the left or move clips inside the timeline
+                Drag clips, scroll to pan, pinch or Ctrl+wheel to zoom
               </div>
             </div>
 
-            <div ref={timelineScrollRef} style={{ flex: 1, overflow: 'auto' }}>
+            <div
+              ref={timelineScrollRef}
+              className="visible-scrollbar"
+              onWheel={handleTimelineWheel}
+              style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', overscrollBehavior: 'contain', scrollbarGutter: 'stable both-edges' }}
+            >
               <div
                 ref={timelineRef}
                 onMouseDown={handleMouseDown}
@@ -593,9 +856,9 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
                           width: `${clipWidth}px`,
                           height: '34px',
                           borderRadius: '6px',
-                          background: shot?.video_url ? 'linear-gradient(90deg, rgba(0,184,212,0.95), rgba(0,229,255,0.75))' : 'rgba(255,255,255,0.12)',
+                          background: shot?.video_url ? 'linear-gradient(90deg, rgba(124,58,237,0.95), rgba(236,72,153,0.75))' : 'rgba(255,255,255,0.12)',
                           border: `1px solid ${isSelected ? 'var(--dark)' : 'rgba(255,255,255,0.18)'}`,
-                          boxShadow: isSelected ? '0 0 0 2px rgba(0,184,212,0.25)' : 'none',
+                          boxShadow: isSelected ? '0 0 0 2px rgba(124,58,237,0.25)' : 'none',
                           color: '#061014',
                           overflow: 'hidden',
                           cursor: 'grab',
@@ -623,7 +886,7 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
                     width: `${Math.max((audioDuration || displayDuration) * zoom, 160)}px`,
                     height: '22px',
                     borderRadius: '5px',
-                    background: 'linear-gradient(90deg, var(--orange), rgba(0,229,255,0.7))',
+                    background: 'linear-gradient(90deg, var(--violet), rgba(236,72,153,0.7))',
                     color: '#0A0A0A',
                     display: 'flex',
                     alignItems: 'center',
@@ -688,28 +951,37 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
           boxShadow: '-8px 0 32px rgba(0,0,0,0.3)',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: 'var(--dark)' }}>Export Settings</div>
+            <div className="editorial-title editorial-h3" style={{ fontSize: '24px' }}>
+              Final <span className="text-grad">export.</span>
+            </div>
             <button
               onClick={() => setShowExport(false)}
               style={{
                 background: 'transparent',
                 border: 'none',
                 color: 'var(--text-muted)',
-                fontSize: '20px',
                 cursor: 'pointer',
                 lineHeight: 1,
-                padding: '2px 6px',
+                padding: '5px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
-            >x</button>
+              aria-label="Close export settings"
+            >
+              <X size={16} />
+            </button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
             <div>
-              <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>
+              <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>
                 Resolution
               </label>
               <select
-                defaultValue="1920 x 1080 (1080p)"
+                value={exportResolution}
+                onChange={(event) => setExportResolution(event.target.value)}
+                disabled={isShotstackRendering}
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -724,9 +996,38 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
                   appearance: 'none',
                 }}
               >
-                <option>3840 x 2160 (4K)</option>
-                <option>1920 x 1080 (1080p)</option>
-                <option>1280 x 720 (720p)</option>
+                <option value="4k">3840 x 2160 (4K)</option>
+                <option value="1080">1920 x 1080 (1080p)</option>
+                <option value="hd">1280 x 720 (720p)</option>
+                <option value="sd">1024 x 576 (SD)</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>
+                Quality
+              </label>
+              <select
+                value={exportQuality}
+                onChange={(event) => setExportQuality(event.target.value)}
+                disabled={isShotstackRendering}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  border: '1px solid var(--border-mid)',
+                  borderRadius: '8px',
+                  fontFamily: 'var(--font-body)',
+                  fontSize: '13px',
+                  outline: 'none',
+                  background: 'var(--surface)',
+                  color: 'var(--dark)',
+                  cursor: isShotstackRendering ? 'not-allowed' : 'pointer',
+                  appearance: 'none',
+                }}
+              >
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="low">Low</option>
               </select>
             </div>
 
@@ -734,11 +1035,68 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
               <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Edit Length</span>
               <span style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 800, color: 'var(--dark)' }}>{formatTime(displayDuration)}</span>
             </div>
+
+            <div style={{ background: 'var(--surface)', borderRadius: '8px', padding: '12px 14px', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Export Status</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 800, color: exportRenderStatus === 'done' ? 'var(--teal)' : 'var(--dark)' }}>
+                  {isShotstackRendering ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : exportRenderStatus === 'done' ? <CheckCircle2 size={12} /> : <Film size={12} />}
+                  {shotstackStatusLabel(exportRenderStatus)}
+                </span>
+              </div>
+              {exportRenderId && (
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {exportRenderId}
+                </div>
+              )}
+              {exportStatusMessage && (
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', lineHeight: 1.45 }}>
+                  {exportStatusMessage}
+                </div>
+              )}
+              {exportError && (
+                <div style={{ marginTop: '9px', color: '#ff9d9d', display: 'flex', gap: '7px', fontSize: '11px', lineHeight: 1.45 }}>
+                  <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: '1px' }} />
+                  <span>{exportError}</span>
+                </div>
+              )}
+            </div>
           </div>
 
-          <button className="btn-orange" style={{ width: '100%', marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-            Export &amp; Download
+          <button
+            className="btn-orange"
+            onClick={exportVideoUrl ? handleExportDownload : handleShotstackExport}
+            disabled={isShotstackRendering}
+            style={{ width: '100%', marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isShotstackRendering ? 0.72 : 1 }}
+          >
+            {isShotstackRendering ? (
+              <>
+                <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                Rendering
+              </>
+            ) : exportVideoUrl ? (
+              <>
+                <Download size={14} />
+                Download Video
+              </>
+            ) : (
+              <>
+                <Film size={14} />
+                Start Export
+              </>
+            )}
           </button>
+          {exportVideoUrl && (
+            <button
+              className="btn-outline"
+              onClick={handleShotstackExport}
+              disabled={isShotstackRendering}
+              style={{ width: '100%', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '12px' }}
+            >
+              <Film size={13} />
+              Export Again
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -748,10 +1106,10 @@ export default function AssembleScreen({ isActive, audioUrl, projectData }) {
 function InfoPill({ label, value }) {
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface)', padding: '8px 9px' }}>
-      <div style={{ fontSize: '9px', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-display)' }}>
+      <div style={{ fontSize: '9.5px', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.16em', fontFamily: 'var(--font-mono)' }}>
         {label}
       </div>
-      <div style={{ fontSize: '12px', color: 'var(--dark)', fontWeight: 800, marginTop: '3px', fontFamily: 'monospace' }}>
+      <div style={{ fontSize: '13px', color: 'var(--dark)', fontWeight: 500, marginTop: '4px', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
         {value}
       </div>
     </div>

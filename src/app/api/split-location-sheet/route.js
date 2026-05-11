@@ -188,7 +188,7 @@ Mark false when the image is mostly character/body/face reference panels, produc
     if (start === -1 || end === -1) return null;
     const verdict = JSON.parse(text.substring(start, end + 1));
     if (verdict?.is_location_sheet === false && Number(verdict.confidence) >= 0.55) {
-      return `Heads up: this upload does not look like a location sheet. ${verdict.reason || "The AI saw mostly non-environment imagery."} I still processed the detected panels, but you may want to upload an environment/location reference.`;
+      return `Heads up: this upload does not look like a location sheet. ${verdict.reason || "It appears to show mostly non-environment imagery."} I still processed the detected panels, but you may want to upload an environment or location reference.`;
     }
   } catch (err) {
     console.warn(`[split-location-sheet] Location validation unavailable: ${err.message}`);

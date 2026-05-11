@@ -38,7 +38,7 @@ async function generateImage(contents, label) {
 export async function POST(req) {
   try {
     if (!genAI) {
-      return NextResponse.json({ error: "GOOGLE_AI_API_KEY is not configured" }, { status: 500 });
+      return NextResponse.json({ error: "Character generation is temporarily unavailable." }, { status: 500 });
     }
 
     const { 

@@ -1,9 +1,9 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'AI Music Video Generator',
+  title: 'Aura AI Studio',
   description:
-    'Create stunning AI-powered music videos with Google Gemini and Veo 3. Upload your audio, brainstorm concepts, design characters, and assemble cinematic videos.',
+    'Plan, generate, and assemble cinematic music videos with consistent characters, locations, timing, and final edits in one focused studio.',
 };
 
 export default function RootLayout({ children }) {

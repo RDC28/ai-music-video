@@ -12,7 +12,7 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
-import { countTranscriptWords, getShotTimingLabel, normalizeShotListForVeo } from '@/utils/shotList';
+import { countTranscriptWords, getProjectAudioDuration, getShotTimingLabel, normalizeShotListForVeo } from '@/utils/shotList';
 
 const panelStyle = {
   background: 'var(--card)',
@@ -45,7 +45,8 @@ function parseLooseShotLines(text) {
 }
 
 export default function GenerateShotListScreen({ onNavigate, projectData, onDataUpdate }) {
-  const initialShots = normalizeShotListForVeo(projectData?.shot_list || []);
+  const audioDuration = getProjectAudioDuration(projectData);
+  const initialShots = normalizeShotListForVeo(projectData?.shot_list || [], { audioDuration });
   const [isGenerating, setIsGenerating] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [previewShots, setPreviewShots] = useState(() => initialShots);
@@ -112,7 +113,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
       parsed = parseLooseShotLines(text);
     }
 
-    const shots = normalizeShotListForVeo(parsed);
+    const shots = normalizeShotListForVeo(parsed, { audioDuration });
     if (!shots.length) {
       window.alert("Could not find shots. Upload JSON with shots/shot_list, or paste one shot per line.");
       return;
@@ -126,7 +127,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
 
   const handleGenerate = async () => {
     if (!canGenerate) {
-      window.alert('Add a script or analyze the audio transcript before asking AI for a production shot list.');
+      window.alert('Add a story plan or song analysis before creating a production shot list.');
       return;
     }
 
@@ -142,15 +143,15 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
       const result = await response.json();
       if (!response.ok || result.error) throw new Error(result.error || 'Shot list generation failed');
 
-      const shots = normalizeShotListForVeo(result.shots);
-      if (!shots.length) throw new Error('AI returned an empty shot list');
+      const shots = normalizeShotListForVeo(result.shots, { audioDuration });
+      if (!shots.length) throw new Error('No shots were returned');
 
       setPreviewShots(shots);
       setPreviewSource('ai');
-      setCoverageNotes(result.coverage_notes || 'AI shot list generated from the project context.');
+      setCoverageNotes(result.coverage_notes || 'Shot list generated from the project context.');
     } catch (err) {
       console.error('Shot list generation failed:', err);
-      setError(err.message || 'Shot list generation failed');
+      setError('Shot plan could not be created. Please try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -165,7 +166,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
       loadPreviewFromText(text, 'upload');
     } catch (err) {
       console.error('Failed to parse shot list:', err);
-      window.alert("Failed to read the file. Please use JSON or plain text.");
+      window.alert("We could not read that file. Please use JSON or plain text.");
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -187,6 +188,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
         coverage_notes: coverageNotes,
         approved_at: new Date().toISOString(),
         required_context: {
+          audio_duration_seconds: audioDuration,
           script_scenes: scriptScenes.length,
           transcript_lines: transcript.length,
           timed_words: wordCount,
@@ -203,7 +205,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
   };
 
   return (
-    <div className="screen active" id="s5" style={{ height: 'calc(100dvh - 52px)', overflow: 'hidden' }}>
+    <div className="screen active" id="s5" style={{ height: '100%', overflow: 'hidden' }}>
       <input
         type="file"
         ref={fileInputRef}
@@ -222,28 +224,26 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
         flexShrink: 0,
       }}>
         <div>
-          <div style={{ ...labelStyle, color: 'var(--orange)', marginBottom: '5px' }}>
-            Shotlist Studio
-          </div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '-0.01em', marginBottom: '3px' }}>
-            Generate and Approve Shot List
+          <div className="kicker kicker--orange" style={{ marginBottom: '10px' }}>Shot · Plan</div>
+          <h1 className="editorial-title editorial-h2" style={{ marginBottom: '8px' }}>
+            Generate &amp; <span className="text-grad">approve.</span>
           </h1>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            AI uses the transcript, timed words, script, characters, and locations before any shots move forward.
+          <p style={{ fontSize: '13px', color: 'var(--text-soft)', lineHeight: 1.6, maxWidth: '640px' }}>
+            Build a timed production plan from the song, story, cast, and locations before shots move forward.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
           <button className="btn-outline" onClick={() => onNavigate(7)} style={{ fontSize: '12px' }}>
-            Open Shots
+            Open shots →
           </button>
           <button
-            className="btn-teal"
+            className="btn-orange"
             onClick={handleApprove}
             disabled={!previewShots.length || isApproving}
             style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '7px' }}
           >
-            {isApproving ? 'Approving...' : 'Approve Shot List'}
+            {isApproving ? 'Approving…' : 'Approve shot list'}
             {!isApproving && <CheckCircle2 size={14} />}
           </button>
         </div>
@@ -260,22 +260,38 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
         {contextItems.map(item => {
           const Icon = item.icon;
           return (
-            <div key={item.label} style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '10px 12px',
-              border: `1px solid ${item.ready ? 'rgba(0,184,212,0.18)' : 'rgba(255,255,255,0.08)'}`,
-              borderRadius: '8px',
-              background: item.ready ? 'rgba(0,184,212,0.05)' : 'rgba(255,255,255,0.02)',
-              minWidth: 0,
-            }}>
+            <div
+              key={item.label}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '12px 14px',
+                border: `1px solid ${item.ready ? 'rgba(124,58,237,0.22)' : 'rgba(255,255,255,0.08)'}`,
+                borderRadius: 'var(--radius)',
+                background: item.ready
+                  ? 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(124,58,237,0.02))'
+                  : 'rgba(255,255,255,0.022)',
+                minWidth: 0,
+                boxShadow: item.ready ? '0 4px 14px rgba(124,58,237,0.1), inset 0 1px 0 rgba(255,255,255,0.04)' : 'inset 0 1px 0 rgba(255,255,255,0.03)',
+              }}
+            >
               <Icon size={16} color={item.ready ? 'var(--teal)' : 'var(--text-muted)'} />
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '10px', color: item.ready ? 'var(--teal)' : 'var(--text-muted)', fontWeight: 700, fontFamily: 'var(--font-display)' }}>
+                <div
+                  style={{
+                    fontSize: '9.5px',
+                    color: item.ready ? 'var(--teal)' : 'var(--text-muted)',
+                    fontWeight: 500,
+                    fontFamily: 'var(--font-mono)',
+                    letterSpacing: '0.16em',
+                    textTransform: 'uppercase',
+                    marginBottom: '2px',
+                  }}
+                >
                   {item.label}
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: '12.5px', color: 'var(--dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.015em' }}>
                   {item.value}
                 </div>
               </div>
@@ -298,8 +314,8 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
                 width: '42px',
                 height: '42px',
                 borderRadius: '8px',
-                background: 'rgba(0,229,255,0.08)',
-                border: '1px solid rgba(0,229,255,0.16)',
+                background: 'rgba(124,58,237,0.08)',
+                border: '1px solid rgba(124,58,237,0.16)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -308,11 +324,11 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
                 <Sparkles size={20} color="var(--orange)" />
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: 'var(--dark)', marginBottom: '6px' }}>
-                  Generate with AI
+                <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: '20px', fontWeight: 500, color: 'var(--dark)', marginBottom: '8px', letterSpacing: '-0.022em' }}>
+                  Generate Shot Plan
                 </div>
                 <p style={{ color: 'var(--text-muted)', fontSize: '12px', lineHeight: 1.6 }}>
-                  The prompt sent to AI includes vocal timing, timed words, the master script, approved cast, and approved locations as required production variables.
+                  Uses vocal timing, timed words, the master story, approved cast, and approved locations to keep shots production-ready.
                 </p>
               </div>
             </div>
@@ -330,7 +346,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
                 gap: '9px',
               }}>
                 <AlertCircle size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
-                <span>Missing context: {missingContext.join(', ')}. AI can still work with available material, but the best shot lists use all five.</span>
+                <span>Missing context: {missingContext.join(', ')}. You can continue with what is available, but the best shot lists use all five.</span>
               </div>
             )}
 
@@ -355,7 +371,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
               style={{ width: '100%', fontSize: '13px', marginTop: '18px', display: 'inline-flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
             >
               <Clapperboard size={15} />
-              {isGenerating ? 'Generating Shot List...' : 'Generate Production Shot List'}
+              {isGenerating ? 'Generating shot plan...' : 'Generate Shot Plan'}
             </button>
           </div>
 
@@ -365,8 +381,8 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
                 width: '42px',
                 height: '42px',
                 borderRadius: '8px',
-                background: 'rgba(0,184,212,0.08)',
-                border: '1px solid rgba(0,184,212,0.16)',
+                background: 'rgba(124,58,237,0.08)',
+                border: '1px solid rgba(124,58,237,0.16)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -375,7 +391,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
                 <Upload size={19} color="var(--teal)" />
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: 'var(--dark)', marginBottom: '6px' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: '20px', fontWeight: 500, color: 'var(--dark)', marginBottom: '8px', letterSpacing: '-0.022em' }}>
                   Bring Your Own Shot List
                 </div>
                 <p style={{ color: 'var(--text-muted)', fontSize: '12px', lineHeight: 1.6 }}>

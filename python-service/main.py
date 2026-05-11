@@ -8,6 +8,7 @@ Run with:  uvicorn main:app --port 8001 --reload
 
 import os, base64, json, logging
 from pathlib import Path
+from typing import Any
 from scipy.ndimage import gaussian_filter1d
 
 # Load .env.local from the project root if present (so `npm run py` works without export)
@@ -26,6 +27,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
+from shotstack_editor import (
+    ShotstackHelperError,
+    build as build_shotstack_edit,
+    render as render_shotstack_edit,
+    status as shotstack_render_status,
+)
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 
@@ -511,6 +518,39 @@ async def split_sheet(req: SplitRequest):
     except Exception as e:
         log.error(f"Split failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _shotstack_http_error(error: Exception) -> HTTPException:
+    if isinstance(error, ShotstackHelperError):
+        return HTTPException(status_code=error.status, detail=str(error))
+    return HTTPException(status_code=500, detail=str(error))
+
+
+@app.post("/shotstack/build")
+async def shotstack_build(req: dict[str, Any]):
+    try:
+        return build_shotstack_edit(req)
+    except Exception as e:
+        log.error(f"Shotstack build failed: {e}", exc_info=True)
+        raise _shotstack_http_error(e)
+
+
+@app.post("/shotstack/render")
+async def shotstack_render(req: dict[str, Any]):
+    try:
+        return render_shotstack_edit(req)
+    except Exception as e:
+        log.error(f"Shotstack render failed: {e}", exc_info=True)
+        raise _shotstack_http_error(e)
+
+
+@app.post("/shotstack/status")
+async def shotstack_status(req: dict[str, Any]):
+    try:
+        return shotstack_render_status(req)
+    except Exception as e:
+        log.error(f"Shotstack status failed: {e}", exc_info=True)
+        raise _shotstack_http_error(e)
 
 
 @app.get("/health")

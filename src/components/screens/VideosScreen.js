@@ -3,12 +3,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, Download, Loader2, Play, RotateCcw, Upload, Video, Wand2 } from 'lucide-react';
 import { drawClubScene } from '@/utils/drawClubScene';
-import { normalizeShotList } from '@/utils/shotList';
+import {
+  DEFAULT_VIDEO_MODEL,
+  VIDEO_GENERATION_MODELS,
+  getVideoDurationOptions,
+  normalizeVideoDurationForModel,
+  resolveVideoModelOption,
+} from '@/utils/generationModels';
+import { getPlannedVideoDuration, getProjectAudioDuration, normalizeShotListForVeo } from '@/utils/shotList';
 import { createClient } from '@/utils/supabase';
 
 const MAX_CLIENT_RETRIES = 2;
 const CLIENT_REQUEST_TIMEOUT_MS = 650000;
-const DEFAULT_VIDEO_MODEL = 'veo-3.1-generate-preview';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -32,6 +38,25 @@ function isRetryableClientError(error) {
     message.includes('unavailable') ||
     message.includes('overloaded')
   );
+}
+
+function getClipErrorMessage(error) {
+  const message = String(error?.message || '').toLowerCase();
+  const status = Number(error?.status);
+
+  if (error?.name === 'AbortError' || status === 408 || message.includes('timeout')) {
+    return 'This clip took too long. Try again.';
+  }
+  if (message.includes('temporarily unavailable') || status >= 500) {
+    return 'Clip creation is temporarily unavailable. Try again soon.';
+  }
+  if (message.includes('missing project') || message.includes('not found')) {
+    return 'Project data is unavailable. Reload and try again.';
+  }
+  if (message.includes('must be native 16:9')) {
+    return 'Regenerate the source frame as 16:9 before creating this clip.';
+  }
+  return 'Clip could not be created. Please try again.';
 }
 
 async function readJsonResponse(response) {
@@ -88,7 +113,7 @@ async function fetchJsonWithRetry(url, options, attempts = MAX_CLIENT_RETRIES) {
 
 function buildShotError(error, previousError) {
   return {
-    message: error?.message || 'Video generation failed',
+    message: getClipErrorMessage(error),
     retryable: isRetryableClientError(error),
     status: error?.status || null,
     attempts: (previousError?.attempts || 0) + (error?.clientAttempts || 1),
@@ -156,6 +181,7 @@ function buildGenerationContext(projectData, sourceShots) {
       start: shot.start,
       end: shot.end,
       duration: shot.duration,
+      veo_duration_seconds: shot.veo_duration_seconds,
       lyrics: compactText(shot.lyrics, 300),
       characters: shot.characters,
       locations: shot.locations,
@@ -177,6 +203,7 @@ function compactShotForRequest(shot) {
     start: shot.start,
     end: shot.end,
     duration: shot.duration,
+    veo_duration_seconds: shot.veo_duration_seconds,
     lyrics: compactText(shot.lyrics, 500),
     words: Array.isArray(shot.words) ? shot.words.slice(0, 80) : [],
     characters: shot.characters || [],
@@ -218,11 +245,16 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   const canvasRefs = useRef([]);
   const modalCanvasRef = useRef(null);
   const fileInputRef = useRef(null);
-  const initialShots = normalizeShotList(Array.isArray(projectData) ? projectData : projectData?.shot_list || []);
+  const projectState = Array.isArray(projectData) ? {} : (projectData || {});
+  const audioDuration = getProjectAudioDuration(projectState);
+  const initialShots = normalizeShotListForVeo(
+    Array.isArray(projectData) ? projectData : projectState?.shot_list || [],
+    { audioDuration }
+  );
   const [shots, setShots] = useState(() => initialShots);
   const [editModalIndex, setEditModalIndex] = useState(null);
   const [promptDraft, setPromptDraft] = useState('');
-  const [modelDraft, setModelDraft] = useState('');
+  const [modelDraft, setModelDraft] = useState(DEFAULT_VIDEO_MODEL);
   const [durationDraft, setDurationDraft] = useState('6');
   const [isApproving, setIsApproving] = useState(false);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
@@ -232,15 +264,23 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   const [queueSummary, setQueueSummary] = useState('');
 
   const selectedShot = editModalIndex !== null ? shots[editModalIndex] : null;
+  const durationOptions = getVideoDurationOptions(modelDraft);
+  const handleModelDraftChange = (value) => {
+    setModelDraft(value);
+    setDurationDraft(previous => String(normalizeVideoDurationForModel(previous, value)));
+  };
 
   useEffect(() => {
-    const list = normalizeShotList(Array.isArray(projectData) ? projectData : projectData?.shot_list || []);
+    const list = normalizeShotListForVeo(
+      Array.isArray(projectData) ? projectData : projectState?.shot_list || [],
+      { audioDuration }
+    );
     if (JSON.stringify(list) !== JSON.stringify(shots)) {
       // Keep local generation state aligned when the saved project shot list changes.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setShots(list);
     }
-  }, [projectData, shots]);
+  }, [audioDuration, projectData, projectState?.shot_list, shots]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -267,16 +307,22 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     const shot = shots[index];
     setEditModalIndex(index);
     setPromptDraft(shot?.video_prompt || shot?.p || shot?.prompt || '');
-    setModelDraft(shot?.video_model || '');
-    setDurationDraft(String(shot?.video_duration_seconds || 6));
+    const nextModel = resolveVideoModelOption(shot?.video_model || modelDraft || DEFAULT_VIDEO_MODEL).value;
+    setModelDraft(nextModel);
+    setDurationDraft(String(normalizeVideoDurationForModel(getPlannedVideoDuration(shot, 6), nextModel)));
     setGenerationError('');
     setQueueSummary('');
   };
 
-  const requestShotVideo = async (index, promptOverride = null, sourceShots = shots) => {
+  const requestShotVideo = async (index, promptOverride = null, sourceShots = shots, options = {}) => {
     if (!projectId) throw new Error('Missing project id');
     const shot = sourceShots[index];
     if (!shot) throw new Error('Shot not found');
+    const selectedModel = modelDraft || DEFAULT_VIDEO_MODEL;
+    const requestedDuration = normalizeVideoDurationForModel(
+      Number.isFinite(options.durationSeconds) ? options.durationSeconds : getPlannedVideoDuration(shot, 6),
+      selectedModel
+    );
 
     setGeneratingIndex(index);
 
@@ -289,10 +335,10 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
         shotIndex: index,
         projectState: buildGenerationContext(projectData, sourceShots),
         promptOverride: promptOverride || undefined,
-        model: modelDraft || undefined,
-        durationSeconds: Number(durationDraft) || undefined,
+        model: selectedModel,
+        durationSeconds: requestedDuration,
         aspectRatio: '16:9',
-        resolution: '720p',
+        resolution: requestedDuration === 8 ? '1080p' : '720p',
       }),
     });
 
@@ -301,8 +347,12 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
       video_url: result.video_url,
       video_path: result.video_path,
       video_prompt: promptOverride || shot.video_prompt || shot.p,
-      video_model: modelDraft || DEFAULT_VIDEO_MODEL,
-      video_duration_seconds: Number(durationDraft) || 6,
+      video_model: result.video_model || selectedModel,
+      veo_duration_seconds: requestedDuration,
+      video_duration_seconds: requestedDuration,
+      video_width: result.video_width,
+      video_height: result.video_height,
+      video_aspect_ratio: result.video_aspect_ratio,
       video_generated_at: new Date().toISOString(),
       video_error: null,
     };
@@ -319,12 +369,12 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     ));
   };
 
-  const runGenerationQueue = async (indices, { promptOverrides = {}, label = 'Video generation' } = {}) => {
+  const runGenerationQueue = async (indices, { promptOverrides = {}, durationOverrides = {}, label = 'Video generation' } = {}) => {
     if (!indices.length) return;
 
     setIsGeneratingAll(indices.length > 1);
     setGenerationError('');
-    setQueueSummary(`${label} started for ${indices.length} shot${indices.length === 1 ? '' : 's'}. Veo clips can take several minutes each.`);
+    setQueueSummary(`${label} started for ${indices.length} shot${indices.length === 1 ? '' : 's'}. Clips can take a few minutes each.`);
 
     let nextShots = [...shots];
     let successCount = 0;
@@ -332,14 +382,16 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
 
     for (const index of indices) {
       try {
-        // Respect RPM limit (approx 2/min for Veo 3.1) by adding a small throttle between shots
+        // Space out clip requests so long-running renders stay reliable.
         if (successCount > 0 || failureCount > 0) {
-          setQueueSummary(`${label}: Throttling for 35s to respect API rate limits...`);
+          setQueueSummary(`${label}: Preparing the next clip...`);
           await sleep(35000);
         }
 
         setQueueSummary(`${label}: Generating shot ${index + 1}...`);
-        nextShots = await requestShotVideo(index, promptOverrides[index], nextShots);
+        nextShots = await requestShotVideo(index, promptOverrides[index], nextShots, {
+          durationSeconds: Number.isFinite(durationOverrides[index]) ? durationOverrides[index] : undefined,
+        });
         successCount += 1;
       } catch (error) {
         console.error(`Shot ${index + 1} video generation failed:`, error);
@@ -355,15 +407,16 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     setIsGeneratingAll(false);
 
     if (failureCount) {
-      setGenerationError(`${failureCount} shot${failureCount === 1 ? '' : 's'} failed after retries. Generate Remaining will retry unfinished clips.`);
+      setGenerationError(`${failureCount} shot${failureCount === 1 ? '' : 's'} need another try. Generate Remaining will retry unfinished clips.`);
     }
-    setQueueSummary(`${successCount} generated, ${failureCount} failed, ${nextShots.filter(shot => !shot.video_url).length} remaining.`);
+    setQueueSummary(`${successCount} ready, ${failureCount} need retry, ${nextShots.filter(shot => !shot.video_url).length} remaining.`);
   };
 
   const handleGenerateOne = async () => {
     if (editModalIndex === null) return;
     await runGenerationQueue([editModalIndex], {
       promptOverrides: { [editModalIndex]: promptDraft },
+      durationOverrides: { [editModalIndex]: Number(durationDraft) || getPlannedVideoDuration(shots[editModalIndex], 6) },
       label: `Shot ${editModalIndex + 1}`,
     });
   };
@@ -388,7 +441,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     event.target.value = '';
     if (!file || editModalIndex === null) return;
     if (!projectId) {
-      setGenerationError('Missing project id');
+      setGenerationError('Project unavailable. Please reload and try again.');
       return;
     }
 
@@ -427,7 +480,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
       setQueueSummary(`Uploaded replacement video for shot ${editModalIndex + 1}.`);
     } catch (error) {
       console.error('Video upload failed:', error);
-      setGenerationError(error?.message || 'Video upload failed');
+      setGenerationError('Upload could not be completed. Please try another clip.');
     } finally {
       setIsUploading(false);
     }
@@ -485,21 +538,26 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
           gap: '16px',
         }}>
           <div>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '-0.01em', marginBottom: '3px' }}>
-              Generate Videos
+            <div className="kicker kicker--orange" style={{ marginBottom: '10px' }}>Clips · Render</div>
+            <h1 className="editorial-title editorial-h2" style={{ marginBottom: '8px' }}>
+              Bring frames to <span className="text-grad">life.</span>
             </h1>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            <p
+              style={{
+                fontSize: '12.5px',
+                color: 'var(--text-soft)',
+                fontFamily: shots.length ? 'var(--font-mono)' : 'var(--font-body)',
+                letterSpacing: shots.length ? '0.08em' : '-0.005em',
+                textTransform: shots.length ? 'uppercase' : 'none',
+              }}
+            >
               {shots.length
-                ? `${generatedCount}/${shots.length} generated · ${remainingCount} remaining${failedCount ? ` · ${failedCount} failed` : ''}`
-                : 'Generate and review AI video clips for each shot'}
+                ? `${String(generatedCount).padStart(2,'0')} / ${String(shots.length).padStart(2,'0')} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
+                : 'Create and review video clips for each shot.'}
             </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-              <span style={{ fontSize: '10px', background: 'rgba(0,184,212,0.12)', color: 'var(--teal)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, border: '1px solid rgba(0,184,212,0.2)' }}>
-                VEO 3.1
-              </span>
-              <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, border: '1px solid var(--border)' }}>
-                MUTED FOR AUDIO SYNC
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+              <span className="tag-badge tag-teal">◇ Standard clips</span>
+              <span className="tag-badge tag-outline">○ Muted · song sync</span>
             </div>
             {queueSummary && (
               <p style={{ fontSize: '11px', color: 'rgba(234,234,234,0.58)', marginTop: '5px' }}>
@@ -514,6 +572,16 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
           </div>
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+            <select
+              value={modelDraft}
+              onChange={(event) => handleModelDraftChange(event.target.value)}
+              style={{ ...inputStyle, width: '176px', height: '38px', padding: '8px 10px', flexShrink: 0 }}
+              title="Video model"
+            >
+              {VIDEO_GENERATION_MODELS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
             <button
               className="btn-teal"
               onClick={handleGenerateRemaining}
@@ -528,7 +596,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
               ) : (
                 <>
                   <Wand2 size={14} />
-                  {remainingCount === shots.length ? 'Generate with AI' : `Generate Remaining (${remainingCount})`}
+                  {remainingCount === shots.length ? 'Generate Clips' : `Generate Remaining (${remainingCount})`}
                 </>
               )}
             </button>
@@ -569,12 +637,12 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 }
               }}
               style={{
-                border: `1px solid ${editModalIndex === i ? 'rgba(0,229,255,0.58)' : 'var(--border-mid)'}`,
+                border: `1px solid ${editModalIndex === i ? 'rgba(124,58,237,0.58)' : 'var(--border-mid)'}`,
                 borderRadius: '14px',
                 background: 'var(--surface)',
                 overflow: 'hidden',
                 cursor: 'pointer',
-                boxShadow: editModalIndex === i ? '0 0 0 1px rgba(0,229,255,0.22), 0 16px 48px rgba(0,184,212,0.12)' : '0 12px 40px rgba(0,0,0,0.22)',
+                boxShadow: editModalIndex === i ? '0 0 0 1px rgba(124,58,237,0.22), 0 16px 48px rgba(124,58,237,0.12)' : '0 12px 40px rgba(0,0,0,0.22)',
                 transition: 'border-color 0.18s, box-shadow 0.18s, transform 0.18s',
               }}
             >
@@ -605,7 +673,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                       {i + 1}. {shot.n || shot.title || `Shot ${i + 1}`}
                     </div>
                     <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', marginTop: '2px' }}>
-                      {shot.video_url ? 'Video ready' : shot.video_error ? 'Needs retry' : 'Ready to generate'}
+                      {shot.video_url ? 'Clip ready' : shot.video_error ? 'Try again' : 'Ready to generate'}
                     </div>
                   </div>
                   <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(0,0,0,0.56)', border: '1px solid rgba(255,255,255,0.24)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
@@ -625,7 +693,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                     right: '10px',
                     fontSize: '10px',
                     padding: '5px 9px',
-                    borderColor: editModalIndex === i ? 'rgba(0,229,255,0.78)' : 'rgba(255,255,255,0.22)',
+                    borderColor: editModalIndex === i ? 'rgba(124,58,237,0.78)' : 'rgba(255,255,255,0.22)',
                     background: 'rgba(0,0,0,0.58)',
                     color: '#fff',
                   }}
@@ -677,7 +745,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: 'var(--dark)' }}>
-              Edit &amp; Generate Video
+              Edit Clip
             </div>
             <button
               onClick={() => setEditModalIndex(null)}
@@ -784,24 +852,28 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
               />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 96px', gap: '8px', marginTop: '8px' }}>
-                <input
+                <select
                   value={modelDraft}
-                  onChange={(e) => setModelDraft(e.target.value)}
-                  style={{ ...inputStyle, height: '38px' }}
-                  placeholder={DEFAULT_VIDEO_MODEL}
-                />
+                  onChange={(event) => handleModelDraftChange(event.target.value)}
+                  style={{ ...inputStyle, height: '38px', padding: '8px 10px' }}
+                  title="Video model"
+                >
+                  {VIDEO_GENERATION_MODELS.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
                 <select
                   value={durationDraft}
                   onChange={(e) => setDurationDraft(e.target.value)}
                   style={{ ...inputStyle, height: '38px', padding: '8px 10px' }}
                 >
-                  <option value="4">4s</option>
-                  <option value="6">6s</option>
-                  <option value="8">8s</option>
+                  {durationOptions.map(seconds => (
+                    <option key={seconds} value={String(seconds)}>{seconds}s</option>
+                  ))}
                 </select>
               </div>
               <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic' }}>
-                Note: Veo 3.1 generates 4s, 6s, or 8s clips. Audio is disabled by default to sync with your main track.
+                Available clip lengths follow the selected model. Audio stays muted so the final edit stays synced to your main track.
               </div>
 
               <button
@@ -818,7 +890,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 ) : (
                   <>
                     <Wand2 size={14} />
-                    {selectedShot.video_error && !selectedShot.video_url ? 'Retry Generate' : 'Generate New'}
+                    {selectedShot.video_error && !selectedShot.video_url ? 'Try Again' : 'Generate New'}
                   </>
                 )}
               </button>

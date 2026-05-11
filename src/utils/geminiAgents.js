@@ -4,7 +4,7 @@ import {
   runWithModelFallback,
   TEXT_MODEL_FALLBACKS,
 } from "@/utils/googleModelFallbacks";
-import { normalizeShotList } from "@/utils/shotList";
+import { getProjectAudioDuration, normalizeShotList } from "@/utils/shotList";
 
 const genAI = process.env.GOOGLE_AI_API_KEY
   ? new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
@@ -136,7 +136,9 @@ export const geminiAgent = {
   async generateShotList(projectState = {}) {
     const transcript = projectState.analysis?.lyrics || projectState.script?.lyrics_timeline || [];
     const script = projectState.script || {};
+    const audioDuration = getProjectAudioDuration(projectState);
     const context = {
+      audio_duration_seconds: audioDuration,
       audio_analysis: {
         theme: projectState.analysis?.theme,
         mood: projectState.analysis?.mood,
@@ -172,7 +174,8 @@ export const geminiAgent = {
     };
 
     const systemPrompt = `
-You are a senior music video director building a production shot list.
+You are a practical shot planner preparing raw source-footage prompts for a music video editor.
+The app generates raw clips only. The user will add transitions, cuts, effects, title cards, overlays, stylization, and final edit choices later.
 
 The shot list must treat these as unavoidable inputs:
 - Transcript/vocal timing and every available word timestamp.
@@ -181,23 +184,32 @@ The shot list must treat these as unavoidable inputs:
 - The approved locations, using exact names and environmental identity.
 - The song analysis, including mood, genre, BPM, and emotional journey.
 
-Create a coherent shot list that covers the full song in chronological order. Each shot must attach to a script scene and a vocal/timestamp cue when timing exists. Use only provided character and location names unless no usable names exist. Do not invent random cast or sets.
+Create a coherent raw-footage shot list that covers the full song in chronological order. Each shot must attach to a script scene and a vocal/timestamp cue when timing exists. Use only provided character and location names unless no usable names exist. Do not invent random cast or sets.
+Every shot is edited over the original song audio later. Treat lyrics as timing/emotional cues, not as a request for the video model to perform exact mouth-to-word lip sync.
 
 Shot count guidance:
 - Do not mirror the script scene count. A single script scene can and should become multiple smaller shots when that improves image/video quality.
-- Every shot duration must be exactly one of these Veo-friendly lengths: 4, 6, or 8 seconds. Never create a shot longer than 8 seconds.
-- Split any script scene, lyric phrase, or instrumental beat longer than 8 seconds into multiple shots with fresh prompts and distinct camera/action beats.
+- Never create a shot longer than 8 seconds.
 - Use 4 second shots for dense word/vocal moments, 6 second shots for standard narrative beats, and 8 second shots only for atmospheric or establishing beats.
+- Shorter durations under 4 seconds are allowed only when needed to fit the exact music timing at the start/end of a phrase or the end of the song. The generation system will trim a Veo clip down to that exact timeline length.
+- Split any script scene, lyric phrase, or instrumental beat longer than 8 seconds into multiple raw source shots with distinct subject action.
 - Avoid gaps and overlapping time ranges when timestamps are available.
-- When timing exists, set end = start + duration. If exact lyrical boundaries do not fit perfectly, prefer a clean 4/6/8 second shot over preserving the original scene length.
+- Start lyric-driven shots exactly on a transcript line or word boundary when possible, and include only the words whose timestamps fall inside that shot.
+- When timing exists, set end = start + duration.
+- If audio_duration_seconds is available, the entire shot list must stay within that exact track length. The final shot end must never be later than audio_duration_seconds.
+- If transcript timings stop before the file ends, use instrumental/performance shots to cover the remaining music without exceeding audio_duration_seconds.
+- Keep every prompt explicitly plain 16:9 widescreen: no vertical phone framing, no square framing, no letterbox, no pillarbox, no black bars, no black wall transitions, no collage, no split screen.
+- Describe only raw source footage, not an edit between shots. Do not request wipes, cut-to-black moments, fades, dissolves, smash cuts, match cuts, jump cuts, curtains, title cards, scene-change devices, montage, split screen, or camera passes into darkness.
+- Keep prompts grounded and usable: one scene, one camera setup, one continuous action, simple stable movement, natural tone, and no novelty visual tricks.
+- Avoid close-up visible mouth singing/rapping unless the shot can be treated as a loose performance moment. Prefer dance, gesture, silhouette, profile, crowd, hands, environment, and reaction cutaways for lyric timing.
 
 Return STRICTLY one JSON object:
 {
   "coverage_notes": "Short note explaining how the shots cover transcript, script, characters, and locations.",
   "shots": [
     {
-      "n": "Short production shot title",
-      "p": "Detailed cinematic image/video prompt with exact characters, exact location, action, lighting, lens/framing, mood, and continuity details",
+      "n": "Short raw source shot title",
+      "p": "Plain raw source-footage prompt with exact characters, exact location, one continuous action, lighting, lens/framing, mood, and continuity details. No transitions or edit instructions.",
       "start": 0.0,
       "end": 4.0,
       "duration": 4,
@@ -206,8 +218,8 @@ Return STRICTLY one JSON object:
       "characters": ["Exact Character Name"],
       "locations": ["Exact Location Name"],
       "shot_size": "establishing | wide | medium | close-up | insert",
-      "camera": "Specific lens/framing direction",
-      "movement": "Specific camera movement",
+      "camera": "Simple 16:9 lens/framing direction",
+      "movement": "Simple stable camera movement",
       "beat": "Story, performance, or vocal beat",
       "source_scene": "The script scene/time range this shot comes from"
     }

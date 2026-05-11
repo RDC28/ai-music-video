@@ -10,7 +10,7 @@ import {
   SlidersHorizontal,
   Trash2,
 } from 'lucide-react';
-import { getShotTimingLabel, normalizeShot, normalizeShotList, snapToVeoDuration } from '@/utils/shotList';
+import { getPlannedVideoDuration, getProjectAudioDuration, getShotTimingLabel, normalizeShot, normalizeShotListForVeo } from '@/utils/shotList';
 
 const inputStyle = {
   width: '100%',
@@ -27,14 +27,14 @@ const inputStyle = {
 };
 
 const labelStyle = {
-  fontSize: '10px',
-  fontWeight: 700,
+  fontSize: '10.5px',
+  fontWeight: 500,
   color: 'var(--text-muted)',
-  letterSpacing: '0.08em',
+  letterSpacing: '0.16em',
   textTransform: 'uppercase',
   display: 'block',
-  marginBottom: '6px',
-  fontFamily: 'var(--font-display)',
+  marginBottom: '8px',
+  fontFamily: 'var(--font-mono)',
 };
 
 const splitTags = (value) => value
@@ -43,9 +43,10 @@ const splitTags = (value) => value
   .filter(Boolean);
 
 export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }) {
+  const audioDuration = useMemo(() => getProjectAudioDuration(projectData), [projectData]);
   const shots = useMemo(
-    () => normalizeShotList(projectData?.shot_list || []),
-    [projectData?.shot_list]
+    () => normalizeShotListForVeo(projectData?.shot_list || [], { audioDuration }),
+    [audioDuration, projectData?.shot_list]
   );
   const [editingIndex, setEditingIndex] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
@@ -111,10 +112,11 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
       n: `Shot ${shots.length + 1}`,
       p: '',
       duration: 6,
+      veo_duration_seconds: 6,
       characters: [],
       locations: [],
       movement: 'static',
-      camera: '16:9 cinematic framing',
+      camera: 'plain 16:9 source-footage framing',
     };
     const next = [...shots, nextShot];
     await commitShots(next);
@@ -131,7 +133,9 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
     const { charactersText, locationsText, ...draftFields } = editDraft;
     const start = editDraft.start === '' ? undefined : Number(editDraft.start);
     const end = editDraft.end === '' ? undefined : Number(editDraft.end);
-    const duration = snapToVeoDuration(editDraft.duration === '' ? 6 : Number(editDraft.duration));
+    const requestedDuration = editDraft.duration === '' ? shots[editingIndex].duration : Number(editDraft.duration);
+    const duration = Number(Math.min(Math.max(requestedDuration, 0.1), 8).toFixed(2));
+    const veoDuration = getPlannedVideoDuration({ ...shots[editingIndex], ...draftFields, duration }, 6);
     const next = [...shots];
     next[editingIndex] = normalizeShot({
       ...shots[editingIndex],
@@ -139,6 +143,7 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
       start: Number.isFinite(start) ? start : undefined,
       end: Number.isFinite(start) ? Number((start + duration).toFixed(2)) : (Number.isFinite(end) ? end : undefined),
       duration: Number.isFinite(duration) ? duration : 6,
+      veo_duration_seconds: veoDuration,
       characters: splitTags(charactersText || ''),
       locations: splitTags(locationsText || ''),
     }, editingIndex);
@@ -152,7 +157,7 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
   };
 
   return (
-    <div className="screen active" id="s5" style={{ flexDirection: 'row', alignItems: 'flex-start', height: 'calc(100dvh - 52px)', overflow: 'hidden' }}>
+    <div className="screen active" id="s5" style={{ flexDirection: 'row', alignItems: 'flex-start', height: '100%', overflow: 'hidden' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', height: '100%' }}>
         <div style={{
           padding: '18px 28px',
@@ -164,34 +169,32 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
           flexShrink: 0,
         }}>
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '10px', fontWeight: 700, color: 'var(--orange)', letterSpacing: '0.11em', textTransform: 'uppercase', marginBottom: '5px' }}>
-              Shots Tab
-            </div>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '-0.01em', marginBottom: '3px' }}>
-              Arrange Individual Shots
+            <div className="kicker kicker--orange" style={{ marginBottom: '10px' }}>Shots · Sequence</div>
+            <h1 className="editorial-title editorial-h2" style={{ marginBottom: '8px' }}>
+              Arrange the <span className="text-grad">cuts.</span>
             </h1>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            <p style={{ fontSize: '13px', color: 'var(--text-soft)', lineHeight: 1.6 }}>
               {shots.length > 0
-                ? `${shots.length} approved shots ready to reorder, edit, and send to image generation`
+                ? `${shots.length} approved shots ready to reorder, edit, and send to image generation.`
                 : 'No approved shots yet. Generate or import a shot list first.'}
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
             <button className="btn-outline" onClick={() => onNavigate(6)} style={{ fontSize: '12px' }}>
-              Back to Shotlist
+              ← Shot Plan
             </button>
             <button className="btn-outline" onClick={handleAddShot} style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
               <Plus size={14} />
-              Add Shot
+              Add shot
             </button>
             <button
-              className="btn-teal"
+              className="btn-orange"
               onClick={handleContinue}
               disabled={!shots.length}
               style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '7px' }}
             >
-              Continue to Images
+              Continue to Frames
               <CheckCircle2 size={14} />
             </button>
           </div>
@@ -222,69 +225,83 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   alignItems: 'start',
                   padding: '16px 28px',
                   borderBottom: '1px solid var(--border)',
-                  background: editingIndex === index ? 'rgba(0,184,212,0.04)' : 'transparent',
+                  background: editingIndex === index ? 'rgba(124,58,237,0.04)' : 'transparent',
                   borderLeft: `3px solid ${editingIndex === index ? 'var(--teal)' : 'transparent'}`,
                   transition: 'background 0.2s',
                 }}
               >
                 <div style={{
-                  width: '34px',
-                  height: '34px',
-                  borderRadius: '8px',
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid var(--border)',
-                  color: editingIndex === index ? 'var(--teal)' : 'var(--dark)',
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '12px',
-                  fontWeight: 800,
+                  background: editingIndex === index
+                    ? 'linear-gradient(135deg, rgba(124,58,237,0.22), rgba(124,58,237,0.06))'
+                    : 'rgba(255,255,255,0.034)',
+                  border: `1px solid ${editingIndex === index ? 'rgba(124,58,237,0.4)' : 'var(--border)'}`,
+                  color: editingIndex === index ? 'var(--teal)' : 'var(--text-soft)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '11.5px',
+                  fontWeight: 500,
+                  letterSpacing: '0.04em',
+                  boxShadow: editingIndex === index ? '0 0 0 1px rgba(124,58,237,0.2), 0 8px 22px rgba(124,58,237,0.18)' : 'none',
                 }}>
-                  {index + 1}
+                  {String(index + 1).padStart(2, '0')}
                 </div>
 
-                <div style={{ color: 'var(--teal)', fontFamily: 'var(--font-display)', fontSize: '11px', fontWeight: 700, paddingTop: '4px' }}>
+                <div
+                  style={{
+                    color: 'var(--teal)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '10.5px',
+                    fontWeight: 500,
+                    paddingTop: '8px',
+                    letterSpacing: '0.08em',
+                  }}
+                >
                   {getShotTimingLabel(shot)}
                 </div>
 
                 <div style={{ minWidth: 0 }}>
-                  <div style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    color: editingIndex === index ? 'var(--teal)' : 'var(--dark)',
-                    marginBottom: '5px',
-                    letterSpacing: '-0.01em',
-                  }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontStyle: 'italic',
+                      fontSize: '17px',
+                      fontWeight: 500,
+                      color: editingIndex === index ? 'var(--teal)' : 'var(--dark)',
+                      marginBottom: '6px',
+                      letterSpacing: '-0.022em',
+                      lineHeight: 1.15,
+                    }}
+                  >
                     {shot.n}
                   </div>
-                  <div style={{
-                    fontSize: '12px',
-                    color: 'var(--text-muted)',
-                    lineHeight: 1.5,
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                  }}>
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      color: 'var(--text-soft)',
+                      lineHeight: 1.55,
+                      overflow: 'hidden',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                    }}
+                  >
                     {shot.p || 'No prompt supplied yet.'}
                   </div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
                     {[...(shot.characters || []), ...(shot.locations || []), shot.shot_size, shot.movement]
                       .filter(Boolean)
                       .slice(0, 6)
                       .map(tag => (
-                        <span key={tag} style={{
-                          padding: '3px 8px',
-                          borderRadius: '5px',
-                          background: 'rgba(255,255,255,0.04)',
-                          border: '1px solid var(--border)',
-                          color: 'rgba(234,234,234,0.68)',
-                          fontSize: '10px',
-                          fontWeight: 700,
-                          fontFamily: 'var(--font-display)',
-                        }}>
+                        <span
+                          key={tag}
+                          className="tag-badge tag-outline"
+                          style={{ fontSize: '9.5px' }}
+                        >
                           {tag}
                         </span>
                       ))}
@@ -345,9 +362,9 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <div>
-              <div style={{ ...labelStyle, marginBottom: '4px' }}>Edit Shot {editingIndex + 1}</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: 'var(--dark)' }}>
-                Shot Details
+              <div style={{ ...labelStyle, marginBottom: '6px' }}>── Editing · Shot {String(editingIndex + 1).padStart(2, '0')}</div>
+              <div className="editorial-title editorial-h3">
+                Shot details.
               </div>
             </div>
             <button
@@ -406,6 +423,9 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   onChange={(e) => setEditDraft(prev => ({ ...prev, duration: e.target.value }))}
                   style={inputStyle}
                 />
+                <div style={{ marginTop: '6px', fontSize: '10px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                  Timeline duration can be any value up to 8s. Source clip length: {getPlannedVideoDuration(editDraft, 6)}s.
+                </div>
               </div>
             </div>
 

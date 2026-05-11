@@ -13,14 +13,14 @@ const genAI = process.env.GOOGLE_AI_API_KEY
 
 export async function POST(req) {
   try {
-    const { projectId, audioUrl } = await req.json();
+    const { projectId, audioUrl, audioDurationSeconds } = await req.json();
 
     if (!projectId || !audioUrl) {
       return NextResponse.json({ error: "Missing projectId or audioUrl" }, { status: 400 });
     }
 
     if (!genAI) {
-      return NextResponse.json({ error: "GOOGLE_AI_API_KEY is not configured" }, { status: 500 });
+      return NextResponse.json({ error: "Song analysis is temporarily unavailable." }, { status: 500 });
     }
 
     console.log(`Starting analysis for project ${projectId} with audio ${audioUrl}`);
@@ -94,6 +94,19 @@ export async function POST(req) {
 
     console.log(`Analysis complete using ${model}:`, analysis.theme);
 
+    const transcriptEndSeconds = Array.isArray(analysis.lyrics)
+      ? analysis.lyrics.reduce((max, line) => {
+          const lineEnd = Number(line?.end);
+          const wordEnd = Array.isArray(line?.words)
+            ? line.words.reduce((wordMax, word) => {
+                const end = Number(word?.end);
+                return Number.isFinite(end) ? Math.max(wordMax, end) : wordMax;
+              }, 0)
+            : 0;
+          return Math.max(max, Number.isFinite(lineEnd) ? lineEnd : 0, wordEnd);
+        }, 0)
+      : 0;
+
     // 4. Update the project in Supabase
     const supabase = createAdminClient();
     
@@ -108,8 +121,15 @@ export async function POST(req) {
 
     const newState = {
       ...project.project_state,
+      ...(Number.isFinite(Number(audioDurationSeconds)) && Number(audioDurationSeconds) > 0
+        ? { audio_duration_seconds: Number(Number(audioDurationSeconds).toFixed(2)) }
+        : {}),
       analysis: {
         ...analysis,
+        audio_duration_seconds: Number.isFinite(Number(audioDurationSeconds)) && Number(audioDurationSeconds) > 0
+          ? Number(Number(audioDurationSeconds).toFixed(2))
+          : project.project_state?.audio_duration_seconds,
+        transcript_end_seconds: Number(transcriptEndSeconds.toFixed(2)),
         analysis_model: model,
       },
       current_step: 2 // Move to next step logically

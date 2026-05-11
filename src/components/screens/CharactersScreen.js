@@ -400,7 +400,7 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
             </button>
           )
         )}
-        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={cropMode ? { ...MODAL_BTN, background: '#00B8D4', color: '#000', border: '1px solid #00B8D4' } : MODAL_BTN}>
+        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={cropMode ? { ...MODAL_BTN, background: '#7C3AED', color: '#000', border: '1px solid #7C3AED' } : MODAL_BTN}>
           {cropMode ? 'Draw New Selection' : 'Crop Mode'}
         </button>
         {canApply && showEditorLabel && (
@@ -438,7 +438,7 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
           style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'center center', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
         />
         {cropBox && cropBox.w > 0 && (
-          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '1px solid #00B8D4', background: 'rgba(0,184,212,0.08)', pointerEvents: 'none', boxSizing: 'border-box' }} />
+          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '1px solid #7C3AED', background: 'rgba(124,58,237,0.08)', pointerEvents: 'none', boxSizing: 'border-box' }} />
         )}
         <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: '#2a2a2a', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
           {cropMode
@@ -477,11 +477,11 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
 
   const CHARACTER_STEPS = [
     'Preparing character profile',
-    'Generating Front View',
-    'Generating Side View',
-    'Generating Back View',
-    'Generating Face Close-up',
-    'Uploading to library'
+    'Creating front view',
+    'Creating side view',
+    'Creating back view',
+    'Creating face close-up',
+    'Saving to library'
   ];
 
   const fileInputRef = useRef(null);
@@ -726,7 +726,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       saveToGlobalLibrary(newChar, 'upload');
     } catch (err) {
       console.error('Sheet processing failed:', err);
-      alert('Failed to process sheet: ' + err.message);
+      alert('We could not process that character sheet. Please try another image.');
     } finally {
       setIsProcessingSheet(false);
       setGeneratingChar(null);
@@ -815,7 +815,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       saveToGlobalLibrary(newChar, 'ai');
     } catch (err) {
       console.error('Generation failed:', err);
-      alert('Failed: ' + err.message);
+      alert('Character could not be created. Please try again.');
     } finally {
       setIsGenerating(false);
       setCharProgressStep(-1);
@@ -851,7 +851,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       updatedChars[charIdx] = { ...char, images };
       await onDataUpdate({ characters: updatedChars });
       setZoomCropTarget(null);
-    } catch (err) { alert('Crop upload failed: ' + err.message); }
+    } catch { alert('Crop could not be saved. Please try again.'); }
   };
 
   const handleDelete = async () => {
@@ -867,7 +867,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         await refreshGlobalLibrary();
         setActiveTab(Math.max(0, activeTab - 1));
       }
-    } catch (err) { alert('Delete failed: ' + err.message); }
+    } catch { alert('Delete could not be completed. Please try again.'); }
   };
 
   const handleDeleteImage = async (charIdx, imgIdx) => {
@@ -907,7 +907,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
   };
 
   return (
-    <div className="screen active" id="s4" style={{ height: 'calc(100dvh - 52px)', overflow: 'hidden', background: '#080808' }}>
+    <div className="screen active" id="s4" style={{ height: '100%', overflow: 'hidden', background: '#080808' }}>
       <style>{`
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         .skeleton-shimmer { background:linear-gradient(90deg,#111 25%,#1a1a1a 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
@@ -922,35 +922,59 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         }
       `}</style>
 
-      <div style={{ display: 'flex', height: '100%' }}>
+      <div className="studio-shell" style={{ display: 'flex', height: '100%' }}>
 
         {/* ── Sidebar ── */}
-        <div style={{ width: '256px', minWidth: '256px', background: '#0D0D0D', borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', padding: '24px', height: '100%', overflowY: 'auto' }}>
+        <div className="studio-sidebar" style={{ width: '256px', minWidth: '256px', background: '#0D0D0D', borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', padding: '24px', height: '100%', overflowY: 'auto' }}>
 
-          <div style={{ marginBottom: '24px' }}>
-            <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-display)', marginBottom: '8px' }}>
-              Character Studio
-            </div>
-            <h2 style={{ color: '#FFF', fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 700, lineHeight: 1.2, marginBottom: '8px', letterSpacing: '-0.01em' }}>
-              Build your <span style={{ color: 'var(--teal)' }}>Cast</span>
+          <div style={{ marginBottom: '26px' }}>
+            <div className="kicker" style={{ marginBottom: '12px' }}>Character · Studio</div>
+            <h2 className="editorial-title editorial-h2" style={{ marginBottom: '10px' }}>
+              Build your <span className="text-grad">cast.</span>
             </h2>
-            <p style={{ color: '#444', fontSize: '12px', lineHeight: 1.5 }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '12.5px', lineHeight: 1.6 }}>
               {busy && generatingChar
-                ? `Generating ${generatingChar.images.filter(x => x.url).length}/${generatingChar.images.length} poses...`
-                : busy ? 'Detecting sections...' : 'Upload a sheet or generate with AI'}
+                ? `Creating ${generatingChar.images.filter(x => x.url).length}/${generatingChar.images.length} references…`
+                : busy ? 'Finding poses…' : 'Upload a sheet or create a reference set.'}
             </p>
           </div>
 
           {/* Category toggle */}
-          <div style={{ display: 'flex', background: '#111', borderRadius: '8px', padding: '3px', marginBottom: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div
+            style={{
+              display: 'flex',
+              background: 'rgba(255,255,255,0.025)',
+              borderRadius: '999px',
+              padding: '4px',
+              marginBottom: '22px',
+              border: '1px solid rgba(255,255,255,0.06)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+            }}
+          >
             {['project', 'global'].map(cat => (
-              <button key={cat} onClick={() => { setActiveCategory(cat); setActiveTab(0); }} style={{
-                flex: 1, padding: '7px', borderRadius: '6px', border: 'none',
-                background: activeCategory === cat ? '#1e1e1e' : 'transparent',
-                color: activeCategory === cat ? (cat === 'project' ? 'var(--teal)' : 'var(--orange)') : '#444',
-                fontWeight: 700, fontSize: '10px', cursor: 'pointer', letterSpacing: '0.04em', fontFamily: 'var(--font-display)',
-                transition: 'background 0.15s, color 0.15s',
-              }}>
+              <button
+                key={cat}
+                onClick={() => { setActiveCategory(cat); setActiveTab(0); }}
+                style={{
+                  flex: 1,
+                  padding: '9px',
+                  borderRadius: '999px',
+                  border: 'none',
+                  background: activeCategory === cat
+                    ? 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(124,58,237,0.06))'
+                    : 'transparent',
+                  color: activeCategory === cat
+                    ? (cat === 'project' ? 'var(--teal)' : 'var(--orange)')
+                    : 'var(--text-muted)',
+                  fontWeight: 600,
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  letterSpacing: '-0.005em',
+                  fontFamily: 'var(--font-body)',
+                  transition: 'background 0.18s, color 0.18s',
+                  boxShadow: activeCategory === cat ? '0 0 0 1px rgba(124,58,237,0.22), inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
+                }}
+              >
                 {cat === 'project' ? 'Project' : 'History'}
               </button>
             ))}
@@ -966,16 +990,15 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
               disabled={busy}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-              {isProcessingSheet ? 'Processing...' : 'Upload Sheet'}
+              {isProcessingSheet ? 'Reading sheet...' : 'Upload Reference Sheet'}
             </button>
             <button
               onClick={() => setShowCreateModal(true)}
               disabled={busy}
-              style={{ width: '100%', padding: '12px', borderRadius: '8px', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#888', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'background 0.15s, color 0.15s' }}
-              onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#ccc'; }}
-              onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#888'; }}
+              className="btn-outline"
+              style={{ width: '100%', padding: '12px', justifyContent: 'center' }}
             >
-              Generate with AI
+              Create character
             </button>
 
             {isGenerating && (
@@ -991,45 +1014,79 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         </div>
 
         {/* ── Right panel ── */}
-        <div style={{ flex: 1, background: '#080808', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div className="studio-main" style={{ flex: 1, background: '#080808', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
           {/* Header */}
           <div style={{ flexShrink: 0, background: 'rgba(8,8,8,0.95)', backdropFilter: 'blur(16px)', padding: '18px 32px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             {/* Character tabs */}
             <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '14px' }}>
               {displayedCharacters.map((char, i) => (
-                <div key={char.id || i} onClick={() => setActiveTab(i)} style={{
-                  whiteSpace: 'nowrap', borderRadius: '6px', padding: '5px 14px',
-                  fontSize: '11px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.12s',
-                  background: activeTab === i ? 'var(--teal)' : '#141414',
-                  color: activeTab === i ? '#000' : '#555',
-                  border: activeTab === i ? 'none' : '1px solid rgba(255,255,255,0.05)',
-                  fontFamily: 'var(--font-display)',
-                }}>
-                  {char.name}
+                <div
+                  key={char.id || i}
+                  onClick={() => setActiveTab(i)}
+                  className={`tab-pill ${activeTab === i ? 'active' : ''}`}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  <span style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.015em' }}>
+                    {char.name}
+                  </span>
                   {char.id === 'generating' && (
-                    <span style={{ marginLeft: '5px', opacity: 0.5, fontSize: '9px' }}>
+                    <span style={{ marginLeft: '5px', opacity: 0.55, fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
                       {char.images.filter(x => x.url).length}/{char.images.length}
                     </span>
                   )}
                 </div>
               ))}
               {activeCategory === 'project' && !isGeneratingActive && (
-                <div onClick={() => setShowCreateModal(true)} style={{ borderRadius: '6px', padding: '5px 12px', background: 'rgba(0,184,212,0.06)', color: 'var(--teal)', fontSize: '16px', cursor: 'pointer', lineHeight: 1.4, border: '1px solid rgba(0,184,212,0.15)' }}>+</div>
+                <div
+                  onClick={() => setShowCreateModal(true)}
+                  className="tab-pill"
+                  style={{
+                    fontSize: '14px',
+                    color: 'var(--orange)',
+                    background: 'rgba(124,58,237,0.06)',
+                    borderColor: 'rgba(124,58,237,0.22)',
+                    cursor: 'pointer',
+                    padding: '5px 14px',
+                  }}
+                >
+                  +
+                </div>
               )}
             </div>
 
             {/* Character info row */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
               <div>
-                <h1 style={{ color: '#FFF', fontFamily: 'var(--font-display)', fontSize: '26px', fontWeight: 700, letterSpacing: '-0.02em' }}>
-                  {activeChar ? activeChar.name : 'Ready for Casting'}
+                <h1 className="editorial-title editorial-h2">
+                  {activeChar ? (
+                    <>
+                      {activeChar.name}
+                      <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>.</span>
+                    </>
+                  ) : (
+                    <>Cast <span className="text-grad">library.</span></>
+                  )}
                 </h1>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '5px' }}>
-                  <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 7px', borderRadius: '3px', background: activeCategory === 'global' ? 'rgba(0,229,255,0.1)' : 'rgba(0,184,212,0.1)', color: activeCategory === 'global' ? 'var(--orange)' : 'var(--teal)' }}>
-                    {activeCategory === 'global' ? 'GLOBAL' : 'PROJECT'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '9.5px',
+                      fontWeight: 500,
+                      padding: '4px 10px',
+                      borderRadius: '999px',
+                      background: activeCategory === 'global' ? 'rgba(124,58,237,0.1)' : 'rgba(124,58,237,0.1)',
+                      color: activeCategory === 'global' ? 'var(--orange)' : 'var(--teal)',
+                      border: `1px solid ${activeCategory === 'global' ? 'rgba(124,58,237,0.22)' : 'rgba(124,58,237,0.22)'}`,
+                      letterSpacing: '0.18em',
+                    }}
+                  >
+                    {activeCategory === 'global' ? '◆ GLOBAL' : '◇ PROJECT'}
                   </span>
-                  <span style={{ color: '#333', fontSize: '12px' }}>{activeChar?.description || 'No description'}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.015em' }}>
+                    {activeChar?.description || 'No notes yet.'}
+                  </span>
                 </div>
               </div>
               {activeChar && !isGeneratingActive && activeCategory === 'project' && (
@@ -1037,18 +1094,37 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
                   {activeChar.sheetUrl && (
                     <button
                       onClick={() => setZoomCropTarget({ charIdx: activeTab, imgIdx: null, url: activeChar.sheetUrl, label: '', showLabelInput: true })}
-                      style={{ background: 'rgba(0,184,212,0.07)', border: '1px solid rgba(0,184,212,0.18)', color: 'var(--teal)', padding: '7px 12px', borderRadius: '7px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--font-display)' }}>
-                      + Add from Sheet
+                      className="btn-outline"
+                      style={{ padding: '8px 14px', fontSize: '11.5px', whiteSpace: 'nowrap' }}
+                    >
+                      Add from sheet
                     </button>
                   )}
                   <button
                     onClick={() => { setEditName(activeChar.name); setEditDesc(activeChar.description || ''); setShowEditModal(true); }}
-                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#666', padding: '7px 14px', borderRadius: '7px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'background 0.15s' }}>
+                    className="btn-outline"
+                    style={{ padding: '8px 14px', fontSize: '11.5px' }}
+                  >
                     Edit
                   </button>
                   <button
                     onClick={handleDelete}
-                    style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.12)', color: '#ef4444', padding: '7px 14px', borderRadius: '7px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
+                    style={{
+                      background: 'rgba(239,68,68,0.06)',
+                      border: '1px solid rgba(239,68,68,0.2)',
+                      color: '#ff7a7a',
+                      padding: '8px 14px',
+                      borderRadius: '999px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-body)',
+                      letterSpacing: '-0.005em',
+                      transition: 'background 0.18s, transform 0.3s var(--ease-spring)',
+                    }}
+                    onMouseOver={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.12)')}
+                    onMouseOut={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.06)')}
+                  >
                     Delete
                   </button>
                 </div>
@@ -1057,8 +1133,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
           </div>
 
           {/* Image collage */}
-          <div style={{ flex: '0 0 auto', height: 'clamp(520px, calc(100dvh - 244px), 760px)', overflow: 'hidden', padding: '8px 24px 18px', boxSizing: 'border-box' }}>
-            <div ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'hidden', padding: '8px 24px 18px', boxSizing: 'border-box' }}>
+            <div className="studio-board" ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {activeChar?.images?.length > 0 ? (() => {
                 const charIdx = activeCategory === 'project' ? activeTab : -1;
                 const collageItems = activeChar.images.map((img, i) => {
@@ -1189,8 +1265,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
                   <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
                   </div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 600, fontFamily: 'var(--font-display)', marginBottom: '4px' }}>No images yet</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Upload a character sheet or generate with AI</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 600, fontFamily: 'var(--font-display)', marginBottom: '4px' }}>No reference images yet</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Upload a character sheet or create a reference set</div>
                 </div>
               )}
             </div>
@@ -1201,25 +1277,30 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       {/* ── Create Modal ── */}
       {showCreateModal && (
         <div className="auth-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '440px', background: '#0e0e0e' }} onClick={e => e.stopPropagation()}>
+          <div className="auth-modal" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowCreateModal(false)}>×</button>
-            <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, marginBottom: '4px', letterSpacing: '-0.01em' }}>Generate Character</div>
-            <div style={{ color: '#3a3a3a', fontSize: '12px', marginBottom: '20px', lineHeight: 1.5 }}>Generates a 9-panel reference sheet, then splits and refines each panel.</div>
+            <div className="kicker" style={{ marginBottom: '10px' }}>── New Character</div>
+            <div className="editorial-title editorial-h2" style={{ marginBottom: '10px' }}>
+              Sketch the <span className="text-grad">cast.</span>
+            </div>
+            <div style={{ color: 'var(--text-soft)', fontSize: '13px', marginBottom: '24px', lineHeight: 1.6 }}>
+              Generate a full reference sheet and keep each pose organized for later shots.
+            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>CHARACTER NAME</label>
-                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)} style={inputStyle} onFocus={e => e.target.style.borderColor = 'rgba(0,184,212,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>CHARACTER NAME</label>
+                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)} style={inputStyle} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               <div>
-                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>DESCRIPTION</label>
+                <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
                 <textarea placeholder="Ancient Indian warrior, 40s, grey beard, dark red dhoti, gold jewellery..." value={createDesc} onChange={e => setCreateDesc(e.target.value)}
-                  style={{ ...inputStyle, minHeight: '90px', resize: 'none' }} onFocus={e => e.target.style.borderColor = 'rgba(0,184,212,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                  style={{ ...inputStyle, minHeight: '90px', resize: 'none' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
 
               {/* Reference image */}
               <div>
-                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>
+                <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
                   REFERENCE IMAGE <span style={{ color: '#333', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
                 </label>
                 <input type="file" ref={refFileInputRef} onChange={handleRefImageSelect} style={{ display: 'none' }} accept="image/*" />
@@ -1235,7 +1316,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
                 ) : (
                   <button onClick={() => refFileInputRef.current.click()}
                     style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'transparent', border: '1px dashed rgba(255,255,255,0.08)', color: '#444', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
-                    + Upload Reference Image
+                    Upload Reference Image
                   </button>
                 )}
               </div>
@@ -1243,12 +1324,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
               {/* Panel labels */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                 {PANEL_LABELS.map(label => (
-                  <span key={label} style={{ fontSize: '9px', padding: '2px 8px', borderRadius: '3px', background: 'rgba(0,184,212,0.06)', color: 'var(--teal)', border: '1px solid rgba(0,184,212,0.1)', fontFamily: 'var(--font-display)', fontWeight: 600 }}>{label}</span>
+                  <span key={label} style={{ fontSize: '9px', padding: '2px 8px', borderRadius: '3px', background: 'rgba(124,58,237,0.06)', color: 'var(--teal)', border: '1px solid rgba(124,58,237,0.1)', fontFamily: 'var(--font-display)', fontWeight: 600 }}>{label}</span>
                 ))}
               </div>
 
               <button className="btn-orange" style={{ width: '100%', padding: '13px', fontSize: '12px' }} onClick={handleGenerateAngles}>
-                Generate 9-Panel Character Sheet
+                Create Reference Sheet
               </button>
             </div>
           </div>
@@ -1263,12 +1344,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
             <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, marginBottom: '20px', letterSpacing: '-0.01em' }}>Edit Character</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>NAME</label>
-                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={inputStyle} onFocus={e => e.target.style.borderColor = 'rgba(0,184,212,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>NAME</label>
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={inputStyle} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               <div>
-                <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', display: 'block', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>DESCRIPTION</label>
-                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} style={{ ...inputStyle, minHeight: '72px', resize: 'none' }} onFocus={e => e.target.style.borderColor = 'rgba(0,184,212,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
+                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} style={{ ...inputStyle, minHeight: '72px', resize: 'none' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px' }}>
                 <label style={{ fontSize: '10px', fontWeight: 700, color: '#2a2a2a', letterSpacing: '0.1em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>REPLACE IMAGES</label>
@@ -1310,8 +1391,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
             <button onClick={handleCloseSheetCropModal} style={{ position: 'absolute', top: '14px', right: '14px', background: 'none', border: 'none', color: '#444', fontSize: '18px', cursor: 'pointer', zIndex: 10 }}>✕</button>
             <div style={{ padding: '28px' }}>
               <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>Crop Selection</div>
-              <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 700, marginBottom: '6px', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>How would you like to crop?</h3>
-              <p style={{ color: '#444', fontSize: '12px', marginBottom: '20px', lineHeight: 1.6 }}>Our AI can automatically detect and refine 9+ character poses from your sheet.</p>
+              <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 700, marginBottom: '6px', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>Choose Crop Method</h3>
+              <p style={{ color: '#444', fontSize: '12px', marginBottom: '20px', lineHeight: 1.6 }}>Automatically detect and refine character poses from your sheet.</p>
 
               <div style={{ width: '100%', height: '260px', background: '#080808', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
                 <img src={sheetPreviewUrl} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Preview" />
@@ -1322,13 +1403,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
                   onClick={() => processSheetFile(pendingSheetFile)}
                   style={{ ...MODAL_BTN, background: 'var(--teal)', color: '#000', border: 'none', padding: '16px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, fontFamily: 'var(--font-display)' }}
                 >
-                  Auto-detect with AI
+                  Auto-detect Poses
                 </button>
-                <div style={{ position: 'relative' }}>
-                  <button disabled style={{ ...MODAL_BTN, opacity: 0.35, width: '100%', padding: '16px', borderRadius: '9px', fontSize: '13px', cursor: 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    Crop Manually
+                <div>
+                  <button onClick={handleCloseSheetCropModal} style={{ ...MODAL_BTN, width: '100%', padding: '16px', borderRadius: '9px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    Cancel Upload
                   </button>
-                  <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: '#1a1a1a', color: '#333', fontSize: '9px', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', letterSpacing: '0.06em', fontFamily: 'var(--font-display)' }}>COMING SOON</span>
                 </div>
               </div>
             </div>

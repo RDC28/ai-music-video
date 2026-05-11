@@ -437,7 +437,7 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
             </button>
           )
         )}
-        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={cropMode ? { ...MODAL_BTN, background: '#00B8D4', color: '#000', border: '1px solid #00B8D4' } : MODAL_BTN}>
+        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={cropMode ? { ...MODAL_BTN, background: '#7C3AED', color: '#000', border: '1px solid #7C3AED' } : MODAL_BTN}>
           {cropMode ? 'Draw New Selection' : 'Crop Mode'}
         </button>
         {canApply && showEditorLabel && (
@@ -475,7 +475,7 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
           style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'center center', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
         />
         {cropBox && cropBox.w > 0 && (
-          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '1px solid #00B8D4', background: 'rgba(0,184,212,0.08)', pointerEvents: 'none', boxSizing: 'border-box' }} />
+          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '1px solid #7C3AED', background: 'rgba(124,58,237,0.08)', pointerEvents: 'none', boxSizing: 'border-box' }} />
         )}
         <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: '#2a2a2a', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
           {cropMode
@@ -515,10 +515,10 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
 
   const LOCATION_STEPS = [
     'Preparing location profile',
-    'Generating Wide Shot',
-    'Generating Close-up Detail',
-    'Generating Atmosphere Shot',
-    'Uploading to library'
+    'Creating wide view',
+    'Creating detail view',
+    'Creating atmosphere view',
+    'Saving to library'
   ];
 
   const fileInputRef = useRef(null);
@@ -760,7 +760,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
       if (warning) alert(warning);
     } catch (err) {
       console.error('Sheet processing failed:', err);
-      alert('Failed to process sheet: ' + err.message);
+      alert('We could not process that location sheet. Please try another image.');
     } finally {
       setIsProcessingSheet(false);
       setGeneratingLoc(null);
@@ -850,7 +850,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
       saveToGlobalLibrary(newLoc, 'ai');
     } catch (err) {
       console.error('Generation failed:', err);
-      alert('Failed: ' + err.message);
+      alert('Location could not be created. Please try again.');
     } finally {
       setIsGenerating(false);
       setLocProgressStep(-1);
@@ -886,7 +886,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
       updatedLocs[locIdx] = { ...loc, images };
       await onDataUpdate({ locations: updatedLocs });
       setZoomCropTarget(null);
-    } catch (err) { alert('Crop upload failed: ' + err.message); }
+    } catch { alert('Crop could not be saved. Please try again.'); }
   };
 
   const handleDelete = async () => {
@@ -902,7 +902,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
         await refreshGlobalLibrary();
         setActiveTab(Math.max(0, activeTab - 1));
       }
-    } catch (err) { alert('Delete failed: ' + err.message); }
+    } catch { alert('Delete could not be completed. Please try again.'); }
   };
 
   const handleDeleteImage = async (locIdx, imgIdx) => {
@@ -942,7 +942,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
   };
 
   return (
-    <div className="screen active" id="s5" style={{ height: 'calc(100dvh - 52px)', overflow: 'hidden', background: '#080808' }}>
+    <div className="screen active" id="s5" style={{ height: '100%', overflow: 'hidden', background: '#080808' }}>
       <style>{`
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         .skeleton-shimmer { background:linear-gradient(90deg,#111 25%,#1a1a1a 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
@@ -957,30 +957,83 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
         }
       `}</style>
 
-      <div style={{ display: 'flex', height: '100%' }}>
+      <div className="studio-shell" style={{ display: 'flex', height: '100%' }}>
         {/* Sidebar */}
-        <div style={{ width: '280px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
-          <div style={{ padding: '24px' }}>
-            <div style={{ color: 'var(--orange)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '8px' }}>LOCATION STUDIO</div>
-            <h2 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: 0, fontFamily: 'var(--font-display)' }}>Build your Set</h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '8px', lineHeight: '1.5' }}>Upload a location sheet or generate cinematic environments with AI.</p>
+        <div className="studio-sidebar" style={{ width: '280px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
+          <div style={{ padding: '26px' }}>
+            <div className="kicker kicker--orange" style={{ marginBottom: '12px' }}>Location · Studio</div>
+            <h2 className="editorial-title editorial-h2" style={{ margin: 0, marginBottom: '10px' }}>
+              Build your <span className="text-grad">set.</span>
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '12.5px', marginTop: '8px', lineHeight: '1.6' }}>
+              Upload a location sheet or create cinematic environment references.
+            </p>
           </div>
 
-          <div style={{ padding: '0 24px 24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ padding: '0 26px 26px', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {/* Category Toggle */}
-            <div style={{ display: 'flex', background: '#111', borderRadius: '10px', padding: '4px' }}>
-              <button onClick={() => { setActiveCategory('project'); setActiveTab(0); }} style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '7px', background: activeCategory === 'project' ? '#222' : 'transparent', color: activeCategory === 'project' ? '#fff' : '#555', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>Project</button>
-              <button onClick={() => { setActiveCategory('history'); setActiveTab(0); }} style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '7px', background: activeCategory === 'history' ? '#222' : 'transparent', color: activeCategory === 'history' ? '#fff' : '#555', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>History</button>
+            <div
+              style={{
+                display: 'flex',
+                background: 'rgba(255,255,255,0.025)',
+                borderRadius: '999px',
+                padding: '4px',
+                border: '1px solid rgba(255,255,255,0.06)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+              }}
+            >
+              <button
+                onClick={() => { setActiveCategory('project'); setActiveTab(0); }}
+                style={{
+                  flex: 1,
+                  padding: '9px',
+                  border: 'none',
+                  borderRadius: '999px',
+                  background: activeCategory === 'project'
+                    ? 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(124,58,237,0.06))'
+                    : 'transparent',
+                  color: activeCategory === 'project' ? 'var(--teal)' : 'var(--text-muted)',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-body)',
+                  letterSpacing: '-0.005em',
+                  boxShadow: activeCategory === 'project' ? '0 0 0 1px rgba(124,58,237,0.22), inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
+                }}
+              >
+                Project
+              </button>
+              <button
+                onClick={() => { setActiveCategory('history'); setActiveTab(0); }}
+                style={{
+                  flex: 1,
+                  padding: '9px',
+                  border: 'none',
+                  borderRadius: '999px',
+                  background: activeCategory === 'history'
+                    ? 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(124,58,237,0.04))'
+                    : 'transparent',
+                  color: activeCategory === 'history' ? 'var(--orange)' : 'var(--text-muted)',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-body)',
+                  letterSpacing: '-0.005em',
+                  boxShadow: activeCategory === 'history' ? '0 0 0 1px rgba(124,58,237,0.28), inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
+                }}
+              >
+                History
+              </button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <button onClick={() => fileInputRef.current?.click()} disabled={busy} className="btn-orange" style={{ width: '100%', padding: '12px', fontSize: '12px' }}>
-                Upload Sheet
+              <button onClick={() => fileInputRef.current?.click()} disabled={busy} className="btn-orange" style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center' }}>
+                Upload reference sheet
               </button>
               <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
 
-              <button onClick={() => { setShowCreateModal(true); setCreateRefImage(null); }} disabled={busy} className="btn-outline" style={{ width: '100%', padding: '12px', fontSize: '12px', border: '1px dashed rgba(255,255,255,0.15)' }}>
-                Generate with AI
+              <button onClick={() => { setShowCreateModal(true); setCreateRefImage(null); }} disabled={busy} className="btn-outline" style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center' }}>
+                Create location
               </button>
             </div>
 
@@ -997,7 +1050,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
         </div>
 
         {/* Content Area */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <div className="studio-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           {/* Header row with tabs */}
           <div style={{ height: '64px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', padding: '0 24px', background: '#0d0d0d' }}>
             <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingRight: '20px', scrollbarWidth: 'none' }}>
@@ -1005,46 +1058,79 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
                 <button
                   key={loc.id || i}
                   onClick={() => setActiveTab(i)}
+                  className={`tab-pill ${activeTab === i ? 'active' : ''}`}
                   style={{
-                    padding: '8px 16px',
-                    background: activeTab === i ? 'rgba(0,184,212,0.1)' : '#161616',
-                    border: `1px solid ${activeTab === i ? 'rgba(0,184,212,0.3)' : 'rgba(255,255,255,0.05)'}`,
-                    borderRadius: '8px',
-                    color: activeTab === i ? 'var(--teal)' : '#666',
-                    fontSize: '11px',
-                    fontWeight: 600,
                     whiteSpace: 'nowrap',
-                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px'
+                    gap: '8px',
+                    fontFamily: 'var(--font-display)',
+                    fontStyle: 'italic',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    letterSpacing: '-0.015em',
                   }}
                 >
                   {loc.name}
                   {loc.id === 'generating' && (
-                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--teal)', animation: 'pulse 1.5s infinite' }} />
+                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--teal)', animation: 'pulse 1.5s infinite', boxShadow: '0 0 10px rgba(124,58,237,0.7)' }} />
                   )}
                 </button>
               ))}
               {activeCategory === 'project' && (
-                <button onClick={() => setShowCreateModal(true)} style={{ width: '32px', height: '32px', flexShrink: 0, borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.1)', background: 'transparent', color: '#444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="tab-pill"
+                  style={{
+                    width: '36px',
+                    height: '32px',
+                    flexShrink: 0,
+                    color: 'var(--orange)',
+                    background: 'rgba(124,58,237,0.06)',
+                    borderColor: 'rgba(124,58,237,0.22)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '14px',
+                    padding: 0,
+                  }}
+                >
+                  +
+                </button>
               )}
             </div>
           </div>
 
           {/* Location details & actions */}
-          <div style={{ padding: '28px 32px', flexShrink: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ padding: '32px 36px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                  <h1 style={{ margin: 0, fontSize: '28px', color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 600 }}>{activeLoc?.name || 'No Locations'}</h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                  <h1 className="editorial-title editorial-h2" style={{ margin: 0 }}>
+                    {activeLoc?.name || <em style={{ color: 'var(--text-muted)' }}>No locations.</em>}
+                  </h1>
                   {activeLoc && (
-                    <span style={{ fontSize: '9px', fontWeight: 800, color: activeCategory === 'project' ? 'var(--teal)' : 'var(--orange)', background: activeCategory === 'project' ? 'rgba(0,184,212,0.1)' : 'rgba(255,102,0,0.1)', padding: '2px 8px', borderRadius: '4px', letterSpacing: '0.1em' }}>
-                      {activeCategory === 'project' ? 'PROJECT' : 'GLOBAL'}
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '9.5px',
+                        fontWeight: 500,
+                        color: activeCategory === 'project' ? 'var(--teal)' : 'var(--orange)',
+                        background: activeCategory === 'project' ? 'rgba(124,58,237,0.1)' : 'rgba(124,58,237,0.1)',
+                        padding: '4px 10px',
+                        borderRadius: '999px',
+                        border: `1px solid ${activeCategory === 'project' ? 'rgba(124,58,237,0.22)' : 'rgba(124,58,237,0.22)'}`,
+                        letterSpacing: '0.18em',
+                      }}
+                    >
+                      {activeCategory === 'project' ? '◇ PROJECT' : '◆ GLOBAL'}
                     </span>
                   )}
                 </div>
-                <p style={{ margin: 0, color: '#666', fontSize: '13px', maxWidth: '600px', lineHeight: '1.6' }}>{activeLoc?.description || 'Select or add a location to get started.'}</p>
+                <p style={{ margin: 0, color: 'var(--text-soft)', fontSize: '14px', maxWidth: '640px', lineHeight: 1.65, fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 400, letterSpacing: '-0.01em' }}>
+                  {activeLoc?.description || 'Select or add a location to get started.'}
+                </p>
                 {activeLoc?.warning && (
                   <div style={{ marginTop: '10px', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '7px', padding: '7px 10px', fontSize: '11px', fontWeight: 600, maxWidth: '720px' }}>
                     {activeLoc.warning}
@@ -1065,8 +1151,8 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
           </div>
 
           {/* Image collage */}
-          <div style={{ flex: '0 0 auto', height: 'clamp(520px, calc(100dvh - 244px), 760px)', overflow: 'hidden', padding: '8px 24px 18px', boxSizing: 'border-box' }}>
-            <div ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'hidden', padding: '8px 24px 18px', boxSizing: 'border-box' }}>
+            <div className="studio-board" ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {activeLoc?.images?.length > 0 ? (() => {
                 const locIdx = activeCategory === 'project' ? activeTab : -1;
                 const collageItems = activeLoc.images.map((img, i) => {
@@ -1197,8 +1283,8 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
                 <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                 </div>
-                <div style={{ color: '#fff', fontSize: '15px', fontWeight: 600, marginBottom: '4px' }}>No views yet</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Upload a location sheet or generate with AI</div>
+                <div style={{ color: '#fff', fontSize: '15px', fontWeight: 600, marginBottom: '4px' }}>No reference views yet</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Upload a location sheet or create a reference set</div>
               </div>
               )}
             </div>
@@ -1210,8 +1296,8 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
       {showSheetCropModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
           <div style={{ width: '560px', background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: '24px', padding: '32px', textAlign: 'center' }}>
-            <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: '0 0 12px' }}>How to split this sheet?</h3>
-            <p style={{ color: '#666', fontSize: '13px', margin: '0 0 24px' }}>Our AI can auto-detect and crop each angle, or you can manually select them.</p>
+            <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: '0 0 12px' }}>Choose Crop Method</h3>
+            <p style={{ color: '#666', fontSize: '13px', margin: '0 0 24px' }}>Automatically detect and crop each view from your sheet.</p>
             {sheetWarning && (
               <div style={{ marginBottom: '16px', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '10px', padding: '10px 12px', fontSize: '12px', lineHeight: 1.5, textAlign: 'left' }}>
                 {sheetWarning}
@@ -1224,14 +1310,12 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
 
             <div style={{ display: 'flex', gap: '12px' }}>
               <button onClick={() => processSheetFile(pendingSheetFile)} className="btn-orange" style={{ flex: 1, padding: '16px', fontWeight: 700 }}>
-                Auto-detect with AI
+                Auto-detect Views
               </button>
-              <div style={{ flex: 1, position: 'relative' }}>
-                <button disabled className="btn-outline" style={{ width: '100%', padding: '16px', color: '#333' }}>Crop Manually</button>
-                <div style={{ position: 'absolute', top: '-10px', right: '10px', background: 'var(--orange)', color: '#000', fontSize: '8px', fontWeight: 900, padding: '2px 6px', borderRadius: '4px' }}>COMING SOON</div>
+              <div style={{ flex: 1 }}>
+                <button onClick={handleCloseSheetCropModal} className="btn-outline" style={{ width: '100%', padding: '16px' }}>Cancel Upload</button>
               </div>
             </div>
-            <button onClick={handleCloseSheetCropModal} style={{ marginTop: '20px', background: 'transparent', border: 'none', color: '#444', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>Cancel upload</button>
           </div>
         </div>
       )}
@@ -1241,22 +1325,22 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
           <div style={{ width: '500px', background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: '24px', padding: '32px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: 0 }}>Generate Location</h3>
+              <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: 0 }}>Create Location</h3>
               <button onClick={() => setShowCreateModal(false)} style={{ background: 'transparent', border: 'none', color: '#444', fontSize: '20px', cursor: 'pointer' }}>×</button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div>
-                <label style={{ display: 'block', color: '#888', fontSize: '11px', fontWeight: 700, marginBottom: '8px', letterSpacing: '0.05em' }}>LOCATION NAME</label>
+                <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '10.5px', fontWeight: 500, marginBottom: '10px', letterSpacing: '0.16em', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>LOCATION NAME</label>
                 <input style={inputStyle} value={createName} onChange={e => setCreateName(e.target.value)} placeholder="e.g. CYBERPUNK BAR" />
               </div>
               <div>
-                <label style={{ display: 'block', color: '#888', fontSize: '11px', fontWeight: 700, marginBottom: '8px', letterSpacing: '0.05em' }}>DESCRIPTION</label>
+                <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '10.5px', fontWeight: 500, marginBottom: '10px', letterSpacing: '0.16em', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
                 <textarea style={{ ...inputStyle, height: '100px', resize: 'none' }} value={createDesc} onChange={e => setCreateDesc(e.target.value)} placeholder="Neon-lit interior with rain-slicked windows, holographic advertisements, and crowded seating..." />
               </div>
 
               <div>
-                <label style={{ display: 'block', color: '#888', fontSize: '11px', fontWeight: 700, marginBottom: '8px', letterSpacing: '0.05em' }}>REFERENCE IMAGE (OPTIONAL)</label>
+                <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '10.5px', fontWeight: 500, marginBottom: '10px', letterSpacing: '0.16em', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>REFERENCE IMAGE (OPTIONAL)</label>
                 <input type="file" ref={refFileInputRef} onChange={handleRefImageSelect} style={{ display: 'none' }} accept="image/*" />
                 {createRefImage ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px' }}>
@@ -1274,17 +1358,17 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
                 )}
               </div>
 
-              <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,184,212,0.03)', borderRadius: '12px', border: '1px solid rgba(0,184,212,0.08)' }}>
+              <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(124,58,237,0.03)', borderRadius: '12px', border: '1px solid rgba(124,58,237,0.08)' }}>
                 <div style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '8px' }}>SET PREVIEW</div>
                 <div style={{ display: 'flex', gap: '4px' }}>
                   {['WIDE', 'DETAIL', 'INTERIOR', 'ATMOS'].map(tag => (
-                    <span key={tag} style={{ background: 'rgba(0,184,212,0.1)', color: 'var(--teal)', fontSize: '8px', fontWeight: 800, padding: '2px 6px', borderRadius: '3px' }}>{tag}</span>
+                    <span key={tag} style={{ background: 'rgba(124,58,237,0.1)', color: 'var(--teal)', fontSize: '8px', fontWeight: 800, padding: '2px 6px', borderRadius: '3px' }}>{tag}</span>
                   ))}
                 </div>
               </div>
 
               <button onClick={handleGenerateAngles} className="btn-orange" style={{ padding: '16px', fontWeight: 700, marginTop: '10px' }}>
-                Generate 4-Angle Location Set
+                Create Location Set
               </button>
             </div>
           </div>
@@ -1339,8 +1423,8 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
         <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--teal)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ width: '24px', height: '24px', border: '2px solid var(--teal)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
           <div>
-            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? 'Analyzing Sheet...' : 'AI is designing...'}</div>
-            <div style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>GEMINI 2.5 FLASH</div>
+            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? 'Reading sheet...' : 'Creating references...'}</div>
+            <div style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
           </div>
         </div>
       )}

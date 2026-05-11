@@ -1,87 +1,90 @@
-import { useState } from 'react';
+'use client';
+
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { ArrowLeft, ArrowRight, ChevronDown, LayoutDashboard } from 'lucide-react';
 
 export default function TopBar({ activeScreen, onNavigate, userName, projectName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const steps = [
+  const steps = useMemo(() => [
     { id: 1, name: 'Home' },
     { id: 2, name: 'Audio' },
-    { id: 3, name: 'Script' },
-    { id: 4, name: 'Chars' },
-    { id: 5, name: 'Locs' },
-    { id: 6, name: 'Shotlist' },
+    { id: 3, name: 'Story' },
+    { id: 4, name: 'Cast' },
+    { id: 5, name: 'Sets' },
+    { id: 6, name: 'Plan' },
     { id: 7, name: 'Shots' },
-    { id: 8, name: 'Images' },
-    { id: 9, name: 'Videos' },
+    { id: 8, name: 'Frames' },
+    { id: 9, name: 'Clips' },
     { id: 10, name: 'Editor' },
-  ];
+  ], []);
+
+  const activeStep = steps.find(step => step.id === activeScreen) || steps[0];
+  const progress = Math.max(0, Math.min(100, ((activeScreen - 1) / (steps.length - 1)) * 100));
+  const canGoBack = activeScreen > 1;
+  const canGoForward = activeScreen < steps.length;
 
   return (
     <div className="topbar-wrapper">
       <div className="topbar">
-
-        {/* Left: Project name / user */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-          <span className="topbar-name">{projectName || 'Untitled Project'}</span>
+        <div className="topbar-left">
+          <Link href="/dashboard" className="topbar-dashboard" aria-label="Back to dashboard">
+            <LayoutDashboard size={15} />
+          </Link>
+          <div className="topbar-project">
+            <span className="topbar-name">{projectName || 'Untitled project'}</span>
+            <span className="topbar-current">
+              {String(activeStep.id).padStart(2, '0')} / {activeStep.name}
+            </span>
+          </div>
           {userName && (
-            <span style={{
-              fontSize: '10px',
-              fontFamily: 'var(--font-display)',
-              fontWeight: 600,
-              color: 'var(--text-muted)',
-              background: 'rgba(255,255,255,0.04)',
-              padding: '2px 8px',
-              borderRadius: '4px',
-              border: '1px solid var(--border)',
-              letterSpacing: '0.04em'
-            }}>
+            <span className="topbar-user">
               {userName}
             </span>
           )}
         </div>
 
-        {/* Center: Step navigation (desktop) */}
         <div className="topbar-nav desktop-only">
           {steps.map(step => (
-            <div
+            <button
               key={step.id}
+              type="button"
               onClick={() => onNavigate && onNavigate(step.id)}
               className={`topbar-step ${activeScreen === step.id ? 'active' : ''}`}
+              aria-current={activeScreen === step.id ? 'step' : undefined}
             >
-              <span style={{ opacity: 0.4, marginRight: '3px', fontSize: '9px' }}>{step.id}.</span>
+              <span className="topbar-step-index">{String(step.id).padStart(2, '0')}</span>
               {step.name}
-            </div>
+            </button>
           ))}
+          <div className="topbar-progress" aria-hidden="true">
+            <span style={{ width: `${progress}%` }} />
+          </div>
         </div>
 
-        {/* Mobile: Dropdown */}
-        <div className="mobile-only" style={{ position: 'relative' }}>
+        <div className="mobile-only topbar-mobile-menu">
           <button
             className="btn-outline"
-            style={{ padding: '5px 12px', fontSize: '11px', borderRadius: '6px' }}
+            type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
-            {steps.find(s => s.id === activeScreen)?.name || 'Menu'}
-            <span style={{ marginLeft: '4px', opacity: 0.5 }}>▾</span>
+            {activeStep.name}
+            <ChevronDown size={13} />
           </button>
 
           {mobileMenuOpen && (
-            <div className="dropdown-menu" style={{ top: 'calc(100% + 8px)', right: 0, width: '160px' }}>
+            <div className="dropdown-menu">
               {steps.map(step => (
                 <div
                   key={step.id}
-                  className="dropdown-item"
-                  style={activeScreen === step.id ? {
-                    backgroundColor: 'rgba(0, 229, 255, 0.08)',
-                    color: 'var(--orange)'
-                  } : {}}
+                  className={`dropdown-item ${activeScreen === step.id ? 'active' : ''}`}
                   onClick={() => {
                     onNavigate && onNavigate(step.id);
                     setMobileMenuOpen(false);
                   }}
                 >
-                  <span style={{ opacity: 0.4, marginRight: '6px', fontSize: '10px' }}>{step.id}.</span>
+                  <span className="topbar-step-index">{String(step.id).padStart(2, '0')}</span>
                   {step.name}
                 </div>
               ))}
@@ -89,11 +92,25 @@ export default function TopBar({ activeScreen, onNavigate, userName, projectName
           )}
         </div>
 
-        {/* Right: Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-          <span className="topbar-right desktop-only">
-            Step {activeScreen} of {steps.length}
-          </span>
+        <div className="topbar-actions">
+          <button
+            type="button"
+            className="topbar-icon-btn desktop-only"
+            onClick={() => canGoBack && onNavigate(activeScreen - 1)}
+            disabled={!canGoBack}
+            aria-label="Previous step"
+          >
+            <ArrowLeft size={14} />
+          </button>
+          <button
+            type="button"
+            className="topbar-icon-btn desktop-only"
+            onClick={() => canGoForward && onNavigate(activeScreen + 1)}
+            disabled={!canGoForward}
+            aria-label="Next step"
+          >
+            <ArrowRight size={14} />
+          </button>
           <Link href="/dashboard" className="btn-outline-small">
             Save &amp; Exit
           </Link>

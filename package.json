@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "probe:seedance": "node scripts/probe-seedance-models.mjs",
     "py": "cd python-service && python3 -m uvicorn main:app --port 8001 --reload"
   },
   "dependencies": {

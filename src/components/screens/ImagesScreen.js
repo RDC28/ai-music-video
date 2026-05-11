@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, ImagePlus, Loader2, RotateCcw, Wand2 } from 'lucide-react';
 import { drawClubScene } from '@/utils/drawClubScene';
+import { DEFAULT_IMAGE_MODEL, IMAGE_GENERATION_MODELS, resolveImageModelOption } from '@/utils/generationModels';
 import { normalizeShotList } from '@/utils/shotList';
 
 const MAX_CLIENT_RETRIES = 2;
@@ -28,6 +29,22 @@ function isRetryableClientError(error) {
     message.includes('network') ||
     message.includes('failed to fetch')
   );
+}
+
+function getFrameErrorMessage(error) {
+  const message = String(error?.message || '').toLowerCase();
+  const status = Number(error?.status);
+
+  if (error?.name === 'AbortError' || status === 408 || message.includes('timeout')) {
+    return 'This frame took too long. Try again.';
+  }
+  if (message.includes('temporarily unavailable') || status >= 500) {
+    return 'Frame creation is temporarily unavailable. Try again soon.';
+  }
+  if (message.includes('missing project') || message.includes('not found')) {
+    return 'Project data is unavailable. Reload and try again.';
+  }
+  return 'Frame could not be created. Please try again.';
 }
 
 async function readJsonResponse(response) {
@@ -84,7 +101,7 @@ async function fetchJsonWithRetry(url, options, attempts = MAX_CLIENT_RETRIES) {
 
 function buildShotError(error, previousError) {
   return {
-    message: error?.message || 'Image generation failed',
+    message: getFrameErrorMessage(error),
     retryable: isRetryableClientError(error),
     status: error?.status || null,
     attempts: (previousError?.attempts || 0) + (error?.clientAttempts || 1),
@@ -170,6 +187,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   const [shots, setShots] = useState(() => initialShots);
   const [editModalIndex, setEditModalIndex] = useState(null);
   const [promptDraft, setPromptDraft] = useState('');
+  const [modelDraft, setModelDraft] = useState(DEFAULT_IMAGE_MODEL);
   const [isApproving, setIsApproving] = useState(false);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [generatingIndex, setGeneratingIndex] = useState(null);
@@ -197,6 +215,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   const openEditor = (index) => {
     setEditModalIndex(index);
     setPromptDraft(shots[index]?.p || shots[index]?.prompt || '');
+    setModelDraft(resolveImageModelOption(shots[index]?.image_model || modelDraft || DEFAULT_IMAGE_MODEL).value);
     setGenerationError('');
     setQueueSummary('');
   };
@@ -217,6 +236,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
         shotIndex: index,
         projectState: buildGenerationContext(projectData, sourceShots),
         promptOverride: promptOverride || undefined,
+        model: modelDraft || DEFAULT_IMAGE_MODEL,
       }),
     });
 
@@ -225,6 +245,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
       image_url: result.image_url,
       image_path: result.image_path,
       image_prompt: result.prompt,
+      image_model: result.image_model || modelDraft || DEFAULT_IMAGE_MODEL,
       image_generated_at: new Date().toISOString(),
       image_error: null,
     };
@@ -270,9 +291,9 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
     setIsGeneratingAll(false);
 
     if (failureCount) {
-      setGenerationError(`${failureCount} shot${failureCount === 1 ? '' : 's'} failed after retries. Generate Remaining will retry unfinished shots.`);
+      setGenerationError(`${failureCount} shot${failureCount === 1 ? '' : 's'} need another try. Generate Remaining will retry unfinished frames.`);
     }
-    setQueueSummary(`${successCount} generated, ${failureCount} failed, ${nextShots.filter(shot => !shot.image_url).length} remaining.`);
+    setQueueSummary(`${successCount} ready, ${failureCount} need retry, ${nextShots.filter(shot => !shot.image_url).length} remaining.`);
   };
 
   const handleGenerateOne = async () => {
@@ -342,13 +363,22 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
           gap: '16px',
         }}>
           <div>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '-0.01em', marginBottom: '3px' }}>
-              Generate Images
+            <div className="kicker" style={{ marginBottom: '10px' }}>Frames · Render</div>
+            <h1 className="editorial-title editorial-h2" style={{ marginBottom: '8px' }}>
+              Paint each <span className="text-grad">frame.</span>
             </h1>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            <p
+              style={{
+                fontSize: '12.5px',
+                color: 'var(--text-soft)',
+                fontFamily: shots.length ? 'var(--font-mono)' : 'var(--font-body)',
+                letterSpacing: shots.length ? '0.08em' : '-0.005em',
+                textTransform: shots.length ? 'uppercase' : 'none',
+              }}
+            >
               {shots.length
-                ? `${generatedCount}/${shots.length} generated · ${remainingCount} remaining${failedCount ? ` · ${failedCount} failed` : ''}`
-                : 'Review and generate AI images for each shot in your list'}
+                ? `${String(generatedCount).padStart(2,'0')} / ${String(shots.length).padStart(2,'0')} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
+                : 'Review and create a visual frame for each shot in your list.'}
             </p>
             {queueSummary && (
               <p style={{ fontSize: '11px', color: 'rgba(234,234,234,0.58)', marginTop: '5px' }}>
@@ -363,6 +393,16 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
           </div>
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+            <select
+              value={modelDraft}
+              onChange={(event) => setModelDraft(event.target.value)}
+              style={{ ...inputStyle, width: '190px', height: '38px', padding: '8px 10px', flexShrink: 0 }}
+              title="Image model"
+            >
+              {IMAGE_GENERATION_MODELS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
             <button
               className="btn-teal"
               onClick={handleGenerateRemaining}
@@ -377,7 +417,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
               ) : (
                 <>
                   <Wand2 size={14} />
-                  {remainingCount === shots.length ? 'Generate with API' : `Generate Remaining (${remainingCount})`}
+                  {remainingCount === shots.length ? 'Generate Frames' : `Generate Remaining (${remainingCount})`}
                 </>
               )}
             </button>
@@ -413,21 +453,43 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                 gap: '16px',
                 padding: '16px 28px',
                 borderBottom: '1px solid var(--border)',
-                background: editModalIndex === i ? 'rgba(0,184,212,0.04)' : 'transparent',
+                background: editModalIndex === i ? 'rgba(124,58,237,0.04)' : 'transparent',
                 borderLeft: `3px solid ${editModalIndex === i ? 'var(--teal)' : 'transparent'}`,
                 transition: 'all 0.2s',
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '13px',
-                  fontWeight: 700,
-                  color: editModalIndex === i ? 'var(--teal)' : 'var(--dark)',
-                  marginBottom: '4px',
-                  letterSpacing: '-0.01em',
-                }}>
-                  {i + 1}. {shot.n || shot.title || `Shot ${i + 1}`}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: '12px',
+                    marginBottom: '6px',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '11px',
+                      color: 'var(--text-muted)',
+                      letterSpacing: '0.1em',
+                    }}
+                  >
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontStyle: 'italic',
+                      fontSize: '17px',
+                      fontWeight: 500,
+                      color: editModalIndex === i ? 'var(--teal)' : 'var(--dark)',
+                      letterSpacing: '-0.022em',
+                      lineHeight: 1.15,
+                    }}
+                  >
+                    {shot.n || shot.title || `Shot ${i + 1}`}
+                  </span>
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   &quot;{(shot.p || shot.prompt || 'No prompt available').substring(0, 150)}...&quot;
@@ -436,7 +498,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '7px', color: '#ff8a8a', fontSize: '11px' }}>
                     <AlertTriangle size={13} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      Failed after {shot.image_error.attempts || 1} attempt{shot.image_error.attempts === 1 ? '' : 's'}: {shot.image_error.message}
+                      Needs another try: {shot.image_error.message}
                     </span>
                   </div>
                 )}
@@ -460,7 +522,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                 )}
                 {!shot.image_url && shot.image_error && generatingIndex !== i && (
                   <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff8a8a', fontSize: '11px', fontWeight: 700 }}>
-                    Needs retry
+                    Try again
                   </div>
                 )}
               </div>
@@ -477,7 +539,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                 }}
                 onClick={() => openEditor(i)}
               >
-                {editModalIndex === i ? 'Editing...' : shot.image_url ? 'Edit & Re-generate' : shot.image_error ? 'Retry Generate' : 'Edit & Generate'}
+                {editModalIndex === i ? 'Editing...' : shot.image_url ? 'Edit & Regenerate' : shot.image_error ? 'Try Again' : 'Edit & Generate'}
               </button>
             </div>
           )) : (
@@ -511,7 +573,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: 'var(--dark)' }}>
-              Edit &amp; Generate Image
+              Edit Frame
             </div>
             <button
               onClick={() => setEditModalIndex(null)}
@@ -531,7 +593,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>
+                <div style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>
                   Current
                 </div>
                 <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', aspectRatio: '16/9', background: 'var(--surface)' }}>
@@ -543,18 +605,18 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>
-                  API Status
+                <div style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>
+                  Frame Status
                 </div>
-                <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(0,184,212,0.25)', aspectRatio: '16/9', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,184,212,0.04)' }}>
+                <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(124,58,237,0.25)', aspectRatio: '16/9', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(124,58,237,0.04)' }}>
                   <span style={{ fontSize: '10px', color: 'var(--teal)', fontWeight: 600 }}>
                     {generatingIndex === editModalIndex
                       ? 'Generating now...'
                       : selectedShot.image_url
                         ? 'Generated'
                         : selectedShot.image_error
-                          ? 'Failed, ready to retry'
-                          : 'Not generated yet'}
+                          ? 'Ready to try again'
+                          : 'Not created yet'}
                   </span>
                 </div>
                 {!selectedShot.image_url && selectedShot.image_error && (
@@ -594,7 +656,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
 
             <div>
               <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--dark)', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
-                2. Generate with Prompt
+                2. Generate from Prompt
               </div>
               <textarea
                 value={promptDraft}
@@ -603,6 +665,16 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                 onFocus={(e) => e.target.style.borderColor = 'var(--teal)'}
                 onBlur={(e) => e.target.style.borderColor = 'var(--border-mid)'}
               />
+              <select
+                value={modelDraft}
+                onChange={(event) => setModelDraft(event.target.value)}
+                style={{ ...inputStyle, height: '38px', padding: '8px 10px', marginTop: '8px' }}
+                title="Image model"
+              >
+                {IMAGE_GENERATION_MODELS.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
               <button
                 className="btn-orange"
                 onClick={handleGenerateOne}
@@ -617,7 +689,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                 ) : (
                   <>
                     <Wand2 size={14} />
-                    {selectedShot.image_error && !selectedShot.image_url ? 'Retry Generate' : 'Generate New'}
+                    {selectedShot.image_error && !selectedShot.image_url ? 'Try Again' : 'Generate New'}
                   </>
                 )}
               </button>

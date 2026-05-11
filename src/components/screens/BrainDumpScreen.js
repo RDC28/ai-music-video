@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
+import { ArrowRight, FileText, Mic2, PenLine, Sparkles } from 'lucide-react';
 import ProgressBar from '../ProgressBar';
 
 export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, projectState }) {
@@ -6,32 +7,36 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progressStep, setProgressStep] = useState(-1);
   const [generatedPlan, setGeneratedPlan] = useState(null);
+  const [isEditingIdea, setIsEditingIdea] = useState(false);
 
   const SCRIPT_STEPS = [
     'Reading your idea',
-    'Analyzing lyrics & transcript',
-    'Writing script & scenes',
-    'Creating characters & locations',
-    'Building shot list',
-    'Saving to project'
+    'Finding lyric and mood cues',
+    'Writing scenes',
+    'Drafting cast and locations',
+    'Building the shot plan',
+    'Saving creative plan'
   ];
 
-  useEffect(() => {
+  const savedPlan = useMemo(() => {
     if (projectState?.script && projectState?.characters && projectState?.locations) {
-      setGeneratedPlan({
+      return {
         script: projectState.script,
         characters: projectState.characters,
         locations: projectState.locations,
         shot_list: projectState.shot_list
-      });
+      };
     }
+    return null;
   }, [projectState]);
+
+  const reviewPlan = generatedPlan || (!isEditingIdea ? savedPlan : null);
 
   const transcript = projectState?.analysis?.lyrics;
 
   const handleBrainDump = async (customPrompt = null) => {
     const finalPrompt = customPrompt || idea;
-    if (!finalPrompt.trim()) return alert("Please enter an idea first");
+    if (!finalPrompt.trim()) return alert('Please enter an idea first');
 
     setIsAnalyzing(true);
     setProgressStep(0);
@@ -50,6 +55,7 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
 
       setProgressStep(3);
       setGeneratedPlan(plan);
+      setIsEditingIdea(false);
 
       setProgressStep(4);
       await onDataUpdate({
@@ -61,8 +67,8 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
       });
       setProgressStep(5);
     } catch (error) {
-      console.error("AI Analysis failed:", error);
-      alert("Something went wrong with the AI analysis. Please try again.");
+      console.error('Creative plan failed:', error);
+      alert('We could not create the plan. Please try again.');
     } finally {
       setIsAnalyzing(false);
       setProgressStep(-1);
@@ -71,7 +77,7 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
 
   const handleUseTranscript = () => {
     if (!transcript) {
-      const confirmGen = confirm("No transcript found. Would you like to go back and analyze the audio first?");
+      const confirmGen = confirm('No lyrics or timing found yet. Would you like to analyze the song first?');
       if (confirmGen) onNavigate(2);
       return;
     }
@@ -79,202 +85,290 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
     handleBrainDump(`Based on these lyrics: "${transcriptText}". ${idea}`);
   };
 
-  const inputStyle = {
-    width: '100%',
-    padding: '10px 14px',
-    border: '1px solid var(--border-mid)',
-    borderRadius: '8px',
-    background: 'var(--surface)',
-    color: 'var(--dark)',
-    fontSize: '14px',
-    fontFamily: 'var(--font-body)',
-    outline: 'none',
-    transition: 'border-color 0.15s',
-  };
-
   /* ── Generated Plan View ── */
-  if (generatedPlan) {
+  if (reviewPlan) {
+    const scenes = reviewPlan.script?.scenes || [];
+    const lyricsTimeline = reviewPlan.script?.lyrics_timeline || [];
+    const characters = reviewPlan.characters || [];
+    const locations = reviewPlan.locations || [];
+
     return (
       <div className="screen active" id="s3">
-
-        {/* Header */}
-        <div style={{
-          padding: '18px 28px',
-          borderBottom: '1px solid var(--border)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexShrink: 0,
-        }}>
+        <div className="screen-header-modern">
           <div>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '-0.01em', marginBottom: '3px' }}>
-              Creative Plan Generated
-            </h1>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Review your AI-generated script, characters, and locations below
+            <div className="screen-kicker">Creative plan · ready</div>
+            <h1 className="screen-title">The story has shape.</h1>
+            <p className="screen-subtitle">
+              Review the story, cast, locations, and shot count before moving into visual references.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="screen-actions">
             <button
               className="btn-outline"
-              onClick={() => setGeneratedPlan(null)}
-              style={{ fontSize: '12px' }}
+              onClick={() => {
+                setGeneratedPlan(null);
+                setIsEditingIdea(true);
+              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
             >
+              <PenLine size={14} />
               Edit Idea
             </button>
             <button
-              className="btn-teal"
+              className="btn-orange"
               onClick={() => onNavigate(4)}
-              style={{ fontSize: '12px' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
             >
-              Continue to Characters →
+              Continue to Cast
+              <ArrowRight size={14} />
             </button>
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '24px', padding: '24px 28px', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        <div className="brain-review-layout">
+          <section className="premium-panel brain-panel-scroll" style={{ padding: '26px' }}>
+            <div className="panel-label" style={{ marginBottom: '14px' }}>
+              ── Master Script
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontStyle: 'italic',
+                fontSize: '32px',
+                fontWeight: 500,
+                color: 'var(--dark)',
+                marginBottom: '6px',
+                letterSpacing: '-0.03em',
+                lineHeight: 1.05,
+              }}
+            >
+              {reviewPlan.script?.title || 'Untitled music video'}
+            </div>
+            <div
+              style={{
+                fontSize: '12px',
+                color: 'var(--text-muted)',
+                marginBottom: '24px',
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}
+            >
+              Mood · {reviewPlan.script?.mood || 'Not specified'}
+            </div>
 
-          {/* Left: Script + Lyrics Timeline */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflow: 'hidden', minHeight: 0 }}>
-
-            {/* Script */}
-            <div style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: '12px',
-              padding: '20px',
-              overflowY: 'auto',
-              flex: '0 0 auto',
-              maxHeight: '50%',
-            }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '14px', fontFamily: 'var(--font-display)' }}>
-                Master Script
-              </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--dark)', marginBottom: '4px' }}>
-                {generatedPlan.script.title}
-              </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '18px' }}>
-                Mood: {generatedPlan.script.mood}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {generatedPlan.script.scenes.map((scene, i) => (
-                  <div key={i} style={{ borderLeft: '2px solid rgba(0,184,212,0.3)', paddingLeft: '14px' }}>
-                    <div style={{ fontSize: '10px', color: 'var(--teal)', fontWeight: 700, fontFamily: 'var(--font-display)', marginBottom: '4px' }}>
-                      {scene.start}s – {scene.end}s
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: lyricsTimeline.length > 0 ? 'minmax(0, 1.1fr) minmax(280px, 0.9fr)' : '1fr',
+                gap: '18px',
+                minHeight: 0,
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
+                {scenes.map((scene, i) => (
+                  <div
+                    key={i}
+                    className="subtle-panel"
+                    style={{
+                      padding: '16px 18px',
+                      borderLeft: '2px solid rgba(124,58,237,0.5)',
+                      position: 'relative',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '10px',
+                        color: 'var(--teal)',
+                        fontWeight: 500,
+                        fontFamily: 'var(--font-mono)',
+                        marginBottom: '8px',
+                        letterSpacing: '0.12em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Scene {String(i + 1).padStart(2, '0')} · {scene.start}s — {scene.end}s
                     </div>
-                    <div style={{ color: 'var(--dark)', fontSize: '13px', lineHeight: 1.5, marginBottom: scene.lyrics ? '4px' : 0 }}>
+                    <div
+                      style={{
+                        color: 'var(--dark)',
+                        fontSize: '14px',
+                        lineHeight: 1.6,
+                        marginBottom: scene.lyrics ? '10px' : 0,
+                        fontFamily: 'var(--font-body)',
+                        letterSpacing: '-0.005em',
+                      }}
+                    >
                       {scene.visual}
                     </div>
                     {scene.lyrics && (
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                        &ldquo;{scene.lyrics}&rdquo;
+                      <div
+                        style={{
+                          fontSize: '13px',
+                          color: 'var(--text-soft)',
+                          fontFamily: 'var(--font-display)',
+                          fontStyle: 'italic',
+                          fontWeight: 400,
+                          lineHeight: 1.55,
+                          letterSpacing: '-0.01em',
+                          paddingLeft: '14px',
+                          borderLeft: '1px solid rgba(124,58,237,0.22)',
+                        }}
+                      >
+                        “{scene.lyrics}”
                       </div>
                     )}
                   </div>
                 ))}
               </div>
-            </div>
 
-            {/* Lyrics Timeline */}
-            {generatedPlan.script.lyrics_timeline?.length > 0 && (
-              <div style={{
-                background: 'var(--card)',
-                border: '1px solid var(--border)',
-                borderRadius: '12px',
-                padding: '20px',
-                overflowY: 'auto',
-                flex: 1,
-                minHeight: 0,
-              }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--orange)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '14px', fontFamily: 'var(--font-display)' }}>
-                  Word-by-Word Lyrics Timeline
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {generatedPlan.script.lyrics_timeline.map((line, i) => (
-                    <div key={i} style={{ paddingBottom: '10px', borderBottom: '1px solid var(--border)' }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                        {line.words.map((w, j) => (
-                          <div key={j} style={{
-                            background: 'var(--surface)',
-                            padding: '3px 7px',
-                            borderRadius: '4px',
-                            border: '1px solid var(--border)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                          }}>
-                            <span style={{ color: 'var(--dark)', fontSize: '12px', fontWeight: 600 }}>{w.word}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: '9px' }}>{w.start}s</span>
-                          </div>
-                        ))}
+              {lyricsTimeline.length > 0 && (
+                <div className="subtle-panel brain-panel-scroll" style={{ padding: '16px', maxHeight: '100%' }}>
+                  <div className="panel-label" style={{ color: 'var(--orange)', marginBottom: '14px' }}>
+                    ── Lyrics Timeline
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {lyricsTimeline.map((line, i) => (
+                      <div key={i} style={{ paddingBottom: '12px', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {(line.words || []).map((w, j) => (
+                            <div
+                              key={j}
+                              style={{
+                                background: 'rgba(124,58,237,0.04)',
+                                padding: '5px 9px',
+                                borderRadius: '8px',
+                                border: '1px solid rgba(124,58,237,0.12)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <span
+                                style={{
+                                  color: 'var(--dark)',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  fontFamily: 'var(--font-body)',
+                                  letterSpacing: '-0.005em',
+                                }}
+                              >
+                                {w.word}
+                              </span>
+                              <span
+                                style={{
+                                  color: 'var(--text-muted)',
+                                  fontSize: '8.5px',
+                                  fontFamily: 'var(--font-mono)',
+                                  letterSpacing: '0.04em',
+                                }}
+                              >
+                                {w.start}s
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          </section>
 
-          {/* Right: Characters + Locations */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', overflow: 'hidden' }}>
-
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--orange)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '12px', fontFamily: 'var(--font-display)' }}>
-                Characters ({generatedPlan.characters.length})
+          <aside className="brain-side-panel premium-panel">
+            <div className="subtle-panel" style={{ padding: '18px' }}>
+              <div className="panel-label" style={{ color: 'var(--orange)', marginBottom: '14px' }}>
+                ── Cast · {String(characters.length).padStart(2, '0')}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {generatedPlan.characters.map((char, i) => (
-                  <div key={i} style={{
-                    padding: '5px 11px',
-                    background: 'var(--surface)',
-                    borderRadius: '5px',
-                    border: '1px solid var(--border)',
-                    fontSize: '12px',
-                    color: 'var(--dark)',
-                    fontFamily: 'var(--font-display)',
-                    fontWeight: 600,
-                  }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
+                {characters.map((char, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: '7px 13px',
+                      background: 'rgba(124,58,237,0.06)',
+                      borderRadius: '999px',
+                      border: '1px solid rgba(124,58,237,0.18)',
+                      fontSize: '13px',
+                      color: 'var(--dark)',
+                      fontFamily: 'var(--font-display)',
+                      fontStyle: 'italic',
+                      fontWeight: 500,
+                      letterSpacing: '-0.015em',
+                    }}
+                  >
                     {char.name}
                   </div>
                 ))}
               </div>
             </div>
 
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '12px', fontFamily: 'var(--font-display)' }}>
-                Locations ({generatedPlan.locations.length})
+            <div className="subtle-panel" style={{ padding: '18px' }}>
+              <div className="panel-label" style={{ marginBottom: '14px' }}>
+                ── Locations · {String(locations.length).padStart(2, '0')}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {generatedPlan.locations.map((loc, i) => (
-                  <div key={i} style={{
-                    padding: '5px 11px',
-                    background: 'var(--surface)',
-                    borderRadius: '5px',
-                    border: '1px solid var(--border)',
-                    fontSize: '12px',
-                    color: 'var(--dark)',
-                    fontFamily: 'var(--font-display)',
-                    fontWeight: 600,
-                  }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
+                {locations.map((loc, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      padding: '7px 13px',
+                      background: 'rgba(124,58,237,0.06)',
+                      borderRadius: '999px',
+                      border: '1px solid rgba(124,58,237,0.18)',
+                      fontSize: '13px',
+                      color: 'var(--dark)',
+                      fontFamily: 'var(--font-display)',
+                      fontStyle: 'italic',
+                      fontWeight: 500,
+                      letterSpacing: '-0.015em',
+                    }}
+                  >
                     {loc.name}
                   </div>
                 ))}
               </div>
             </div>
 
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
-                Shot List
+            <div className="subtle-panel" style={{ padding: '20px', marginTop: 'auto' }}>
+              <div className="panel-label" style={{ color: 'var(--text-muted)', marginBottom: '10px' }}>
+                ── Shot List
               </div>
-              <div style={{ fontSize: '13px', color: 'var(--dark)', fontWeight: 700 }}>
-                {generatedPlan.shot_list?.length || 0} shots generated
+              <div
+                style={{
+                  fontSize: '40px',
+                  color: 'var(--dark)',
+                  fontWeight: 500,
+                  fontFamily: 'var(--font-display)',
+                  fontStyle: 'italic',
+                  letterSpacing: '-0.04em',
+                  lineHeight: 1,
+                  background: 'linear-gradient(135deg, var(--orange), var(--teal))',
+                  WebkitBackgroundClip: 'text',
+                  backgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
+                {reviewPlan.shot_list?.length || 0}
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                You can review and edit these in the Shot List step
+              <div
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--text-muted)',
+                  marginTop: '4px',
+                  fontFamily: 'var(--font-mono)',
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Shots Generated
+              </div>
+              <div style={{ fontSize: '12.5px', color: 'var(--text-soft)', marginTop: '10px', lineHeight: 1.6 }}>
+                You can review and edit these in the Shot List step.
               </div>
             </div>
-          </div>
-
+          </aside>
         </div>
       </div>
     );
@@ -283,120 +377,155 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
   /* ── Input View ── */
   return (
     <div className="screen active" id="s3">
-
-      {/* Header */}
-      <div style={{
-        padding: '20px 28px',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexShrink: 0,
-      }}>
+      <div className="screen-header-modern">
         <div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '-0.01em', marginBottom: '3px' }}>
-            Describe Your Vision
-          </h1>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Tell us your concept — our AI will build the full creative plan from your idea
+          <div className="screen-kicker">Concept · Studio</div>
+          <h1 className="screen-title">Describe your vision.</h1>
+          <p className="screen-subtitle">
+            Share the story, emotion, imagery, or references you want the song to carry.
           </p>
         </div>
-        <button className="btn-teal" onClick={() => onNavigate(4)} disabled={isAnalyzing} style={{ fontSize: '12px', flexShrink: 0 }}>
-          Skip to Characters →
-        </button>
+        <div className="screen-actions">
+          <button className="btn-outline" onClick={() => onNavigate(4)} disabled={isAnalyzing}>
+            Skip to Cast →
+          </button>
+        </div>
       </div>
 
-      <div className="brain-content">
-
-        {/* Option 1 — AI generation */}
-        <div>
-          <div className="option-label">Your Concept</div>
-          <div className="option-desc">
+      <div className="brain-input-layout">
+        <section className="brain-concept-panel premium-panel">
+          <div className="panel-label">── Your Concept</div>
+          <p
+            style={{
+              fontSize: '13.5px',
+              color: 'var(--text-soft)',
+              lineHeight: 1.65,
+              margin: '10px 0 18px',
+              maxWidth: '560px',
+            }}
+          >
             Describe the mood, story, or visual style you&apos;re imagining for this music video.
+            One paragraph is plenty.
+          </p>
+          <textarea
+            className="brain-textarea"
+            placeholder="e.g. A lonely night-drive performance that becomes a neon city chase, with reflections, rain, and a final dawn rooftop scene."
+            value={idea}
+            onChange={(e) => setIdea(e.target.value)}
+            disabled={isAnalyzing}
+          />
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '18px' }}>
+            <button
+              className="btn-orange"
+              onClick={() => handleBrainDump()}
+              disabled={isAnalyzing || !idea.trim()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+            >
+              <Sparkles size={15} />
+              {isAnalyzing ? 'Generating…' : 'Generate creative plan'}
+            </button>
+            {transcript ? (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={handleUseTranscript}
+                disabled={isAnalyzing}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+              >
+                <Mic2 size={15} />
+                Use Lyrics
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={handleUseTranscript}
+                style={{ opacity: 0.7 }}
+              >
+                Add song insights first?
+              </button>
+            )}
           </div>
 
-          <div className="text-input-row" style={{ alignItems: 'stretch', gap: '12px' }}>
-            <textarea
-              rows="5"
-              placeholder="e.g. A neon-lit chase through a cyberpunk city, the protagonist searching for something they've lost..."
-              value={idea}
-              onChange={(e) => setIdea(e.target.value)}
-              disabled={isAnalyzing}
-              style={{ fontSize: '14px', padding: '4px 0', minHeight: '100px' }}
-            />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
-              <button
-                className="btn-orange"
-                onClick={() => handleBrainDump()}
-                disabled={isAnalyzing || !idea.trim()}
-                style={{ padding: '10px 20px', fontSize: '12px', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', minWidth: '90px' }}
-              >
-                <span style={{ fontSize: '16px', lineHeight: 1 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                  </svg>
-                </span>
-                <span style={{ fontWeight: 700, letterSpacing: '0.02em' }}>
-                  {isAnalyzing ? 'Wait...' : 'Generate'}
-                </span>
+          {isAnalyzing && <ProgressBar steps={SCRIPT_STEPS} currentStep={progressStep} />}
+        </section>
+
+        <aside className="brain-side-panel premium-panel">
+          <div className="subtle-panel" style={{ padding: '20px' }}>
+            <div
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(124,58,237,0.14), rgba(124,58,237,0.04))',
+                border: '1px solid rgba(124,58,237,0.24)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--teal)',
+                marginBottom: '14px',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+              }}
+            >
+              <FileText size={18} />
+            </div>
+            <div className="landing-card-title">Skip the prompt</div>
+            <p className="landing-card-copy">
+              Already have structure? Move directly into characters or the production shot list.
+            </p>
+            <div style={{ display: 'grid', gap: '8px', marginTop: '16px' }}>
+              <button className="btn-outline" onClick={() => onNavigate(4)} style={{ width: '100%' }}>
+                Cast →
+              </button>
+              <button className="btn-outline" onClick={() => onNavigate(6)} style={{ width: '100%' }}>
+                Shot List →
               </button>
             </div>
           </div>
 
-          {/* Use transcript CTA */}
-          {transcript && (
-            <button
-              onClick={handleUseTranscript}
-              disabled={isAnalyzing}
+          <div className="subtle-panel" style={{ padding: '20px', marginTop: 'auto' }}>
+            <div className="panel-label" style={{ color: transcript ? 'var(--teal)' : 'var(--text-muted)' }}>
+              ── Lyrics &amp; Timing
+            </div>
+            <div
               style={{
-                marginTop: '10px',
-                background: 'rgba(0, 184, 212, 0.06)',
-                border: '1px solid rgba(0, 184, 212, 0.18)',
-                color: 'var(--teal)',
-                padding: '7px 14px',
-                borderRadius: '6px',
-                fontSize: '11px',
-                fontWeight: 700,
                 fontFamily: 'var(--font-display)',
-                cursor: 'pointer',
-                letterSpacing: '0.02em',
-                transition: 'background 0.15s',
+                fontStyle: 'italic',
+                color: 'var(--dark)',
+                fontWeight: 500,
+                fontSize: '32px',
+                marginTop: '10px',
+                letterSpacing: '-0.03em',
+                lineHeight: 1,
+                background: transcript
+                  ? 'linear-gradient(135deg, var(--orange), var(--teal))'
+                  : 'none',
+                WebkitBackgroundClip: transcript ? 'text' : 'border-box',
+                backgroundClip: transcript ? 'text' : 'border-box',
+                WebkitTextFillColor: transcript ? 'transparent' : 'currentcolor',
               }}
             >
-              Use Gemini Transcript as Input
-            </button>
-          )}
-
-          {!transcript && (
-            <div
-              onClick={handleUseTranscript}
-              style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '10px', cursor: 'pointer', textDecoration: 'underline', opacity: 0.6 }}
-            >
-              No transcript yet — analyze audio first?
+              {transcript?.length || 0}
+              <span
+                style={{
+                  fontSize: '12px',
+                  fontFamily: 'var(--font-mono)',
+                  fontStyle: 'normal',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-muted)',
+                  WebkitTextFillColor: 'var(--text-muted)',
+                  marginLeft: '10px',
+                }}
+              >
+                lines
+              </span>
             </div>
-          )}
-        </div>
-
-        {isAnalyzing && (
-          <ProgressBar steps={SCRIPT_STEPS} currentStep={progressStep} />
-        )}
-
-        <div className="divider" style={{ margin: '8px 0' }} />
-
-        {/* Manual Mode */}
-        <div>
-          <div className="option-label">Manual Mode</div>
-          <div className="option-desc">Already have a script or want to skip AI generation?</div>
-          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-            <button className="btn-outline" onClick={() => onNavigate(4)} style={{ fontSize: '12px' }}>
-              Skip to Characters
-            </button>
-            <button className="btn-outline" onClick={() => onNavigate(6)} style={{ fontSize: '12px' }}>
-              Skip to Shot List
-            </button>
+            <p style={{ color: 'var(--text-soft)', fontSize: '12.5px', lineHeight: 1.6, marginTop: '12px' }}>
+              Song timing gives the story stronger beat and lyric awareness.
+            </p>
           </div>
-        </div>
-
+        </aside>
       </div>
     </div>
   );

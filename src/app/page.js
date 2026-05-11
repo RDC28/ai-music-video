@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase';
+import { ArrowRight } from 'lucide-react';
 
 export default function Home() {
   const [showAuth, setShowAuth] = useState(false);
@@ -13,7 +13,7 @@ export default function Home() {
   const [firstName, setFirstName] = useState('');
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const router = useRouter();
   const supabase = createClient();
 
@@ -21,135 +21,201 @@ export default function Home() {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
-
     try {
       if (isLogin) {
-        // Login Logic
-        const { error: loginError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
         if (loginError) throw loginError;
         router.push('/dashboard');
       } else {
-        // Registration Logic
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
-          options: {
-            data: {
-              full_name: firstName,
-            },
-          },
+          options: { data: { full_name: firstName } },
         });
         if (signUpError) throw signUpError;
-        alert("Registration successful! Please check your email for a confirmation link.");
+        alert('Account created. Check your email to confirm access.');
         setIsLogin(true);
       }
-    } catch (err) {
-      setError(err.message);
+    } catch {
+      setError(isLogin
+        ? 'Sign in failed. Check your email and password.'
+        : 'Account could not be created. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const ticker = '  Track · Plan · Generate · Assemble · ';
+
   return (
     <div className="home-screen">
       <nav className="home-nav">
-        <div className="home-logo">AURA.AI</div>
+        <div className="home-logo">Aura</div>
         <div className="home-nav-links">
-          <Link href="#" className="nav-link">Features</Link>
-          <Link href="#" className="nav-link">Gallery</Link>
-          <button onClick={() => setShowAuth(true)} className="btn-teal">Login</button>
+          <button
+            onClick={() => { setIsLogin(true); setShowAuth(true); }}
+            className="btn-ghost"
+            style={{ padding: '8px 20px', fontSize: '13px' }}
+          >
+            Sign In
+          </button>
+          <button
+            onClick={() => { setIsLogin(false); setShowAuth(true); }}
+            className="btn-primary"
+            style={{ padding: '9px 20px', fontSize: '13px' }}
+          >
+            Enter the Studio
+          </button>
         </div>
       </nav>
 
       <main className="home-main">
-        <div className="hero-section">
-          <div className="hero-badge">Next-Gen AI Generation</div>
-          <h1 className="hero-title">
-            Bring your stories to <em>life.</em>
-          </h1>
-          <p className="hero-subtitle">
-            Create stunning, cohesive music videos and films using cutting-edge AI models. No studio required.
-          </p>
-          <div className="hero-actions">
-            <button onClick={() => setShowAuth(true)} className="btn-orange hero-cta">Login to get started</button>
-            <Link href="#" className="btn-outline hero-cta">Watch Demo</Link>
-          </div>
-        </div>
+        {/* Hero */}
+        <section className="hero-section">
+          <div className="hero-badge">AI Music Video Studio</div>
 
-        <div className="features-grid">
+          <h1 className="hero-title">
+            Turn a song<br/>
+            into a <em>world.</em>
+          </h1>
+
+          <p className="hero-subtitle">
+            Plan, generate, and assemble cinematic music videos with consistent characters,
+            locations, and timing — in one focused workspace.
+          </p>
+
+          <div className="hero-actions">
+            <button
+              onClick={() => { setIsLogin(false); setShowAuth(true); }}
+              className="btn-primary hero-cta"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+            >
+              Enter the Studio
+              <ArrowRight size={16} />
+            </button>
+            <a href="#flow" className="btn-ghost hero-cta">
+              See How It Works
+            </a>
+          </div>
+
+          {/* Ticker */}
+          <div className="hero-ticker" aria-hidden>
+            <div className="hero-ticker-inner">
+              {ticker.repeat(6)}{ticker.repeat(6)}
+            </div>
+          </div>
+        </section>
+
+        {/* Features */}
+        <section id="flow" className="features-grid">
           <div className="feature-card">
-            <div className="feature-icon teal-icon">✧</div>
-            <h3>Brain Dump</h3>
-            <p>Speak or type your raw ideas. Our AI structures them into perfect shot lists automatically.</p>
+            <div className="feature-icon teal-icon">✦</div>
+            <h3>Story Planning</h3>
+            <p>Start with a loose idea or lyrics, and shape it into scenes, beats, and a production-ready shot plan.</p>
           </div>
           <div className="feature-card">
-            <div className="feature-icon orange-icon">★</div>
-            <h3>Character Consistency</h3>
-            <p>Generate persistent character models that look identical across every single scene and shot.</p>
+            <div className="feature-icon orange-icon">✺</div>
+            <h3>Consistent Worlds</h3>
+            <p>Keep cast, styling, locations, and visual language aligned from first frame to final edit.</p>
           </div>
           <div className="feature-card">
-            <div className="feature-icon dark-icon">▶</div>
-            <h3>Video Generation</h3>
-            <p>Turn your static scenes into fluid, high-quality video clips using the powerful Veo 3 model.</p>
+            <div className="feature-icon dark-icon">▷</div>
+            <h3>Final Assembly</h3>
+            <p>Move from approved frames to clips, arrange the timeline, and prepare a polished export.</p>
           </div>
-        </div>
+        </section>
+
+        {/* Quote */}
+        <section
+          id="story"
+          aria-label="Tagline"
+          style={{
+            maxWidth: '760px',
+            textAlign: 'center',
+            padding: '48px 40px',
+            position: 'relative',
+            background: 'rgba(12,12,18,0.7)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderRadius: '24px',
+            backdropFilter: 'blur(16px)',
+            boxShadow: '0 0 80px rgba(124,58,237,0.08)',
+          }}
+        >
+          <div
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10px',
+              fontWeight: 500,
+              letterSpacing: '0.18em',
+              textTransform: 'uppercase',
+              color: 'var(--cyan)',
+              marginBottom: '20px',
+            }}
+          >
+            ── Why Aura
+          </div>
+          <p
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontStyle: 'italic',
+              fontSize: 'clamp(22px, 3vw, 38px)',
+              fontWeight: 400,
+              color: 'var(--text-soft)',
+              lineHeight: 1.45,
+              letterSpacing: '-0.02em',
+            }}
+          >
+            "We made a studio for the moment a song asks
+            to <span style={{ background: 'linear-gradient(135deg, var(--violet), var(--rose))', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>become a picture</span> —
+            no dashboards, no jargon."
+          </p>
+        </section>
       </main>
-      
+
       <footer className="home-footer">
-        <p>© 2026 Aura AI Studio. All rights reserved.</p>
+        <span style={{ opacity: 0.7 }}>©</span>&nbsp;2026&nbsp;&nbsp;·&nbsp;&nbsp;AURA STUDIO&nbsp;&nbsp;·&nbsp;&nbsp;ALL RIGHTS RESERVED
       </footer>
 
+      {/* Auth modal */}
       {showAuth && (
         <div className="auth-overlay" onClick={() => setShowAuth(false)}>
           <div className="auth-modal" onClick={e => e.stopPropagation()}>
-            <button className="auth-close" onClick={() => setShowAuth(false)}>×</button>
-            
-            <div className="auth-header">
-              <h2 className={`auth-tab ${isLogin ? 'active' : ''}`} onClick={() => setIsLogin(true)}>Login</h2>
-              <h2 className={`auth-tab ${!isLogin ? 'active' : ''}`} onClick={() => setIsLogin(false)}>Register</h2>
+            <button className="auth-close" onClick={() => setShowAuth(false)} aria-label="Close">×</button>
+
+            <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: '28px', fontWeight: 700, color: 'var(--dark)', letterSpacing: '-0.025em', marginBottom: '20px' }}>
+              Aura
             </div>
 
-            {error && <div style={{ color: '#ff4d4d', fontSize: '12px', marginBottom: '16px', textAlign: 'center' }}>{error}</div>}
+            <div className="auth-header">
+              <h2 className={`auth-tab ${isLogin ? 'active' : ''}`} onClick={() => setIsLogin(true)}>Sign in</h2>
+              <h2 className={`auth-tab ${!isLogin ? 'active' : ''}`} onClick={() => setIsLogin(false)}>Create account</h2>
+            </div>
+
+            {error && (
+              <div style={{ color: '#f87171', fontSize: '12px', marginBottom: '16px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.18)', fontFamily: 'var(--font-body)' }}>
+                {error}
+              </div>
+            )}
 
             <form className="auth-form" onSubmit={handleAuthSubmit}>
               {!isLogin && (
                 <div className="form-group">
                   <label>First Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="Your name" 
-                    required 
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                  />
+                  <input type="text" placeholder="Your name" required value={firstName} onChange={e => setFirstName(e.target.value)} />
                 </div>
               )}
               <div className="form-group">
                 <label>Email</label>
-                <input 
-                  type="email" 
-                  placeholder="you@example.com" 
-                  required 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+                <input type="email" placeholder="you@example.com" required value={email} onChange={e => setEmail(e.target.value)} />
               </div>
               <div className="form-group">
                 <label>Password</label>
-                <input 
-                  type="password" 
-                  placeholder="••••••••" 
-                  required 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <input type="password" placeholder="••••••••" required value={password} onChange={e => setPassword(e.target.value)} />
               </div>
-              
-              <button type="submit" className="btn-orange auth-submit" disabled={isLoading}>
-                {isLoading ? 'Processing...' : (isLogin ? 'Login to Studio' : 'Create Account')}
+              <button type="submit" className="btn-primary auth-submit" disabled={isLoading}>
+                {isLoading
+                  ? (isLogin ? 'Signing in…' : 'Creating account…')
+                  : (isLogin ? 'Enter the Studio' : 'Create my account')}
               </button>
             </form>
           </div>

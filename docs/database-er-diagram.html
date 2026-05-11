@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Music Video Database ER Diagram</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f7f4;
+        --ink: #181818;
+        --muted: #666;
+        --panel: #fff;
+        --line: #d9d6cc;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 32px;
+      }
+
+      header {
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 24px;
+        line-height: 1.2;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .diagram-wrap {
+        overflow: auto;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 24px;
+      }
+
+      .mermaid {
+        min-width: 980px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Database ER Diagram</h1>
+        <p>Rendered from the project Supabase schema. Auth and Storage are Supabase-managed boundary entities.</p>
+      </header>
+
+      <section class="diagram-wrap">
+        <pre class="mermaid">
+erDiagram
+  AUTH_USERS {
+    uuid id PK "Supabase Auth user id; external table"
+    text email "used by profile trigger"
+    jsonb raw_user_meta_data "full_name source"
+  }
+
+  PROFILES {
+    uuid id PK "FK references auth.users(id), cascade delete"
+    text full_name
+    text email "unique"
+    bigint credits "default 50"
+    timestamptz created_at "default timezone('utc', now()), not null"
+  }
+
+  PROJECTS {
+    uuid id PK "default gen_random_uuid()"
+    uuid user_id FK "references auth.users(id), cascade delete, not null"
+    text title "default Untitled Project"
+    text audio_url
+    jsonb project_state "workflow state document"
+    text status "default draft"
+    timestamptz created_at "default timezone('utc', now()), not null"
+    timestamptz updated_at "default timezone('utc', now()), not null"
+  }
+
+  CREDIT_TRANSACTIONS {
+    uuid id PK "default gen_random_uuid()"
+    uuid user_id FK "references auth.users(id), cascade delete, not null"
+    bigint amount "not null; positive add, negative deduct"
+    text action "not null"
+    text reference_id "Stripe session id or project id"
+    timestamptz created_at "default now()"
+  }
+
+  CHARACTERS_LIBRARY {
+    uuid id PK "default gen_random_uuid()"
+    uuid user_id FK "references auth.users(id), cascade delete, not null"
+    text name "not null"
+    text description
+    jsonb images "default []"
+    text source
+    text sheet_url
+    jsonb metadata "default {}"
+    timestamptz created_at "default now()"
+  }
+
+  LOCATIONS_LIBRARY {
+    uuid id PK "default gen_random_uuid()"
+    uuid user_id FK "references auth.users(id), cascade delete, not null"
+    text name "not null"
+    text description
+    jsonb images "default []"
+    text source
+    text sheet_url
+    jsonb metadata "default {}"
+    timestamptz created_at "default now()"
+  }
+
+  STORAGE_BUCKETS {
+    text id PK "Supabase Storage; assets bucket inserted by schema"
+    text name "assets"
+    boolean public "true"
+  }
+
+  STORAGE_OBJECTS {
+    uuid id PK "Supabase Storage managed"
+    text bucket_id FK "assets"
+    text name "object path"
+    uuid owner "Supabase managed"
+    jsonb metadata
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  AUTH_USERS ||--o| PROFILES : "profiles.id"
+  AUTH_USERS ||--o{ PROJECTS : "projects.user_id"
+  AUTH_USERS ||--o{ CREDIT_TRANSACTIONS : "credit_transactions.user_id"
+  AUTH_USERS ||--o{ CHARACTERS_LIBRARY : "characters_library.user_id"
+  AUTH_USERS ||--o{ LOCATIONS_LIBRARY : "locations_library.user_id"
+  STORAGE_BUCKETS ||--o{ STORAGE_OBJECTS : "storage.objects.bucket_id"
+        </pre>
+      </section>
+    </main>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "base",
+        themeVariables: {
+          primaryColor: "#ffffff",
+          primaryTextColor: "#181818",
+          primaryBorderColor: "#777",
+          lineColor: "#555",
+          fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif"
+        }
+      });
+    </script>
+  </body>
+</html>

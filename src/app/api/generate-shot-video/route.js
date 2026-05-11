@@ -9,6 +9,12 @@ import {
   runWithModelFallback,
   VIDEO_MODEL_FALLBACKS,
 } from "@/utils/googleModelFallbacks";
+import {
+  DEFAULT_VIDEO_MODEL,
+  VIDEO_MODEL_PROVIDER_SEEDANCE,
+  normalizeVideoDurationForModel,
+  resolveVideoModelOption,
+} from "@/utils/generationModels";
 import { normalizeShot } from "@/utils/shotList";
 
 export const runtime = "nodejs";
@@ -26,13 +32,29 @@ const IMAGE_FETCH_TIMEOUT_MS = 25000;
 const VIDEO_OPERATION_TIMEOUT_MS = Number(process.env.GOOGLE_VIDEO_TIMEOUT_MS || 540000);
 const STORAGE_UPLOAD_TIMEOUT_MS = 60000;
 const SOURCE_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
-const DEFAULT_VIDEO_MODEL = process.env.GOOGLE_VIDEO_MODEL || "veo-3.1-generate-preview";
+const SEEDANCE_VIDEO_BASE_URL = (
+  process.env.SEEDANCE_VIDEO_BASE_URL ||
+  process.env.BYTEDANCE_VIDEO_BASE_URL ||
+  "https://seedanceapi.org/v2"
+).replace(/\/+$/, "");
+const TARGET_ASPECT_RATIO = 16 / 9;
+const ASPECT_RATIO_TOLERANCE = 0.08;
 
 const compact = (value, maxLength = 900) => {
   if (!value) return "";
   const text = String(value).replace(/\s+/g, " ").trim();
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 };
+
+const RAW_CLIP_BLOCKED_PHRASES = /\b(?:smash cut|match cut|jump cut|cut to black|cut to|fade in|fade out|fade to black|dissolve|iris wipe|wipe|transition|blackout|title card|montage|split screen|curtain reveal|curtain opens?|opening curtain|stage curtain|drapes?|black wall|black bars|letterbox|pillarbox|matte box|matte boxes|lens cap pass|camera passes through darkness|object passes close to camera)\b/gi;
+
+const rawClipText = (value, maxLength = 900, fallback = "") => (
+  compact(value, maxLength)
+    .replace(RAW_CLIP_BLOCKED_PHRASES, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.!?;:])/g, "$1")
+    .trim() || fallback
+);
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -43,6 +65,8 @@ function getErrorStatus(error) {
 function isRetryableError(error) {
   const status = Number(getErrorStatus(error));
   const message = String(error?.message || "").toLowerCase();
+
+  if (error?.retryable === false) return false;
 
   return (
     error?.retryable === true ||
@@ -131,21 +155,13 @@ const selectedByName = (items = [], names = []) => {
   return items.filter(item => wanted.has(String(item?.name || "").toLowerCase()));
 };
 
-function normalizeDuration(value) {
-  const requested = Number(value);
-  const allowed = [4, 6, 8];
-  if (!Number.isFinite(requested)) return 6;
-  return allowed.reduce((best, option) => (
-    Math.abs(option - requested) < Math.abs(best - requested) ? option : best
-  ), 6);
+function normalizeAspectRatio() {
+  return "16:9";
 }
 
-function normalizeAspectRatio(value) {
-  return value === "9:16" ? "9:16" : "16:9";
-}
-
-function normalizeResolution(value) {
-  return value === "1080p" ? "1080p" : "720p";
+function normalizeResolution(value, durationSeconds) {
+  if (value === "1080p" && durationSeconds === 8) return "1080p";
+  return "720p";
 }
 
 function buildTimedWords(words) {
@@ -185,19 +201,31 @@ function buildPrompt({ shot, projectState, promptOverride, usedSourceImage }) {
     `- ${location.name}: ${compact(location.visual_prompt || location.description, 500)}`
   )).join("\n");
 
+  const shotAction = rawClipText(
+    promptOverride || shot.video_prompt || shot.p || shot.prompt,
+    2000,
+    "Raw uninterrupted source-footage shot matching the shot title and project context."
+  );
+  const safeCamera = rawClipText(shot.camera, 300, "plain 16:9 source-footage framing");
+  const safeMovement = rawClipText(shot.movement, 300, "simple stable camera movement");
+  const safeImagePrompt = rawClipText(shot.image_prompt, 650);
+
   return `
-Generate one production-ready cinematic video clip for an AI music video.
+Generate one raw source-footage video shot for a music video editor.
+This is not the final music video edit. The user will add cuts, transitions, stylization, titles, overlays, and effects later.
+The clip must be native 16:9 widescreen with normal full-frame composition. Do not create vertical, square, letterboxed, pillarboxed, split-screen, bordered, framed, matted, or wall-like compositions.
 
 SHOT TITLE:
 ${shot.n}
 
-SHOT ACTION:
-${compact(promptOverride || shot.video_prompt || shot.p || shot.prompt, 2000)}
+RAW SOURCE SHOT ACTION:
+${shotAction}
 
 TIMING AND VOCAL CUE:
 Song time: ${shot.start ?? "unknown"}s to ${shot.end ?? "unknown"}s, planned shot duration ${shot.duration || 5}s
 Lyrics: ${compact(shot.lyrics || "", 650)}
 Timed words: ${buildTimedWords(shot.words)}
+Use the lyric timing only as a timing and emotional cue. This generator is not receiving the song audio, so do not stage exact mouth-to-word lip sync.
 
 PROJECT STORY CONTEXT:
 Title: ${projectState?.script?.title || "Untitled music video"}
@@ -220,21 +248,28 @@ ${shotLocations.join(", ") || "No specific location required"}
 ${locationContext || "No location visual reference text provided."}
 
 CAMERA, MOTION, AND STYLE:
-- Shot size: ${shot.shot_size || "cinematic music-video framing"}
-- Camera/lens: ${shot.camera || "16:9 cinematic composition, high-end music video camera language"}
-- Movement: ${shot.movement || "smooth controlled movement that clearly supports the action"}
+- Shot size: ${shot.shot_size || "plain source-footage framing"}
+- Camera/lens: ${safeCamera}
+- Movement: ${safeMovement}
 - Story beat: ${shot.beat || "match the shot action and lyric emotion"}
-- Still-image continuity prompt: ${compact(shot.image_prompt || "", 650)}
-- Source image provided: ${usedSourceImage ? "yes, treat it as the first frame and preserve subject identity, location, lighting, palette, and composition" : "no, infer continuity from the text context"}
+- Still-image continuity prompt: ${safeImagePrompt}
+- Source image provided: ${usedSourceImage ? "yes, it has verified native 16:9 dimensions; preserve subject identity, location, lighting, palette, and full-width composition" : "no, infer continuity from the text context and generate native 16:9 from scratch"}
 
 Rules:
-1. Output a single continuous photorealistic clip. No text, captions, labels, watermarks, borders, UI, split screens, or title cards.
+1. Output one plain continuous photorealistic source clip. No cuts, no edits, no simulated transitions, no text, no captions, no labels, no watermarks, no borders, no UI, no split screens, no title cards, no matte boxes, no black panels, and no visible transition devices.
 2. Preserve continuity with the named characters, locations, source image, wardrobe, lighting, lens language, and emotional arc.
-3. Keep camera motion believable and editorially useful. Avoid morphing faces, extra limbs, warped hands, flicker, and impossible geometry.
+3. Keep camera motion simple, stable, and usable as raw footage. Avoid flashy camera tricks, morphing faces, extra limbs, warped hands, flicker, and impossible geometry.
 4. Do not invent extra main characters unless the shot explicitly asks for background extras.
 5. GENERATE SILENT VIDEO. Do not include sound, ambient noise, dialogue, or music. The video will be layered over a separate audio track.
-6. AVOID: text, subtitles, captions, logo, watermark, title card, UI, split screen, deformed hands, warped face, extra limbs, face morphing, flicker, or bad anatomy.
-7. Make the clip ready to cut into a music video: clear first frame, readable action, stable composition, cinematic depth, and consistent color grade.
+6. AVOID: black walls, black wipes, black bars, iris wipes, curtains, scene-change transitions, text, subtitles, captions, logo, watermark, title card, UI, split screen, deformed hands, warped face, extra limbs, face morphing, flicker, or bad anatomy.
+7. Make the clip ready for the user to edit later: clear first frame, readable action, stable composition, natural depth, and consistent lighting.
+8. Start the readable action immediately in the first second. Do not add slow pre-roll, delayed entrances, or empty establishing time before the beat.
+9. Avoid close-up visible mouths forming specific lyrics. For singer/rapper shots, use loose performance energy, side/profile angles, silhouette, microphone movement, dance, reactions, or cutaways so imperfect lip sync is not visible.
+10. Compose safely for 16:9 center crop with the main subject inside the central safe area for the full clip.
+11. Keep the shot as a single scene and camera setup. Do not simulate an edit, wipe, curtain, blackout, lens cap pass, or object passing close to camera as a transition.
+12. If any shot text implies a transition, montage, or final edited music-video moment, ignore that part and reinterpret it as plain continuous raw action within the same 16:9 shot.
+13. Do not imitate a square photo, album cover, portrait frame, theatrical curtain reveal, stage drape, vignette, or bordered picture-in-picture inside the 16:9 canvas.
+14. Keep the tone grounded, natural, and serious unless the user explicitly requested a different tone.
 `;
 }
 
@@ -245,6 +280,113 @@ function inferImageMimeType(url, headerValue) {
   if (lowerUrl.includes(".jpg") || lowerUrl.includes(".jpeg")) return "image/jpeg";
   if (lowerUrl.includes(".webp")) return "image/webp";
   return "image/png";
+}
+
+function parsePngDimensions(buffer) {
+  if (buffer.length < 24 || buffer.toString("ascii", 1, 4) !== "PNG") return null;
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  };
+}
+
+function parseJpegDimensions(buffer) {
+  if (buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
+
+  let offset = 2;
+  while (offset < buffer.length - 9) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+
+    const marker = buffer[offset + 1];
+    const length = buffer.readUInt16BE(offset + 2);
+    if (marker >= 0xc0 && marker <= 0xc3) {
+      return {
+        width: buffer.readUInt16BE(offset + 7),
+        height: buffer.readUInt16BE(offset + 5),
+      };
+    }
+    offset += 2 + length;
+  }
+
+  return null;
+}
+
+function assertWidescreenDimensions(dimensions, label, { retryable = false } = {}) {
+  const ratio = dimensions?.height ? dimensions.width / dimensions.height : null;
+
+  if (!ratio || Math.abs(ratio - TARGET_ASPECT_RATIO) > ASPECT_RATIO_TOLERANCE) {
+    const actual = dimensions ? `${dimensions.width}x${dimensions.height}` : "unknown dimensions";
+    const err = new Error(`${label} must be native 16:9, but got ${actual}.`);
+    err.status = 422;
+    err.retryable = retryable;
+    err.fatal = true;
+    throw err;
+  }
+
+  return {
+    width: dimensions.width,
+    height: dimensions.height,
+    aspectRatio: Number(ratio.toFixed(3)),
+  };
+}
+
+function readMp4BoxHeader(buffer, offset) {
+  if (offset + 8 > buffer.length) return null;
+  let size = buffer.readUInt32BE(offset);
+  const type = buffer.toString("ascii", offset + 4, offset + 8);
+  let headerSize = 8;
+
+  if (size === 1) {
+    if (offset + 16 > buffer.length) return null;
+    const largeSize = buffer.readBigUInt64BE(offset + 8);
+    if (largeSize > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+    size = Number(largeSize);
+    headerSize = 16;
+  } else if (size === 0) {
+    size = buffer.length - offset;
+  }
+
+  if (size < headerSize || offset + size > buffer.length) return null;
+  return { size, type, headerSize };
+}
+
+function parseMp4VideoDimensions(buffer) {
+  const stack = [{ start: 0, end: buffer.length }];
+  const containerTypes = new Set(["moov", "trak", "mdia", "minf", "stbl"]);
+
+  while (stack.length) {
+    const { start, end } = stack.pop();
+    let offset = start;
+
+    while (offset < end - 8) {
+      const header = readMp4BoxHeader(buffer, offset);
+      if (!header) {
+        offset += 1;
+        continue;
+      }
+
+      const contentStart = offset + header.headerSize;
+      const boxEnd = offset + header.size;
+      if (header.type === "tkhd") {
+        const version = buffer[contentStart];
+        const widthOffset = contentStart + (version === 1 ? 88 : 76);
+        if (widthOffset + 8 <= boxEnd) {
+          const width = buffer.readUInt32BE(widthOffset) / 65536;
+          const height = buffer.readUInt32BE(widthOffset + 4) / 65536;
+          if (width > 0 && height > 0) return { width, height };
+        }
+      } else if (containerTypes.has(header.type)) {
+        stack.push({ start: contentStart, end: boxEnd });
+      }
+
+      offset = boxEnd;
+    }
+  }
+
+  return null;
 }
 
 async function fetchSourceImage(imageUrl) {
@@ -275,9 +417,14 @@ async function fetchSourceImage(imageUrl) {
       throw err;
     }
 
+    const imageBuffer = Buffer.from(arrayBuffer);
+    const dimensions = parsePngDimensions(imageBuffer) || parseJpegDimensions(imageBuffer);
+    const verifiedDimensions = assertWidescreenDimensions(dimensions, "Source image for video conditioning");
+
     return {
-      imageBytes: Buffer.from(arrayBuffer).toString("base64"),
+      imageBytes: imageBuffer.toString("base64"),
       mimeType: inferImageMimeType(imageUrl, response.headers.get("content-type")),
+      dimensions: verifiedDimensions,
     };
   }, IMAGE_FETCH_TIMEOUT_MS, "Source image fetch");
 }
@@ -286,6 +433,42 @@ function formatOperationError(error) {
   if (!error) return "Video operation failed";
   if (typeof error === "string") return error;
   return error.message || error.details || error.status || JSON.stringify(error);
+}
+
+function getByteDanceApiKey() {
+  return process.env.BYTEDANCE_API_KEY || process.env.SEEDANCE_API_KEY || process.env.ARK_API_KEY || "";
+}
+
+async function readJsonOrText(response) {
+  const text = await response.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
+}
+
+function createProviderError(message, { status = 500, retryable = false } = {}) {
+  const err = new Error(message);
+  err.status = status;
+  err.retryable = retryable;
+  return err;
+}
+
+function providerErrorMessage(payload, fallback) {
+  if (!payload) return fallback;
+  if (typeof payload === "string") return payload;
+  return (
+    payload.error_message ||
+    payload.error?.message ||
+    payload.error ||
+    payload.message ||
+    payload.msg ||
+    payload.code ||
+    fallback
+  );
 }
 
 async function pollVideoOperation(initialOperation) {
@@ -334,6 +517,158 @@ async function pollVideoOperation(initialOperation) {
   }
 
   return operation;
+}
+
+async function submitSeedanceTask({ apiKey, modelName, prompt, imageUrl, durationSeconds }) {
+  const response = await withRetry(
+    () => withTimeout(
+      () => fetch(`${SEEDANCE_VIDEO_BASE_URL}/generate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: compact(prompt, 2000),
+          duration: durationSeconds,
+          model: modelName,
+          public: false,
+          ...(imageUrl ? { images: [imageUrl] } : { aspect_ratio: "16:9" }),
+        }),
+      }),
+      VIDEO_SUBMIT_TIMEOUT_MS,
+      `Seedance video submission (${modelName})`
+    ),
+    {
+      label: `Seedance video submission (${modelName})`,
+      attempts: MAX_SUBMIT_RETRIES,
+      baseDelayMs: 1800,
+    }
+  );
+  const payload = await readJsonOrText(response);
+
+  if (!response.ok || payload?.code >= 400 || payload?.error) {
+    throw createProviderError(providerErrorMessage(payload, `Seedance video submission failed with ${response.status}`), {
+      status: response.status || payload?.code || 500,
+      retryable: response.status === 429 || response.status >= 500,
+    });
+  }
+
+  const taskId = payload?.data?.task_id || payload?.task_id || payload?.id;
+  if (!taskId) {
+    throw createProviderError("Seedance video submission did not return a task id", {
+      status: 502,
+      retryable: true,
+    });
+  }
+
+  return {
+    taskId,
+    consumedCredits: payload?.data?.consumed_credits || payload?.consumed_credits || null,
+  };
+}
+
+async function pollSeedanceTask({ apiKey, taskId }) {
+  let pollDelayMs = 9000;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt <= VIDEO_OPERATION_TIMEOUT_MS) {
+    await sleep(pollDelayMs);
+    const response = await withRetry(
+      () => withTimeout(
+        () => fetch(`${SEEDANCE_VIDEO_BASE_URL}/status?task_id=${encodeURIComponent(taskId)}`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        }),
+        VIDEO_SUBMIT_TIMEOUT_MS,
+        "Seedance video status"
+      ),
+      {
+        label: "Seedance video status",
+        attempts: MAX_POLL_RETRIES,
+        baseDelayMs: 1400,
+      }
+    );
+    const payload = await readJsonOrText(response);
+
+    if (!response.ok || payload?.code >= 400 || payload?.error) {
+      throw createProviderError(providerErrorMessage(payload, `Seedance status failed with ${response.status}`), {
+        status: response.status || payload?.code || 500,
+        retryable: response.status === 429 || response.status >= 500,
+      });
+    }
+
+    const data = payload?.data || payload;
+    const status = String(data?.status || "").toUpperCase();
+    if (status === "SUCCESS" || status === "COMPLETED" || status === "SUCCEEDED") {
+      const videoUrl = Array.isArray(data?.response)
+        ? data.response[0]
+        : data?.video_url || data?.url || data?.output?.[0];
+
+      if (!videoUrl) {
+        throw createProviderError("Seedance completed but returned no video URL", {
+          status: 502,
+          retryable: true,
+        });
+      }
+
+      return {
+        name: taskId,
+        response: {
+          generatedVideos: [
+            {
+              video: {
+                uri: videoUrl,
+                mimeType: "video/mp4",
+              },
+            },
+          ],
+        },
+        seedance: data,
+      };
+    }
+
+    if (status === "FAILED" || status === "ERROR" || status === "CANCELED") {
+      throw createProviderError(data?.error_message || "Seedance video generation failed", {
+        status: 422,
+        retryable: false,
+      });
+    }
+
+    pollDelayMs = Math.min(18000, pollDelayMs + 1500);
+  }
+
+  throw createProviderError("Seedance video generation is still processing. Retry Generate Remaining later to resume this shot.", {
+    status: 408,
+    retryable: true,
+  });
+}
+
+async function runSeedanceVideoGeneration({ modelName, prompt, imageUrl, durationSeconds }) {
+  const apiKey = getByteDanceApiKey();
+  if (!apiKey) {
+    throw createProviderError("BYTEDANCE_API_KEY is not configured for Seedance video generation.", {
+      status: 500,
+      retryable: false,
+    });
+  }
+
+  const submitted = await submitSeedanceTask({
+    apiKey,
+    modelName,
+    prompt,
+    imageUrl,
+    durationSeconds,
+  });
+  const operation = await pollSeedanceTask({ apiKey, taskId: submitted.taskId });
+  operation.seedance = {
+    ...(operation.seedance || {}),
+    consumed_credits: operation.seedance?.consumed_credits || submitted.consumedCredits,
+  };
+  return {
+    result: operation,
+    model: modelName,
+    attempts: [],
+  };
 }
 
 function videoExtension(mimeType) {
@@ -389,10 +724,6 @@ export async function POST(req) {
   let tmpDir;
 
   try {
-    if (!ai) {
-      return NextResponse.json({ error: "GOOGLE_AI_API_KEY is not configured" }, { status: 500 });
-    }
-
     const {
       projectId,
       shot,
@@ -401,20 +732,26 @@ export async function POST(req) {
       promptOverride,
       model,
       durationSeconds,
-      aspectRatio,
       resolution,
-      generateAudio = false,
     } = await req.json();
 
     if (!projectId || !shot) {
       return NextResponse.json({ error: "Missing projectId or shot" }, { status: 400 });
     }
 
+    const selectedModel = resolveVideoModelOption(model || process.env.GOOGLE_VIDEO_MODEL || DEFAULT_VIDEO_MODEL);
+    if (selectedModel.provider !== VIDEO_MODEL_PROVIDER_SEEDANCE && !ai) {
+      return NextResponse.json({ error: "Clip generation is temporarily unavailable." }, { status: 500 });
+    }
+
     const normalizedShot = normalizeShot(shot, shotIndex);
     let sourceImage = null;
+    let sourceImageDimensions = null;
     try {
       sourceImage = await fetchSourceImage(normalizedShot.image_url);
+      sourceImageDimensions = sourceImage?.dimensions || null;
     } catch (error) {
+      if (error?.fatal) throw error;
       console.warn(`Shot ${shotIndex + 1} source image could not be used:`, serializeError(error));
     }
 
@@ -426,41 +763,57 @@ export async function POST(req) {
       usedSourceImage: sourceImageWasUsed,
     });
 
+    const requestedDuration = normalizeVideoDurationForModel(
+      durationSeconds || normalizedShot.veo_duration_seconds || normalizedShot.duration,
+      selectedModel.value
+    );
     const requestConfig = {
       numberOfVideos: 1,
-      durationSeconds: normalizeDuration(durationSeconds || normalizedShot.duration),
-      aspectRatio: normalizeAspectRatio(aspectRatio),
-      resolution: normalizeResolution(resolution),
+      durationSeconds: requestedDuration,
+      aspectRatio: normalizeAspectRatio(),
+      resolution: normalizeResolution(resolution, requestedDuration),
     };
 
-    const videoGeneration = await runWithModelFallback({
-      label: `Shot ${shotIndex + 1} video generation`,
-      models: getFallbackModels(compact(model, 120) || DEFAULT_VIDEO_MODEL, VIDEO_MODEL_FALLBACKS),
-      shouldFallback: shouldFallbackVideoModel,
-      operation: async (modelName) => {
-        const request = {
-          model: modelName,
+    const videoGeneration = selectedModel.provider === VIDEO_MODEL_PROVIDER_SEEDANCE
+      ? await runSeedanceVideoGeneration({
+          modelName: selectedModel.value,
           prompt,
-          config: requestConfig,
-        };
-        if (sourceImage) request.image = sourceImage;
+          imageUrl: sourceImageWasUsed ? normalizedShot.image_url : null,
+          durationSeconds: requestedDuration,
+        })
+      : await runWithModelFallback({
+          label: `Shot ${shotIndex + 1} video generation`,
+          models: getFallbackModels(selectedModel.value, VIDEO_MODEL_FALLBACKS),
+          shouldFallback: shouldFallbackVideoModel,
+          operation: async (modelName) => {
+            const request = {
+              model: modelName,
+              prompt,
+              config: requestConfig,
+            };
+            if (sourceImage) {
+              request.image = {
+                imageBytes: sourceImage.imageBytes,
+                mimeType: sourceImage.mimeType,
+              };
+            }
 
-        const submittedOperation = await withRetry(
-          () => withTimeout(
-            () => ai.models.generateVideos(request),
-            VIDEO_SUBMIT_TIMEOUT_MS,
-            `Video model submission (${modelName})`
-          ),
-          {
-            label: `Shot ${shotIndex + 1} video submission (${modelName})`,
-            attempts: MAX_SUBMIT_RETRIES,
-            baseDelayMs: 1800,
-          }
-        );
+            const submittedOperation = await withRetry(
+              () => withTimeout(
+                () => ai.models.generateVideos(request),
+                VIDEO_SUBMIT_TIMEOUT_MS,
+                `Video model submission (${modelName})`
+              ),
+              {
+                label: `Shot ${shotIndex + 1} video submission (${modelName})`,
+                attempts: MAX_SUBMIT_RETRIES,
+                baseDelayMs: 1800,
+              }
+            );
 
-        return pollVideoOperation(submittedOperation);
-      },
-    });
+            return pollVideoOperation(submittedOperation);
+          },
+        });
     sourceImage = null;
 
     const completedOperation = videoGeneration.result;
@@ -483,6 +836,10 @@ export async function POST(req) {
     if (generatedVideo?.video?.videoBytes) generatedVideo.video.videoBytes = undefined;
 
     const videoBuffer = await readFile(tmpPath);
+    const videoDimensions = assertWidescreenDimensions(
+      parseMp4VideoDimensions(videoBuffer),
+      `Shot ${shotIndex + 1} generated video`
+    );
     const storagePath = `${projectId}/videos/shot-${String(shotIndex + 1).padStart(3, "0")}-${Date.now()}.${extension}`;
     const supabase = createAdminClient();
 
@@ -514,6 +871,9 @@ export async function POST(req) {
       success: true,
       video_url: publicUrl,
       video_path: storagePath,
+      video_width: videoDimensions.width,
+      video_height: videoDimensions.height,
+      video_aspect_ratio: videoDimensions.aspectRatio,
       operation: completedOperation.name,
       shot: {
         ...normalizedShot,
@@ -522,9 +882,15 @@ export async function POST(req) {
         video_path: storagePath,
         video_prompt: compact(promptOverride || normalizedShot.video_prompt || normalizedShot.p, 2000),
         video_model: videoGeneration.model,
+        veo_duration_seconds: requestConfig.durationSeconds,
         video_duration_seconds: requestConfig.durationSeconds,
         video_operation: completedOperation.name || null,
         video_source_image_used: sourceImageWasUsed,
+        video_source_image_width: sourceImageDimensions?.width || null,
+        video_source_image_height: sourceImageDimensions?.height || null,
+        video_width: videoDimensions.width,
+        video_height: videoDimensions.height,
+        video_aspect_ratio: videoDimensions.aspectRatio,
         video_generated_at: new Date().toISOString(),
         video_error: null,
       },
