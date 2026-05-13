@@ -530,7 +530,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
   const playheadPosition = currentTime * zoom + TIMELINE_PADDING;
 
   return (
-    <div className="screen active" id="s8" style={{ height: '100%', overflow: 'hidden', flexDirection: 'row', width: '100%', minHeight: 0 }}>
+    <div className="screen active" id="s11" style={{ height: '100%', overflow: 'hidden', flexDirection: 'row', width: '100%', minHeight: 0 }}>
       {audioUrl && (
         <audio
           ref={audioRef}

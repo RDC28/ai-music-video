@@ -32,6 +32,7 @@ const IMAGE_FETCH_TIMEOUT_MS = 25000;
 const VIDEO_OPERATION_TIMEOUT_MS = Number(process.env.GOOGLE_VIDEO_TIMEOUT_MS || 540000);
 const STORAGE_UPLOAD_TIMEOUT_MS = 60000;
 const SOURCE_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+const SEEDANCE_API_KEY_ENV_NAMES = ["BYTEDANCE_API_KEY", "SEEDANCE_API_KEY", "ARK_API_KEY"];
 const SEEDANCE_VIDEO_BASE_URL = (
   process.env.SEEDANCE_VIDEO_BASE_URL ||
   process.env.BYTEDANCE_VIDEO_BASE_URL ||
@@ -155,6 +156,97 @@ const selectedByName = (items = [], names = []) => {
   return items.filter(item => wanted.has(String(item?.name || "").toLowerCase()));
 };
 
+function normalizeLookupName(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function wantedSet(names = []) {
+  return new Set((Array.isArray(names) ? names : []).map(normalizeLookupName).filter(Boolean));
+}
+
+function matchesWanted(value, wanted) {
+  if (!wanted.size) return true;
+  return wanted.has(normalizeLookupName(value));
+}
+
+function isLegacyOutfitFallback(outfitName, characterName, locationName) {
+  const normalizedName = normalizeLookupName(outfitName);
+  if (!normalizedName) return false;
+  return normalizedName === `${normalizeLookupName(characterName)} outfit for ${normalizeLookupName(locationName)}`;
+}
+
+function hasWardrobeOverride(outfit, characterName, locationName) {
+  const outfitName = compact(outfit?.outfit_name || outfit?.name, 160);
+  const description = compact(outfit?.description || outfit?.outfit_description || outfit?.prompt, 360);
+  const hasImage = Boolean(outfit?.image_url || outfit?.imageUrl || outfit?.url);
+  const onlyLegacyName = outfitName && !description && !hasImage && isLegacyOutfitFallback(outfitName, characterName, locationName);
+  return Boolean(
+    !onlyLegacyName && (
+      outfitName ||
+      description ||
+      hasImage
+    )
+  );
+}
+
+function collectWardrobeItems(wardrobe = [], shotCharacters = [], shotLocations = []) {
+  if (!Array.isArray(wardrobe)) return [];
+  const wantedCharacters = wantedSet(shotCharacters);
+  const wantedLocations = wantedSet(shotLocations);
+
+  return wardrobe.flatMap((location, locationIndex) => {
+    const locationName = location?.location_name || location?.name || `Location ${locationIndex + 1}`;
+    const locationId = location?.location_id || location?.id || "";
+    const locationMatches = matchesWanted(locationName, wantedLocations) || matchesWanted(locationId, wantedLocations);
+    if (!locationMatches) return [];
+
+    return (Array.isArray(location?.outfits) ? location.outfits : [])
+      .filter(outfit => {
+        const characterName = outfit?.character_name || outfit?.name;
+        const characterId = outfit?.character_id || outfit?.id;
+        if (!hasWardrobeOverride(outfit, characterName, locationName)) return false;
+        return matchesWanted(characterName, wantedCharacters) || matchesWanted(characterId, wantedCharacters);
+      })
+      .map(outfit => ({
+        location_name: locationName,
+        character_name: outfit?.character_name || outfit?.name || "Character",
+        outfit_name: isLegacyOutfitFallback(outfit?.outfit_name || outfit?.name, outfit?.character_name || outfit?.name, locationName) ? "" : (outfit?.outfit_name || outfit?.name || ""),
+        description: outfit?.description || outfit?.outfit_description || outfit?.prompt || "",
+        image_url: outfit?.image_url || outfit?.imageUrl || outfit?.url || "",
+      }));
+  });
+}
+
+function describeReferenceSet(items = [], fallbackLabel, charLabelMap = new Map()) {
+  if (!Array.isArray(items) || !items.length) return "";
+  const isCharacter = String(fallbackLabel || "").toLowerCase().includes("character");
+  const extractionHint = isCharacter
+    ? "COPY the face, hair, skin tone, body proportions, age, and any visible clothing exactly from these reference views. These are the ONLY valid sources for character identity."
+    : "COPY the architecture, materials, color palette, spatial layout, set dressing, and environmental atmosphere from these views. IGNORE any people visible inside these location images — they are irrelevant background extras with zero identity relevance to the main characters.";
+  return items
+    .map(item => {
+      const refs = Array.isArray(item?.images)
+        ? item.images
+            .map((image, index) => {
+              const label = typeof image === "object" && image
+                ? image.label || image.name || `Reference ${index + 1}`
+                : `Reference ${index + 1}`;
+              return compact(label, 70);
+            })
+            .filter(Boolean)
+            .slice(0, 5)
+        : [];
+      if (!refs.length) return "";
+      // Use anonymous label for character names to prevent celebrity lookup
+      const displayName = isCharacter
+        ? applyCharLabel(item?.name || fallbackLabel, charLabelMap)
+        : (item?.name || fallbackLabel);
+      return `- ${displayName} [${isCharacter ? "CHARACTER IDENTITY" : "LOCATION ENVIRONMENT"}]: approved reference views include ${refs.join(", ")}. ${extractionHint}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 function normalizeAspectRatio() {
   return "16:9";
 }
@@ -185,6 +277,94 @@ function buildTranscriptContext(lines) {
     .join("\n");
 }
 
+function buildScriptSceneContext(scenes = []) {
+  if (!Array.isArray(scenes) || !scenes.length) return "No script scenes provided.";
+  return scenes
+    .slice(0, 24)
+    .map(scene => {
+      const timing = scene?.start !== undefined || scene?.end !== undefined
+        ? `${scene.start ?? "?"}-${scene.end ?? "?"}s`
+        : "untimed";
+      return `- ${timing}: ${compact(scene?.visual || scene?.description, 260)}${scene?.lyrics ? ` | lyrics: ${compact(scene.lyrics, 140)}` : ""}`;
+    })
+    .join("\n");
+}
+
+function buildWardrobeLockContext(wardrobe, shotCharacters, shotLocations, charLabelMap = new Map()) {
+  const items = collectWardrobeItems(wardrobe, shotCharacters, shotLocations);
+  if (!items.length) return "";
+  return items
+    .map(item => {
+      const label = applyCharLabel(item.character_name, charLabelMap);
+      const description = item.description ? ` — exact outfit description: ${compact(item.description, 420)}` : "";
+      const imageNote = item.image_url ? " [WARDROBE REFERENCE IMAGE EXISTS — preserve it exactly in this clip]" : " [no image: use this text description as the outfit lock]";
+      const outfitName = compact(item.outfit_name, 140) || "base character wardrobe";
+      return `${item.location_name}: ${label} wears "${outfitName}"${description}${imageNote}`;
+    })
+    .join("\n");
+}
+
+function buildLockedShotFacts(shot, projectState, shotCharacters, shotLocations, charLabelMap = new Map()) {
+  const wardrobeLock = buildWardrobeLockContext(projectState?.wardrobe, shotCharacters, shotLocations, charLabelMap);
+  const timeOfDay = (() => {
+    const text = `${shot.beat || ''} ${shot.visual_style || ''} ${shot.source_scene || ''} ${shot.p || ''}`.toLowerCase();
+    if (text.includes('night')) return 'night';
+    if (text.includes('dusk') || text.includes('sunset')) return 'dusk/sunset';
+    if (text.includes('golden hour')) return 'golden hour';
+    if (text.includes('dawn') || text.includes('morning')) return 'dawn/morning';
+    return null;
+  })();
+  const facts = [
+    shot.source_scene ? `Source script scene: ${compact(shot.source_scene, 360)}` : "",
+    shot.concept ? `Shot concept: ${compact(shot.concept, 520)}` : "",
+    shot.costumes || shot.costume || shot.wardrobe ? `Costume/wardrobe lock: ${compact(shot.costumes || shot.costume || shot.wardrobe, 520)}` : "",
+    wardrobeLock ? `Wardrobe by location lock: ${wardrobeLock}` : "",
+    shot.continuity || shot.required_continuity || shot.continuity_notes ? `Continuity lock: ${compact(shot.continuity || shot.required_continuity || shot.continuity_notes, 700)}` : "",
+    timeOfDay ? `Time of day: ${timeOfDay} — maintain this lighting condition throughout the full clip` : "",
+  ].filter(Boolean);
+  const fallback = "- Use the shot prompt, approved script, named characters, base character reference outfits, and locations as locked facts. Blank wardrobe rows are not absence notes.";
+  return facts.length ? facts.map(fact => `- ${fact}`).join("\n") : fallback;
+}
+
+function buildShotDetailContext(shot) {
+  const details = [
+    shot.action_timing || shot.timing || shot.actionTiming ? `Action timing: ${compact(shot.action_timing || shot.timing || shot.actionTiming, 1600)}` : "",
+    shot.visual_style || shot.style || shot.look ? `Visual style: ${compact(shot.visual_style || shot.style || shot.look, 1000)}` : "",
+    shot.sound_design || shot.soundDesign || shot.audio_notes ? `Sound/ambience note for visual mood only; do not generate audio: ${compact(shot.sound_design || shot.soundDesign || shot.audio_notes, 700)}` : "",
+    shot.negative_constraints || shot.constraints || shot.avoid ? `Avoid/constraints: ${compact(shot.negative_constraints || shot.constraints || shot.avoid, 1200)}` : "",
+  ].filter(Boolean);
+
+  if (!details.length) {
+    return "No separate action-timing fields provided; infer subtle realistic 4-8 second micro-actions from the raw shot prompt and preserve the source frame.";
+  }
+
+  return details.map(detail => `- ${detail}`).join("\n");
+}
+
+function selectVideoPrompt(shot, promptOverride) {
+  return (
+    promptOverride ||
+    shot.video_prompt ||
+    shot.motion_prompt ||
+    shot.clip_prompt ||
+    shot.p ||
+    shot.prompt
+  );
+}
+
+function buildCharacterLabelMap(shotCharacters) {
+  const map = new Map();
+  (Array.isArray(shotCharacters) ? shotCharacters : []).forEach((name, index) => {
+    const normalized = normalizeLookupName(name);
+    if (normalized) map.set(normalized, `CHAR_${String.fromCharCode(65 + index)}`);
+  });
+  return map;
+}
+
+function applyCharLabel(name, charLabelMap) {
+  return charLabelMap.get(normalizeLookupName(name)) || name;
+}
+
 function buildPrompt({ shot, projectState, promptOverride, usedSourceImage }) {
   const characters = projectState?.characters || [];
   const locations = projectState?.locations || [];
@@ -193,22 +373,31 @@ function buildPrompt({ shot, projectState, promptOverride, usedSourceImage }) {
   const matchedCharacters = selectedByName(characters, shotCharacters);
   const matchedLocations = selectedByName(locations, shotLocations);
 
-  const characterContext = matchedCharacters.map(character => (
-    `- ${character.name}: ${compact(character.visual_prompt || character.description || character.role, 500)}`
-  )).join("\n");
+  // Map real character names → anonymous labels to prevent celebrity name lookup
+  const charLabelMap = buildCharacterLabelMap(shotCharacters);
+
+  const anonymousCharacterList = shotCharacters.map(n => applyCharLabel(n, charLabelMap)).join(", ") || "No visible character required";
+
+  const characterContext = matchedCharacters.map(character => {
+    const label = applyCharLabel(character.name, charLabelMap);
+    const costumeText = character.costume ? ` Costume/wardrobe: ${compact(character.costume, 260)}` : "";
+    return `- ${label}: ${compact(character.visual_prompt || character.description || character.role, 500)}${costumeText}`;
+  }).join("\n");
 
   const locationContext = matchedLocations.map(location => (
     `- ${location.name}: ${compact(location.visual_prompt || location.description, 500)}`
   )).join("\n");
+  const characterReferenceContext = describeReferenceSet(matchedCharacters, "Character", charLabelMap);
+  const locationReferenceContext = describeReferenceSet(matchedLocations, "Location", charLabelMap);
 
   const shotAction = rawClipText(
-    promptOverride || shot.video_prompt || shot.p || shot.prompt,
-    2000,
+    selectVideoPrompt(shot, promptOverride),
+    6400,
     "Raw uninterrupted source-footage shot matching the shot title and project context."
   );
   const safeCamera = rawClipText(shot.camera, 300, "plain 16:9 source-footage framing");
   const safeMovement = rawClipText(shot.movement, 300, "simple stable camera movement");
-  const safeImagePrompt = rawClipText(shot.image_prompt, 650);
+  const safeImagePrompt = rawClipText(shot.image_prompt, 1600);
 
   return `
 Generate one raw source-footage video shot for a music video editor.
@@ -220,6 +409,9 @@ ${shot.n}
 
 RAW SOURCE SHOT ACTION:
 ${shotAction}
+
+SHOT DETAIL FIELDS:
+${buildShotDetailContext(shot)}
 
 TIMING AND VOCAL CUE:
 Song time: ${shot.start ?? "unknown"}s to ${shot.end ?? "unknown"}s, planned shot duration ${shot.duration || 5}s
@@ -233,19 +425,29 @@ Mood: ${compact(projectState?.script?.mood || projectState?.analysis?.mood, 650)
 Storyline: ${compact(projectState?.script?.storyline || projectState?.analysis?.summary, 900)}
 Genre/theme: ${compact(projectState?.analysis?.genre || projectState?.analysis?.theme, 400)}
 BPM: ${projectState?.analysis?.bpm || "unknown"}
+Script scenes:
+${buildScriptSceneContext(projectState?.script?.scenes)}
 
 VOCAL TRANSCRIPT CONTEXT:
 ${buildTranscriptContext(projectState?.transcript)}
 
+SHOT NON-NEGOTIABLES:
+${buildLockedShotFacts(shot, projectState, shotCharacters, shotLocations, charLabelMap)}
+
 CHARACTER CONTINUITY:
-Use only these named characters when characters are visible:
-${shotCharacters.join(", ") || "No visible character required"}
+Characters are referred to by anonymous production labels below. These labels carry no real-world name association. Do NOT look up any label or associate it with any celebrity, athlete, politician, actor, musician, or public figure. Appearance comes ONLY from the CHARACTER reference sets and description text.
+Use only these characters when characters are visible:
+${anonymousCharacterList}
 ${characterContext || "No character visual reference text provided."}
 
 LOCATION CONTINUITY:
 Use only these named locations/sets:
 ${shotLocations.join(", ") || "No specific location required"}
 ${locationContext || "No location visual reference text provided."}
+
+APPROVED VISUAL REFERENCE SETS:
+${characterReferenceContext || locationReferenceContext ? [characterReferenceContext, locationReferenceContext].filter(Boolean).join("\n") : "No approved character/location reference sets listed."}
+When a source image is provided, treat it as the approved first frame. Preserve subject identity, clothing, location, and lighting palette exactly for the full clip duration — the reference sets above confirm what those should look like.
 
 CAMERA, MOTION, AND STYLE:
 - Shot size: ${shot.shot_size || "plain source-footage framing"}
@@ -257,19 +459,23 @@ CAMERA, MOTION, AND STYLE:
 
 Rules:
 1. Output one plain continuous photorealistic source clip. No cuts, no edits, no simulated transitions, no text, no captions, no labels, no watermarks, no borders, no UI, no split screens, no title cards, no matte boxes, no black panels, and no visible transition devices.
-2. Preserve continuity with the named characters, locations, source image, wardrobe, lighting, lens language, and emotional arc.
-3. Keep camera motion simple, stable, and usable as raw footage. Avoid flashy camera tricks, morphing faces, extra limbs, warped hands, flicker, and impossible geometry.
-4. Do not invent extra main characters unless the shot explicitly asks for background extras.
-5. GENERATE SILENT VIDEO. Do not include sound, ambient noise, dialogue, or music. The video will be layered over a separate audio track.
-6. AVOID: black walls, black wipes, black bars, iris wipes, curtains, scene-change transitions, text, subtitles, captions, logo, watermark, title card, UI, split screen, deformed hands, warped face, extra limbs, face morphing, flicker, or bad anatomy.
-7. Make the clip ready for the user to edit later: clear first frame, readable action, stable composition, natural depth, and consistent lighting.
-8. Start the readable action immediately in the first second. Do not add slow pre-roll, delayed entrances, or empty establishing time before the beat.
-9. Avoid close-up visible mouths forming specific lyrics. For singer/rapper shots, use loose performance energy, side/profile angles, silhouette, microphone movement, dance, reactions, or cutaways so imperfect lip sync is not visible.
-10. Compose safely for 16:9 center crop with the main subject inside the central safe area for the full clip.
-11. Keep the shot as a single scene and camera setup. Do not simulate an edit, wipe, curtain, blackout, lens cap pass, or object passing close to camera as a transition.
-12. If any shot text implies a transition, montage, or final edited music-video moment, ignore that part and reinterpret it as plain continuous raw action within the same 16:9 shot.
-13. Do not imitate a square photo, album cover, portrait frame, theatrical curtain reveal, stage drape, vignette, or bordered picture-in-picture inside the 16:9 canvas.
-14. Keep the tone grounded, natural, and serious unless the user explicitly requested a different tone.
+2. Treat the approved script, shot concept, named characters, explicit wardrobe-by-location overrides, costume/outfit images from the source frame, base character reference outfits, named locations, and source frame as non-negotiable production locks. Do not rename, redesign, replace, merge, or contradict them.
+3. Preserve continuity with the named characters, locations, source image, wardrobe, lighting, lens language, and emotional arc.
+4. CHARACTER IDENTITY — CRITICAL: Main character faces, skin tone, hair, and body must match the CHARACTER reference set only. Any people visible inside LOCATION reference images are irrelevant background extras. Do NOT carry their faces, skin tone, hair, or clothing into the main characters at any point in the clip.
+5. Make the clip visually rich and grounded: foreground, midground, background, props, texture, clothing fabric, facial expression, body posture, environment geography, and practical lighting must remain readable.
+5. Follow action timing when present. For 8-second shots, stage clear beats across the clip while keeping movement subtle, natural, and realistic.
+6. Keep camera motion simple, stable, and usable as raw footage. If the prompt says static, locked-off, no zoom, no pan, or no camera movement, obey it exactly for the full clip.
+7. Do not invent extra main characters unless the shot explicitly asks for background extras.
+8. GENERATE SILENT VIDEO. Do not include sound, ambient noise, dialogue, or music. The video will be layered over a separate audio track.
+9. AVOID: black walls, black wipes, black bars, iris wipes, curtains, scene-change transitions, text, subtitles, captions, logo, watermark, title card, UI, split screen, deformed hands, warped face, extra limbs, face morphing, flicker, or bad anatomy.
+10. Make the clip ready for the user to edit later: clear first frame, readable action, stable composition, natural depth, and consistent lighting.
+11. Start the readable action immediately in the first second. Do not add slow pre-roll, delayed entrances, or empty establishing time before the beat.
+12. Avoid close-up visible mouths forming specific lyrics. For singer/rapper shots, use loose performance energy, side/profile angles, silhouette, microphone movement, dance, reactions, or cutaways so imperfect lip sync is not visible.
+13. Compose safely for 16:9 center crop with the main subject inside the central safe area for the full clip.
+14. Keep the shot as a single scene and camera setup. Do not simulate an edit, wipe, curtain, blackout, lens cap pass, or object passing close to camera as a transition.
+15. If any shot text implies a transition, montage, or final edited music-video moment, ignore that part and reinterpret it as plain continuous raw action within the same 16:9 shot.
+16. Do not imitate a square photo, album cover, portrait frame, theatrical curtain reveal, stage drape, vignette, or bordered picture-in-picture inside the 16:9 canvas.
+17. Keep the tone grounded, natural, and serious unless the user explicitly requested a different tone.
 `;
 }
 
@@ -436,7 +642,7 @@ function formatOperationError(error) {
 }
 
 function getByteDanceApiKey() {
-  return process.env.BYTEDANCE_API_KEY || process.env.SEEDANCE_API_KEY || process.env.ARK_API_KEY || "";
+  return SEEDANCE_API_KEY_ENV_NAMES.map(name => process.env[name]).find(Boolean) || "";
 }
 
 async function readJsonOrText(response) {
@@ -529,7 +735,7 @@ async function submitSeedanceTask({ apiKey, modelName, prompt, imageUrl, duratio
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          prompt: compact(prompt, 2000),
+          prompt: compact(prompt, 6000),
           duration: durationSeconds,
           model: modelName,
           public: false,
@@ -646,8 +852,8 @@ async function pollSeedanceTask({ apiKey, taskId }) {
 async function runSeedanceVideoGeneration({ modelName, prompt, imageUrl, durationSeconds }) {
   const apiKey = getByteDanceApiKey();
   if (!apiKey) {
-    throw createProviderError("BYTEDANCE_API_KEY is not configured for Seedance video generation.", {
-      status: 500,
+    throw createProviderError(`Seedance video generation requires ${SEEDANCE_API_KEY_ENV_NAMES.join(", ")}, or select a Veo model. Add the key to .env.local and restart Next.js.`, {
+      status: 503,
       retryable: false,
     });
   }
@@ -745,6 +951,7 @@ export async function POST(req) {
     }
 
     const normalizedShot = normalizeShot(shot, shotIndex);
+    const selectedVideoPrompt = selectVideoPrompt(normalizedShot, promptOverride);
     let sourceImage = null;
     let sourceImageDimensions = null;
     try {
@@ -877,10 +1084,10 @@ export async function POST(req) {
       operation: completedOperation.name,
       shot: {
         ...normalizedShot,
-        p: promptOverride || normalizedShot.p,
+        p: normalizedShot.p,
         video_url: publicUrl,
         video_path: storagePath,
-        video_prompt: compact(promptOverride || normalizedShot.video_prompt || normalizedShot.p, 2000),
+        video_prompt: compact(selectedVideoPrompt, 6400),
         video_model: videoGeneration.model,
         veo_duration_seconds: requestConfig.durationSeconds,
         video_duration_seconds: requestConfig.durationSeconds,
@@ -898,13 +1105,14 @@ export async function POST(req) {
   } catch (error) {
     const serialized = serializeError(error);
     console.error("Shot Video Generation API Error:", serialized);
+    const status = Number(serialized.status);
     return NextResponse.json(
       {
         error: serialized.message,
         retryable: serialized.retryable,
         status: serialized.status,
       },
-      { status: serialized.retryable ? 503 : 500 }
+      { status: status >= 400 && status <= 599 ? status : (serialized.retryable ? 503 : 500) }
     );
   } finally {
     if (tmpDir) {

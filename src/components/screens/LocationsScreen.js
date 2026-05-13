@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { FileText, Loader2, Wand2 } from 'lucide-react';
 import { createClient } from '@/utils/supabase';
 import ProgressBar from '../ProgressBar';
 
@@ -22,11 +23,57 @@ const PANEL_LABELS = [
   'Wide Shot', 'Close-up Detail', 'Interior View', 'Exterior View', 'Atmosphere', 'Golden Hour', 'Night Shot', 'Aerial View', 'Ground Level',
 ];
 
+const LOCATION_REFERENCE_VIEWS = [
+  {
+    label: 'ESTABLISHING VIEW',
+    prompt: 'Wide cinematic establishing view, clear full environment layout, exact architecture, materials, color palette, geography, and atmosphere.',
+  },
+  {
+    label: 'INTERIOR WIDE',
+    prompt: 'Interior wide-angle view, same architecture and material language, clear spatial layout, matching lighting logic and atmosphere.',
+  },
+  {
+    label: 'EXTERIOR VIEW',
+    prompt: 'Exterior elevation view, same building or environment identity, exact materials, signage, palette, geography, and weathering.',
+  },
+  {
+    label: 'AERIAL VIEW',
+    prompt: 'Birds-eye or high aerial view, same location footprint and surrounding context, exact geometry and environmental details.',
+  },
+  {
+    label: 'GROUND LEVEL',
+    prompt: 'Ground-level human-eye view, same location identity, matching scale, textures, props, vegetation, and lighting.',
+  },
+  {
+    label: 'DETAIL VIEW',
+    prompt: 'Close-up detail view of signature architecture, surface texture, props, signage, or environmental feature, exactly matching the location style.',
+  },
+  {
+    label: 'ATMOSPHERE VIEW',
+    prompt: 'Atmospheric cinematic view with haze, rain, dust, or sunset mood while preserving exact location architecture, palette, and geography.',
+  },
+  {
+    label: 'NIGHT VIEW',
+    prompt: 'Night lighting study of the same location, exact architecture and props, consistent palette, practical lights and shadows.',
+  },
+  {
+    label: 'FOCAL POINT',
+    prompt: 'Focused view of the most story-relevant area of the location, same set dressing, materials, and camera-ready composition.',
+  },
+];
+
+const LOCATION_STEPS = [
+  'Locking location identity',
+  ...LOCATION_REFERENCE_VIEWS.map(view => `Creating ${view.label.toLowerCase()}`),
+  'Saving to library',
+];
+
 const PINBOARD_WIDTH = 2016;
 const PINBOARD_HEIGHT = 700;
 const PINBOARD_PADDING = 28;
 const PINBOARD_GAP = 14;
 const DEFAULT_COLLAGE_RATIO = 1;
+const LOCATION_DESCRIPTION_DISPLAY_LIMIT = 360;
 const LOCATION_LABEL_FALLBACKS = [
   'ESTABLISHING VIEW',
   'INTERIOR VIEW',
@@ -72,6 +119,39 @@ Location ${locClause}.
 
 Maintain perfectly consistent architectural style, materials, and environmental details across all 9 panels. Clean visible spacing between panels. Cinematic lighting throughout. Professional concept art/architectural visualization quality.`;
 };
+
+function compactScriptText(value, maxLength = 700) {
+  if (!value) return '';
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function truncateLocationDescription(value, maxLength = LOCATION_DESCRIPTION_DISPLAY_LIMIT) {
+  if (!value) return '';
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
+}
+
+function buildScriptLocationDescription(location = {}, projectState = {}) {
+  const script = projectState?.script || {};
+  const analysis = projectState?.analysis || {};
+  const sourceDescription = (
+    location.visual_prompt ||
+    location.prompt ||
+    location.description ||
+    location.role ||
+    ''
+  );
+
+  return [
+    sourceDescription,
+    script.title ? `Music video title: ${script.title}` : '',
+    script.storyline ? `Story context: ${compactScriptText(script.storyline, 520)}` : '',
+    script.mood || analysis.mood ? `Mood and atmosphere: ${compactScriptText(script.mood || analysis.mood, 240)}` : '',
+    analysis.genre || analysis.theme ? `Genre/theme: ${compactScriptText(analysis.genre || analysis.theme, 180)}` : '',
+    'Create a production-ready location reference set for this music video. The place must remain stable across every view: same architecture, geography, materials, props, era, palette, weather logic, and lighting language.',
+  ].filter(Boolean).join('\n');
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -489,7 +569,7 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function LocationsScreen({ onNavigate, projectData = [], onDataUpdate, projectId }) {
+export default function LocationsScreen({ onNavigate, projectData = [], projectState = {}, onDataUpdate, projectId }) {
   const [activeTab, setActiveTab] = useState(0);
   const [globalLibrary, setGlobalLibrary] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -507,19 +587,13 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
   const [renamingPanel, setRenamingPanel] = useState(null);
 
   const [pendingSheetFile, setPendingSheetFile] = useState(null);
+  const [sheetReplaceTarget, setSheetReplaceTarget] = useState(null);
   const [showSheetCropModal, setShowSheetCropModal] = useState(false);
   const [sheetPreviewUrl, setSheetPreviewUrl] = useState(null);
   const [sheetWarning, setSheetWarning] = useState(null);
+  const [sheetProcessStatus, setSheetProcessStatus] = useState('');
   const [locProgressStep, setLocProgressStep] = useState(-1);
   const [imgRatios, setImgRatios] = useState({});
-
-  const LOCATION_STEPS = [
-    'Preparing location profile',
-    'Creating wide view',
-    'Creating detail view',
-    'Creating atmosphere view',
-    'Saving to library'
-  ];
 
   const fileInputRef = useRef(null);
   const refFileInputRef = useRef(null);
@@ -527,11 +601,19 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
   const [collageSize, setCollageSize] = useState({ width: PINBOARD_WIDTH, height: PINBOARD_HEIGHT });
   const supabase = useMemo(() => createClient(), []);
   const projectLocations = projectData || [];
+  const generatingReplaceIndex = Number.isInteger(generatingLoc?.replaceIndex)
+    ? generatingLoc.replaceIndex
+    : null;
   const displayedLocations = activeCategory === 'project'
-    ? [...projectLocations, ...(generatingLoc ? [generatingLoc] : [])]
+    ? [
+        ...projectLocations.map((loc, index) => (
+          generatingReplaceIndex === index ? generatingLoc : loc
+        )),
+        ...(generatingLoc && generatingReplaceIndex === null ? [generatingLoc] : []),
+      ]
     : globalLibrary;
   const activeLoc = displayedLocations[activeTab] || null;
-  const isGeneratingActive = activeLoc?.id === 'generating';
+  const isGeneratingActive = Boolean(activeLoc?.isGeneratingReference || activeLoc?.id === 'generating');
   const busy = isProcessingSheet || isGenerating;
 
   const loadGlobalLibrary = useCallback(async () => {
@@ -648,6 +730,33 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
     }
   };
 
+  const handleAddHistoryToProject = async () => {
+    if (!activeLoc || activeCategory !== 'history') return;
+    const existingIndex = projectLocations.findIndex(location => (
+      String(location?.name || '').trim().toLowerCase() === String(activeLoc.name || '').trim().toLowerCase()
+    ));
+    if (existingIndex >= 0) {
+      setActiveCategory('project');
+      setActiveTab(existingIndex);
+      return;
+    }
+
+    const newLoc = {
+      ...activeLoc,
+      id: `location-${activeLoc.id || Date.now()}-${Date.now()}`,
+      name: String(activeLoc.name || 'LOCATION').trim().toUpperCase(),
+      description: activeLoc.description || activeLoc.visual_prompt || '',
+      visual_prompt: activeLoc.visual_prompt || activeLoc.description || '',
+      images: Array.isArray(activeLoc.images) ? activeLoc.images : [],
+      source: activeLoc.source || 'history',
+      sheetUrl: activeLoc.sheetUrl || activeLoc.sheet_url || null,
+    };
+    const updatedLocs = [...projectLocations, newLoc];
+    await onDataUpdate({ locations: updatedLocs });
+    setActiveCategory('project');
+    setActiveTab(updatedLocs.length - 1);
+  };
+
   const handleRefImageSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -669,15 +778,19 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
     const previewUrl = URL.createObjectURL(file);
     setSheetPreviewUrl(previewUrl);
     setSheetWarning(null);
+    setSheetProcessStatus('');
     setPendingSheetFile(file);
     setShowSheetCropModal(true);
   };
 
   const handleCloseSheetCropModal = () => {
+    if (isProcessingSheet) return;
     if (sheetPreviewUrl) URL.revokeObjectURL(sheetPreviewUrl);
     setSheetPreviewUrl(null);
     setSheetWarning(null);
+    setSheetProcessStatus('');
     setPendingSheetFile(null);
+    setSheetReplaceTarget(null);
     setShowSheetCropModal(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -685,6 +798,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
   const processSheetFile = async (file) => {
     if (!file) return;
     setIsProcessingSheet(true);
+    setSheetProcessStatus('Uploading sheet...');
 
     try {
       const sheetPath = `${projectId}/sheets/${Date.now()}-${file.name}`;
@@ -692,6 +806,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
       if (upErr) throw upErr;
       const { data: { publicUrl: sheetUrl } } = supabase.storage.from('assets').getPublicUrl(sheetPath);
 
+      setSheetProcessStatus('Detecting location views...');
       const { poses, error: splitErr, warning } = await fetch('/api/split-location-sheet', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: sheetUrl }),
@@ -701,10 +816,29 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
 
       if (warning) setSheetWarning(warning);
 
-      const locName = file.name.split('.')[0].toUpperCase();
-      setGeneratingLoc({ id: 'generating', name: locName, images: poses.map((p, i) => ({ label: normalizeLocationLabel(p.label, i), url: null })) });
-      setActiveTab(projectLocations.length);
+      const replaceIndex = Number.isInteger(sheetReplaceTarget?.index) && sheetReplaceTarget.index >= 0 && sheetReplaceTarget.index < projectLocations.length
+        ? sheetReplaceTarget.index
+        : null;
+      const existingLoc = replaceIndex !== null ? projectLocations[replaceIndex] : null;
+      const locName = existingLoc
+        ? (sheetReplaceTarget?.name || existingLoc.name || file.name.split('.')[0]).trim().toUpperCase()
+        : file.name.split('.')[0].toUpperCase();
+      const locDescription = existingLoc
+        ? (sheetReplaceTarget?.description ?? existingLoc.description ?? 'Uploaded from location sheet')
+        : 'Uploaded from location sheet';
+      setGeneratingLoc({
+        ...(existingLoc || {}),
+        id: existingLoc?.id || 'generating',
+        name: locName,
+        description: locDescription,
+        images: poses.map((p, i) => ({ label: normalizeLocationLabel(p.label, i), url: null })),
+        isGeneratingReference: true,
+        replaceIndex,
+      });
+      setActiveTab(replaceIndex !== null ? replaceIndex : projectLocations.length);
       setActiveCategory('project');
+      setSheetProcessStatus(`Detected ${poses.length} views. Refining crops...`);
+      setShowSheetCropModal(false);
 
       const img = await new Promise((res, rej) => {
         const el = new Image(); el.crossOrigin = 'anonymous';
@@ -714,6 +848,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
       const finalImages = new Array(poses.length).fill(null);
 
       await Promise.all(poses.map(async (pose, i) => {
+        setSheetProcessStatus(`Refining view ${i + 1} of ${poses.length}...`);
         const label = normalizeLocationLabel(pose.label, i);
         const [ymin, xmin, ymax, xmax] = pose.box_2d;
         const sx = Math.max(0, (xmin / 1000) * img.width);
@@ -746,17 +881,32 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
         const imageData = { url, label, box_2d: pose.box_2d, width: Math.round(sw), height: Math.round(sh) };
         finalImages[i] = imageData;
         setGeneratingLoc(prev => {
+          if (!prev) return prev;
           const newImgs = [...prev.images];
           newImgs[i] = imageData;
           return { ...prev, images: newImgs };
         });
       }));
 
-      const newLoc = { id: Date.now(), name: locName, description: 'Uploaded from location sheet', images: finalImages.filter(Boolean), source: 'upload', sheetUrl, warning: warning || null };
-      const updatedLocs = [...projectLocations, newLoc];
+      const newLoc = {
+        ...(existingLoc || {}),
+        id: existingLoc?.id || Date.now(),
+        name: locName,
+        description: locDescription,
+        images: finalImages.filter(Boolean),
+        source: 'upload',
+        sheetUrl,
+        warning: warning || null,
+      };
+      const updatedLocs = [...projectLocations];
+      if (replaceIndex !== null) {
+        updatedLocs[replaceIndex] = newLoc;
+      } else {
+        updatedLocs.push(newLoc);
+      }
       await onDataUpdate({ locations: updatedLocs });
-      setActiveTab(updatedLocs.length - 1);
-      saveToGlobalLibrary(newLoc, 'upload');
+      setActiveTab(replaceIndex !== null ? replaceIndex : updatedLocs.length - 1);
+      if (replaceIndex === null) saveToGlobalLibrary(newLoc, 'upload');
       if (warning) alert(warning);
     } catch (err) {
       console.error('Sheet processing failed:', err);
@@ -767,40 +917,47 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
       if (sheetPreviewUrl) URL.revokeObjectURL(sheetPreviewUrl);
       setSheetPreviewUrl(null);
       setSheetWarning(null);
+      setSheetProcessStatus('');
       setPendingSheetFile(null);
+      setSheetReplaceTarget(null);
       setShowSheetCropModal(false);
     }
   };
 
-  const handleGenerateAngles = async () => {
-    if (!createName.trim()) return alert('Enter a location name');
-    if (!createDesc.trim()) return alert('Describe the location');
-    const locName = createName.trim().toUpperCase();
-    const desc = createDesc.trim();
+  const generateLocationReferences = async ({ name, description, refImage = null, replaceIndex = null }) => {
+    const locName = name.trim().toUpperCase();
+    const desc = description.trim();
     setShowCreateModal(false);
-    setCreateName(''); setCreateDesc('');
+    setCreateName('');
+    setCreateDesc('');
+    setCreateRefImage(null);
     setIsGenerating(true);
     setLocProgressStep(0);
 
-    const views = [
-      { label: 'WIDE SHOT', prompt: 'Cinematic wide establishing shot, epic scale, detailed environment, professional lighting, photorealistic.' },
-      { label: 'CLOSE-UP DETAIL', prompt: 'Close-up architectural or environmental detail, focus on textures and materials, matching the master location exactly.' },
-      { label: 'INTERIOR VIEW', prompt: 'Interior wide-angle view, matching architecture and lighting style of the location.' },
-      { label: 'ATMOSPHERE SHOT', prompt: 'Atmospheric shot with dramatic lighting (foggy, sunset, or moody night), consistent with location details.' }
-    ];
-
     try {
       const tempId = Date.now();
-      setGeneratingLoc({ id: tempId, name: locName, images: views.map(v => ({ label: v.label, url: null })) });
-      setActiveTab(projectLocations.length);
+      const isReplacing = Number.isInteger(replaceIndex) && replaceIndex >= 0 && replaceIndex < projectLocations.length;
+      const existingLoc = isReplacing ? projectLocations[replaceIndex] : null;
+      setGeneratingLoc({
+        ...(existingLoc || {}),
+        id: existingLoc?.id || tempId,
+        name: locName,
+        description: desc,
+        images: LOCATION_REFERENCE_VIEWS.map(view => ({ label: view.label, url: null })),
+        isGeneratingReference: true,
+        replaceIndex: isReplacing ? replaceIndex : null,
+      });
+      setActiveTab(isReplacing ? replaceIndex : projectLocations.length);
       setActiveCategory('project');
 
       const finalImages = [];
-      let referenceBase64 = null;
+      const hasUserReference = Boolean(refImage?.base64);
+      let referenceBase64 = refImage?.base64 || null;
+      let referenceMimeType = refImage?.mimeType || 'image/png';
 
-      for (let i = 0; i < views.length; i++) {
+      for (let i = 0; i < LOCATION_REFERENCE_VIEWS.length; i++) {
         setLocProgressStep(i + 1);
-        const view = views[i];
+        const view = LOCATION_REFERENCE_VIEWS[i];
         try {
           const payload = {
             locationDescription: desc,
@@ -810,7 +967,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
 
           if (referenceBase64) {
             payload.base64 = referenceBase64;
-            payload.mimeType = 'image/png';
+            payload.mimeType = referenceMimeType;
           }
 
           const resp = await fetch('/api/generate-location-image', {
@@ -822,10 +979,13 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
           const { imageBase64, error } = await resp.json();
           if (error) throw new Error(error);
 
-          if (i === 0) referenceBase64 = imageBase64;
+          if (!hasUserReference && !referenceBase64) {
+            referenceBase64 = imageBase64;
+            referenceMimeType = 'image/png';
+          }
 
           const blob = base64ToBlob(imageBase64, 'image/png');
-          const url = await uploadBlob(blob, 'image/png', `${projectId}/generated/${Date.now()}-${view.label.replace(' ', '_')}.png`);
+          const url = await uploadBlob(blob, 'image/png', `${projectId}/generated/${Date.now()}-${view.label.replace(/\s+/g, '_')}.png`);
 
           const imageData = { url, label: view.label };
           finalImages[i] = imageData;
@@ -842,12 +1002,30 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
         }
       }
 
-      setLocProgressStep(4);
-      const newLoc = { id: tempId, name: locName, description: desc, images: finalImages.filter(Boolean), source: 'ai' };
-      const updatedLocs = [...projectLocations, newLoc];
+      const savedImages = finalImages.filter(Boolean);
+      if (savedImages.length < 7) {
+        throw new Error(`Only ${savedImages.length} location references were generated.`);
+      }
+
+      setLocProgressStep(LOCATION_STEPS.length - 1);
+      const newLoc = {
+        ...(existingLoc || {}),
+        id: existingLoc?.id || tempId,
+        name: locName,
+        description: desc,
+        visual_prompt: existingLoc?.visual_prompt || desc,
+        images: savedImages,
+        source: 'ai',
+      };
+      const updatedLocs = [...projectLocations];
+      if (isReplacing) {
+        updatedLocs[replaceIndex] = newLoc;
+      } else {
+        updatedLocs.push(newLoc);
+      }
       await onDataUpdate({ locations: updatedLocs });
-      setActiveTab(updatedLocs.length - 1);
-      saveToGlobalLibrary(newLoc, 'ai');
+      setActiveTab(isReplacing ? replaceIndex : updatedLocs.length - 1);
+      if (!isReplacing) saveToGlobalLibrary(newLoc, 'ai');
     } catch (err) {
       console.error('Generation failed:', err);
       alert('Location could not be created. Please try again.');
@@ -856,6 +1034,47 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
       setLocProgressStep(-1);
       setGeneratingLoc(null);
     }
+  };
+
+  const handleGenerateAngles = async () => {
+    if (!createName.trim()) return alert('Enter a location name');
+    if (!createDesc.trim()) return alert('Describe the location');
+    await generateLocationReferences({
+      name: createName,
+      description: createDesc,
+      refImage: createRefImage,
+    });
+  };
+
+  const handleGenerateFromScript = async () => {
+    const projectIndex = activeCategory === 'project' && activeLoc && activeLoc.id !== 'generating'
+      ? activeTab
+      : -1;
+    const activeNeedsImages = projectIndex >= 0 && !projectLocations[projectIndex]?.images?.length;
+    const firstMissingIndex = projectLocations.findIndex(location => !location?.images?.length);
+    const targetIndex = activeNeedsImages ? projectIndex : firstMissingIndex;
+    const scriptLocations = Array.isArray(projectState?.locations) ? projectState.locations : [];
+    const sourceLocation = targetIndex >= 0
+      ? projectLocations[targetIndex]
+      : scriptLocations.find(location => location?.name || location?.visual_prompt || location?.description);
+
+    if (!sourceLocation) {
+      alert('Generate or approve the script first so I can pull a location brief from it.');
+      return;
+    }
+
+    const name = sourceLocation.name || 'SCRIPT LOCATION';
+    const description = buildScriptLocationDescription(sourceLocation, projectState);
+    if (!description.trim()) {
+      alert('The script does not include enough location detail yet.');
+      return;
+    }
+
+    await generateLocationReferences({
+      name,
+      description,
+      replaceIndex: targetIndex >= 0 ? targetIndex : null,
+    });
   };
 
   const handleEditSave = async () => {
@@ -1027,13 +1246,26 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <button onClick={() => fileInputRef.current?.click()} disabled={busy} className="btn-orange" style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center' }}>
+              <button onClick={() => {
+                setSheetReplaceTarget(null);
+                fileInputRef.current?.click();
+              }} disabled={busy} className="btn-orange" style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center' }}>
                 Upload reference sheet
               </button>
               <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
 
               <button onClick={() => { setShowCreateModal(true); setCreateRefImage(null); }} disabled={busy} className="btn-outline" style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center' }}>
                 Create location
+              </button>
+              <button
+                onClick={handleGenerateFromScript}
+                disabled={busy}
+                className="btn-outline"
+                title="Generate references for the next location described in the script"
+                style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '7px' }}
+              >
+                <FileText size={14} />
+                Generate from Script
               </button>
             </div>
 
@@ -1044,7 +1276,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
 
           <div style={{ padding: '24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <button onClick={() => onNavigate(6)} className="btn-teal" style={{ width: '100%', padding: '14px', fontSize: '13px', fontWeight: 600 }}>
-              Continue to Shot List →
+              Continue to Wardrobe →
             </button>
           </div>
         </div>
@@ -1072,7 +1304,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
                   }}
                 >
                   {loc.name}
-                  {loc.id === 'generating' && (
+                  {(loc.isGeneratingReference || loc.id === 'generating') && (
                     <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--teal)', animation: 'pulse 1.5s infinite', boxShadow: '0 0 10px rgba(124,58,237,0.7)' }} />
                   )}
                 </button>
@@ -1129,7 +1361,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
                   )}
                 </div>
                 <p style={{ margin: 0, color: 'var(--text-soft)', fontSize: '14px', maxWidth: '640px', lineHeight: 1.65, fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 400, letterSpacing: '-0.01em' }}>
-                  {activeLoc?.description || 'Select or add a location to get started.'}
+                  {truncateLocationDescription(activeLoc?.description) || 'Select or add a location to get started.'}
                 </p>
                 {activeLoc?.warning && (
                   <div style={{ marginTop: '10px', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '7px', padding: '7px 10px', fontSize: '11px', fontWeight: 600, maxWidth: '720px' }}>
@@ -1138,6 +1370,12 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
                 )}
               </div>
 
+              {!isGeneratingActive && activeLoc && activeCategory === 'history' && (
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={handleAddHistoryToProject} className="btn-teal" style={{ fontSize: '11px', padding: '8px 14px' }}>Add to project</button>
+                  <button onClick={handleDelete} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px', color: '#ef4444', border: '1px solid rgba(239,68,68,0.15)' }}>Delete from history</button>
+                </div>
+              )}
               {!isGeneratingActive && activeLoc && activeCategory === 'project' && (
                 <div style={{ display: 'flex', gap: '10px' }}>
                   {activeLoc.sheetUrl && (
@@ -1297,7 +1535,9 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
           <div style={{ width: '560px', background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: '24px', padding: '32px', textAlign: 'center' }}>
             <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: '0 0 12px' }}>Choose Crop Method</h3>
-            <p style={{ color: '#666', fontSize: '13px', margin: '0 0 24px' }}>Automatically detect and crop each view from your sheet.</p>
+            <p style={{ color: isProcessingSheet ? 'var(--teal)' : '#666', fontSize: '13px', margin: '0 0 24px' }}>
+              {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Automatically detect and crop each view from your sheet.'}
+            </p>
             {sheetWarning && (
               <div style={{ marginBottom: '16px', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '10px', padding: '10px 12px', fontSize: '12px', lineHeight: 1.5, textAlign: 'left' }}>
                 {sheetWarning}
@@ -1309,11 +1549,17 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
             )}
 
             <div style={{ display: 'flex', gap: '12px' }}>
-              <button onClick={() => processSheetFile(pendingSheetFile)} className="btn-orange" style={{ flex: 1, padding: '16px', fontWeight: 700 }}>
-                Auto-detect Views
+              <button
+                onClick={() => processSheetFile(pendingSheetFile)}
+                disabled={isProcessingSheet}
+                className="btn-orange"
+                style={{ flex: 1, padding: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isProcessingSheet ? 0.82 : 1, cursor: isProcessingSheet ? 'wait' : 'pointer' }}
+              >
+                {isProcessingSheet && <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />}
+                {isProcessingSheet ? 'Detecting Views...' : 'Auto-detect Views'}
               </button>
               <div style={{ flex: 1 }}>
-                <button onClick={handleCloseSheetCropModal} className="btn-outline" style={{ width: '100%', padding: '16px' }}>Cancel Upload</button>
+                <button disabled={isProcessingSheet} onClick={handleCloseSheetCropModal} className="btn-outline" style={{ width: '100%', padding: '16px', opacity: isProcessingSheet ? 0.45 : 1, cursor: isProcessingSheet ? 'not-allowed' : 'pointer' }}>Cancel Upload</button>
               </div>
             </div>
           </div>
@@ -1370,6 +1616,14 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
               <button onClick={handleGenerateAngles} className="btn-orange" style={{ padding: '16px', fontWeight: 700, marginTop: '10px' }}>
                 Create Location Set
               </button>
+              <button
+                onClick={handleGenerateFromScript}
+                className="btn-outline"
+                style={{ padding: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+              >
+                <Wand2 size={14} />
+                Generate from Script
+              </button>
             </div>
           </div>
         </div>
@@ -1389,7 +1643,15 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
                 <label style={{ display: 'block', color: '#888', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>DESCRIPTION</label>
                 <textarea style={{ ...inputStyle, height: '100px', resize: 'none' }} value={editDesc} onChange={e => setEditDesc(e.target.value)} />
               </div>
-              <button onClick={() => { setShowEditModal(false); fileInputRef.current?.click(); }} style={{ padding: '12px', background: '#111', border: '1px solid #222', borderRadius: '8px', color: '#bbb', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={() => {
+                setSheetReplaceTarget({
+                  index: activeTab,
+                  name: (editName || activeLoc?.name || '').trim().toUpperCase(),
+                  description: editDesc.trim(),
+                });
+                setShowEditModal(false);
+                fileInputRef.current?.click();
+              }} style={{ padding: '12px', background: '#111', border: '1px solid #222', borderRadius: '8px', color: '#bbb', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
                 Upload New Location Sheet
               </button>
               <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
@@ -1421,9 +1683,9 @@ export default function LocationsScreen({ onNavigate, projectData = [], onDataUp
 
       {busy && (
         <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--teal)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ width: '24px', height: '24px', border: '2px solid var(--teal)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+          <Loader2 size={24} style={{ color: 'var(--teal)', animation: 'spin 1s linear infinite' }} />
           <div>
-            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? 'Reading sheet...' : 'Creating references...'}</div>
+            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating references...'}</div>
             <div style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
           </div>
         </div>

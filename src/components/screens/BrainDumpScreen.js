@@ -477,8 +477,8 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
               <button className="btn-outline" onClick={() => onNavigate(4)} style={{ width: '100%' }}>
                 Cast →
               </button>
-              <button className="btn-outline" onClick={() => onNavigate(6)} style={{ width: '100%' }}>
-                Shot List →
+              <button className="btn-outline" onClick={() => onNavigate(7)} style={{ width: '100%' }}>
+                Shot Plan →
               </button>
             </div>
           </div>

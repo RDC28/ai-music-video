@@ -111,6 +111,8 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
     const nextShot = {
       n: `Shot ${shots.length + 1}`,
       p: '',
+      image_prompt: '',
+      video_prompt: '',
       duration: 6,
       veo_duration_seconds: 6,
       characters: [],
@@ -152,12 +154,12 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
   };
 
   const handleContinue = async () => {
-    await commitShots(shots, { shots_arranged: true, current_step: 8 });
-    onNavigate(8);
+    await commitShots(shots, { shots_arranged: true, current_step: 9 });
+    onNavigate(9);
   };
 
   return (
-    <div className="screen active" id="s5" style={{ flexDirection: 'row', alignItems: 'flex-start', height: '100%', overflow: 'hidden' }}>
+    <div className="screen active" id="s8" style={{ flexDirection: 'row', alignItems: 'flex-start', height: '100%', overflow: 'hidden' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', height: '100%' }}>
         <div style={{
           padding: '18px 28px',
@@ -181,7 +183,7 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
           </div>
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
-            <button className="btn-outline" onClick={() => onNavigate(6)} style={{ fontSize: '12px' }}>
+            <button className="btn-outline" onClick={() => onNavigate(7)} style={{ fontSize: '12px' }}>
               ← Shot Plan
             </button>
             <button className="btn-outline" onClick={handleAddShot} style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -337,7 +339,7 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
               <div style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>
                 No approved shots yet.
               </div>
-              <button className="btn-teal" onClick={() => onNavigate(6)} style={{ fontSize: '12px' }}>
+              <button className="btn-teal" onClick={() => onNavigate(7)} style={{ fontSize: '12px' }}>
                 Generate or Import Shot List
               </button>
             </div>
@@ -492,13 +494,31 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
               />
             </div>
 
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <label style={labelStyle}>Image / Video Prompt</label>
-              <textarea
-                value={editDraft.p || ''}
-                onChange={(e) => setEditDraft(prev => ({ ...prev, p: e.target.value }))}
-                style={{ ...inputStyle, minHeight: '180px', resize: 'vertical', flex: 1, lineHeight: 1.5 }}
-              />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={labelStyle}>Master Shot Brief</label>
+                <textarea
+                  value={editDraft.p || ''}
+                  onChange={(e) => setEditDraft(prev => ({ ...prev, p: e.target.value }))}
+                  style={{ ...inputStyle, minHeight: '120px', resize: 'vertical', lineHeight: 1.5 }}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Still Image Prompt</label>
+                <textarea
+                  value={editDraft.image_prompt || ''}
+                  onChange={(e) => setEditDraft(prev => ({ ...prev, image_prompt: e.target.value }))}
+                  style={{ ...inputStyle, minHeight: '130px', resize: 'vertical', lineHeight: 1.5 }}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Video Prompt</label>
+                <textarea
+                  value={editDraft.video_prompt || ''}
+                  onChange={(e) => setEditDraft(prev => ({ ...prev, video_prompt: e.target.value }))}
+                  style={{ ...inputStyle, minHeight: '150px', resize: 'vertical', lineHeight: 1.5 }}
+                />
+              </div>
             </div>
 
             <button

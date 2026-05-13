@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { FileText, Loader2, Upload, Wand2 } from 'lucide-react';
 import { createClient } from '@/utils/supabase';
 import ProgressBar from '../ProgressBar';
 
@@ -23,11 +24,57 @@ const PANEL_LABELS = [
   'Face Close-up Front', 'Face Close-up Back', 'Face 3/4 Left', 'Face 3/4 Right',
 ];
 
+const CHARACTER_REFERENCE_VIEWS = [
+  {
+    label: 'MID PORTRAIT',
+    prompt: 'Mid portrait, waist-up, front-facing neutral expression, exact face identity, exact hair, exact wardrobe and accessories, clean white studio background.',
+  },
+  {
+    label: 'FULL BODY FRONT',
+    prompt: 'Full body front view, standing upright, complete head-to-toe outfit visible, exact face identity, exact body proportions, exact wardrobe, clean white studio background.',
+  },
+  {
+    label: 'FULL BODY LEFT',
+    prompt: 'Full body left profile view, standing upright, complete figure visible, exact silhouette, exact wardrobe and accessories, clean white studio background.',
+  },
+  {
+    label: 'FULL BODY RIGHT',
+    prompt: 'Full body right profile view, standing upright, complete figure visible, exact silhouette, exact wardrobe and accessories, clean white studio background.',
+  },
+  {
+    label: 'FULL BODY BACK',
+    prompt: 'Full body back view, standing upright, complete figure visible from behind, exact hairstyle, exact wardrobe back details, clean white studio background.',
+  },
+  {
+    label: 'FACE CLOSE-UP FRONT',
+    prompt: 'Face close-up front portrait, head and shoulders, exact facial structure, eyes, nose, lips, skin tone, hairline, neutral expression, clean white studio background.',
+  },
+  {
+    label: 'FACE CLOSE-UP BACK',
+    prompt: 'Back-of-head close-up, head and upper shoulders from behind, exact hairstyle and collar details, clean white studio background.',
+  },
+  {
+    label: 'FACE 3/4 LEFT',
+    prompt: 'Three-quarter left face portrait, head and shoulders, exact facial identity and hair, neutral expression, clean white studio background.',
+  },
+  {
+    label: 'FACE 3/4 RIGHT',
+    prompt: 'Three-quarter right face portrait, head and shoulders, exact facial identity and hair, neutral expression, clean white studio background.',
+  },
+];
+
+const CHARACTER_STEPS = [
+  'Locking character identity',
+  ...CHARACTER_REFERENCE_VIEWS.map(view => `Creating ${view.label.toLowerCase()}`),
+  'Saving to library',
+];
+
 const PINBOARD_WIDTH = 2016;
 const PINBOARD_HEIGHT = 700;
 const PINBOARD_PADDING = 28;
 const PINBOARD_GAP = 14;
 const DEFAULT_COLLAGE_RATIO = 1;
+const CHARACTER_DESCRIPTION_DISPLAY_LIMIT = 360;
 
 const buildSheetPrompt = (desc, hasRef) => {
   const charClause = hasRef
@@ -47,6 +94,40 @@ Character ${charClause}.
 
 Do not crop any face or costume details. Maintain perfectly consistent character appearance across all 9 panels. Clean visible spacing between panels. Studio lighting throughout. Professional concept art quality.`;
 };
+
+function compactScriptText(value, maxLength = 700) {
+  if (!value) return '';
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function truncateCharacterDescription(value, maxLength = CHARACTER_DESCRIPTION_DISPLAY_LIMIT) {
+  if (!value) return '';
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
+}
+
+function buildScriptCharacterDescription(character = {}, projectState = {}) {
+  const script = projectState?.script || {};
+  const analysis = projectState?.analysis || {};
+  const sourceDescription = (
+    character.visual_prompt ||
+    character.prompt ||
+    character.description ||
+    character.role ||
+    ''
+  );
+
+  return [
+    sourceDescription,
+    character.role ? `Narrative role: ${compactScriptText(character.role, 220)}` : '',
+    script.title ? `Music video title: ${script.title}` : '',
+    script.storyline ? `Story context: ${compactScriptText(script.storyline, 520)}` : '',
+    script.mood || analysis.mood ? `Mood and performance tone: ${compactScriptText(script.mood || analysis.mood, 240)}` : '',
+    analysis.genre || analysis.theme ? `Genre/theme: ${compactScriptText(analysis.genre || analysis.theme, 180)}` : '',
+    'Create a production-ready character reference set for this music video. Identity must remain stable across every view: same face, body proportions, hair, skin tone, wardrobe, accessories, and age.',
+  ].filter(Boolean).join('\n');
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -452,7 +533,7 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function CharactersScreen({ onNavigate, projectData = [], onDataUpdate, projectId }) {
+export default function CharactersScreen({ onNavigate, projectData = [], projectState = {}, onDataUpdate, projectId }) {
   const [activeTab, setActiveTab] = useState(0);
   const [globalLibrary, setGlobalLibrary] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -470,19 +551,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
   const [renamingPanel, setRenamingPanel] = useState(null);
 
   const [pendingSheetFile, setPendingSheetFile] = useState(null);
+  const [sheetReplaceTarget, setSheetReplaceTarget] = useState(null);
   const [showSheetCropModal, setShowSheetCropModal] = useState(false);
   const [sheetPreviewUrl, setSheetPreviewUrl] = useState(null);
+  const [sheetProcessStatus, setSheetProcessStatus] = useState('');
   const [charProgressStep, setCharProgressStep] = useState(-1);
   const [imgRatios, setImgRatios] = useState({});
-
-  const CHARACTER_STEPS = [
-    'Preparing character profile',
-    'Creating front view',
-    'Creating side view',
-    'Creating back view',
-    'Creating face close-up',
-    'Saving to library'
-  ];
 
   const fileInputRef = useRef(null);
   const refFileInputRef = useRef(null);
@@ -490,11 +564,19 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
   const [collageSize, setCollageSize] = useState({ width: PINBOARD_WIDTH, height: PINBOARD_HEIGHT });
   const supabase = useMemo(() => createClient(), []);
   const projectCharacters = projectData || [];
+  const generatingReplaceIndex = Number.isInteger(generatingChar?.replaceIndex)
+    ? generatingChar.replaceIndex
+    : null;
   const displayedCharacters = activeCategory === 'project'
-    ? [...projectCharacters, ...(generatingChar ? [generatingChar] : [])]
+    ? [
+        ...projectCharacters.map((char, index) => (
+          generatingReplaceIndex === index ? generatingChar : char
+        )),
+        ...(generatingChar && generatingReplaceIndex === null ? [generatingChar] : []),
+      ]
     : globalLibrary;
   const activeChar = displayedCharacters[activeTab] || null;
-  const isGeneratingActive = activeChar?.id === 'generating';
+  const isGeneratingActive = Boolean(activeChar?.isGeneratingReference || activeChar?.id === 'generating');
   const busy = isProcessingSheet || isGenerating;
 
   const loadGlobalLibrary = useCallback(async () => {
@@ -611,6 +693,35 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     }
   };
 
+  const handleAddGlobalToProject = async () => {
+    if (!activeChar || activeCategory !== 'global') return;
+    const exists = projectCharacters.some(character => (
+      String(character?.name || '').trim().toLowerCase() === String(activeChar.name || '').trim().toLowerCase()
+    ));
+    if (exists) {
+      setActiveCategory('project');
+      setActiveTab(Math.max(0, projectCharacters.findIndex(character => (
+        String(character?.name || '').trim().toLowerCase() === String(activeChar.name || '').trim().toLowerCase()
+      ))));
+      return;
+    }
+
+    const newChar = {
+      ...activeChar,
+      id: `character-${activeChar.id || Date.now()}-${Date.now()}`,
+      name: String(activeChar.name || 'CHARACTER').trim().toUpperCase(),
+      description: activeChar.description || activeChar.visual_prompt || '',
+      visual_prompt: activeChar.visual_prompt || activeChar.description || '',
+      images: Array.isArray(activeChar.images) ? activeChar.images : [],
+      source: activeChar.source || 'history',
+      sheetUrl: activeChar.sheetUrl || activeChar.sheet_url || null,
+    };
+    const updatedChars = [...projectCharacters, newChar];
+    await onDataUpdate({ characters: updatedChars });
+    setActiveCategory('project');
+    setActiveTab(updatedChars.length - 1);
+  };
+
   const pushSlot = (i, url, label) => {
     setGeneratingChar(prev => {
       if (!prev) return prev;
@@ -640,14 +751,18 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     e.target.value = '';
     const previewUrl = URL.createObjectURL(file);
     setSheetPreviewUrl(previewUrl);
+    setSheetProcessStatus('');
     setPendingSheetFile(file);
     setShowSheetCropModal(true);
   };
 
   const handleCloseSheetCropModal = () => {
+    if (isProcessingSheet) return;
     if (sheetPreviewUrl) URL.revokeObjectURL(sheetPreviewUrl);
     setSheetPreviewUrl(null);
+    setSheetProcessStatus('');
     setPendingSheetFile(null);
+    setSheetReplaceTarget(null);
     setShowSheetCropModal(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -655,6 +770,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
   const processSheetFile = async (file) => {
     if (!file) return;
     setIsProcessingSheet(true);
+    setSheetProcessStatus('Uploading sheet...');
 
     try {
       const sheetPath = `${projectId}/sheets/${Date.now()}-${file.name}`;
@@ -662,16 +778,37 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       if (upErr) throw upErr;
       const { data: { publicUrl: sheetUrl } } = supabase.storage.from('assets').getPublicUrl(sheetPath);
 
+      setSheetProcessStatus('Detecting pose panels...');
       const { poses, error: splitErr } = await fetch('/api/split-character-sheet', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: sheetUrl }),
       }).then(r => r.json());
       if (splitErr) throw new Error(splitErr);
+      if (!poses?.length) throw new Error('No character poses were detected in this sheet.');
 
-      const charName = file.name.split('.')[0].toUpperCase();
-      setGeneratingChar({ id: 'generating', name: charName, images: poses.map(p => ({ label: p.label || 'Section', url: null })) });
-      setActiveTab(projectCharacters.length);
+      const replaceIndex = Number.isInteger(sheetReplaceTarget?.index) && sheetReplaceTarget.index >= 0 && sheetReplaceTarget.index < projectCharacters.length
+        ? sheetReplaceTarget.index
+        : null;
+      const existingChar = replaceIndex !== null ? projectCharacters[replaceIndex] : null;
+      const charName = existingChar
+        ? (sheetReplaceTarget?.name || existingChar.name || file.name.split('.')[0]).trim().toUpperCase()
+        : file.name.split('.')[0].toUpperCase();
+      const charDescription = existingChar
+        ? (sheetReplaceTarget?.description ?? existingChar.description ?? 'Uploaded from character sheet')
+        : 'Uploaded from character sheet';
+      setGeneratingChar({
+        ...(existingChar || {}),
+        id: existingChar?.id || 'generating',
+        name: charName,
+        description: charDescription,
+        images: poses.map(p => ({ label: p.label || 'Section', url: null })),
+        isGeneratingReference: true,
+        replaceIndex,
+      });
+      setActiveTab(replaceIndex !== null ? replaceIndex : projectCharacters.length);
       setActiveCategory('project');
+      setSheetProcessStatus(`Detected ${poses.length} poses. Refining crops...`);
+      setShowSheetCropModal(false);
 
       const img = await new Promise((res, rej) => {
         const el = new Image(); el.crossOrigin = 'anonymous';
@@ -681,6 +818,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       const finalImages = new Array(poses.length).fill(null);
 
       await Promise.all(poses.map(async (pose, i) => {
+        setSheetProcessStatus(`Refining pose ${i + 1} of ${poses.length}...`);
         const label = pose.label || `Section ${i + 1}`;
         const [ymin, xmin, ymax, xmax] = pose.box_2d;
         const sx = Math.max(0, (xmin / 1000) * img.width);
@@ -713,17 +851,31 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
         const imageData = { url, label, box_2d: pose.box_2d, width: Math.round(sw), height: Math.round(sh) };
         finalImages[i] = imageData;
         setGeneratingChar(prev => {
+          if (!prev) return prev;
           const newImgs = [...prev.images];
           newImgs[i] = imageData;
           return { ...prev, images: newImgs };
         });
       }));
 
-      const newChar = { id: Date.now(), name: charName, description: 'Uploaded from character sheet', images: finalImages.filter(Boolean), source: 'upload', sheetUrl };
-      const updatedChars = [...projectCharacters, newChar];
+      const newChar = {
+        ...(existingChar || {}),
+        id: existingChar?.id || Date.now(),
+        name: charName,
+        description: charDescription,
+        images: finalImages.filter(Boolean),
+        source: 'upload',
+        sheetUrl,
+      };
+      const updatedChars = [...projectCharacters];
+      if (replaceIndex !== null) {
+        updatedChars[replaceIndex] = newChar;
+      } else {
+        updatedChars.push(newChar);
+      }
       await onDataUpdate({ characters: updatedChars });
-      setActiveTab(updatedChars.length - 1);
-      saveToGlobalLibrary(newChar, 'upload');
+      setActiveTab(replaceIndex !== null ? replaceIndex : updatedChars.length - 1);
+      if (replaceIndex === null) saveToGlobalLibrary(newChar, 'upload');
     } catch (err) {
       console.error('Sheet processing failed:', err);
       alert('We could not process that character sheet. Please try another image.');
@@ -732,50 +884,57 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       setGeneratingChar(null);
       if (sheetPreviewUrl) URL.revokeObjectURL(sheetPreviewUrl);
       setSheetPreviewUrl(null);
+      setSheetProcessStatus('');
       setPendingSheetFile(null);
+      setSheetReplaceTarget(null);
       setShowSheetCropModal(false);
     }
   };
 
-  const handleGenerateAngles = async () => {
-    if (!createName.trim()) return alert('Enter a character name');
-    if (!createDesc.trim()) return alert('Describe the character');
-    const charName = createName.trim().toUpperCase();
-    const desc = createDesc.trim();
+  const generateCharacterReferences = async ({ name, description, refImage = null, replaceIndex = null }) => {
+    const charName = name.trim().toUpperCase();
+    const desc = description.trim();
     setShowCreateModal(false);
-    setCreateName(''); setCreateDesc('');
+    setCreateName('');
+    setCreateDesc('');
+    setCreateRefImage(null);
     setIsGenerating(true);
     setCharProgressStep(0);
 
-    const angles = [
-      { label: 'FRONT VIEW', prompt: 'Front view portrait, standing, full body, professional studio lighting, clean white background, cinematic high detail.' },
-      { label: 'SIDE VIEW', prompt: 'Side profile view, standing, full body, matching character features and outfit, studio lighting, white background.' },
-      { label: 'BACK VIEW', prompt: 'Back view, standing, full body, matching character features and outfit, studio lighting, white background.' },
-      { label: 'FACE CLOSE-UP', prompt: 'Cinematic face close-up, highly detailed facial features, jewelry, neutral expression, matching the character exactly.' }
-    ];
-
     try {
       const tempId = Date.now();
-      setGeneratingChar({ id: tempId, name: charName, images: angles.map(a => ({ label: a.label, url: null })) });
-      setActiveTab(projectCharacters.length);
+      const isReplacing = Number.isInteger(replaceIndex) && replaceIndex >= 0 && replaceIndex < projectCharacters.length;
+      const existingChar = isReplacing ? projectCharacters[replaceIndex] : null;
+      setGeneratingChar({
+        ...(existingChar || {}),
+        id: existingChar?.id || tempId,
+        name: charName,
+        description: desc,
+        images: CHARACTER_REFERENCE_VIEWS.map(view => ({ label: view.label, url: null })),
+        isGeneratingReference: true,
+        replaceIndex: isReplacing ? replaceIndex : null,
+      });
+      setActiveTab(isReplacing ? replaceIndex : projectCharacters.length);
       setActiveCategory('project');
 
       const finalImages = [];
-      let referenceBase64 = null;
+      const hasUserReference = Boolean(refImage?.base64);
+      let referenceBase64 = refImage?.base64 || null;
+      let referenceMimeType = refImage?.mimeType || 'image/png';
 
-      for (let i = 0; i < angles.length; i++) {
+      for (let i = 0; i < CHARACTER_REFERENCE_VIEWS.length; i++) {
         setCharProgressStep(i + 1);
-        const angle = angles[i];
+        const view = CHARACTER_REFERENCE_VIEWS[i];
         try {
           const payload = {
             characterDescription: desc,
-            angleDescription: angle.prompt,
-            label: angle.label
+            angleDescription: view.prompt,
+            label: view.label
           };
 
           if (referenceBase64) {
             payload.base64 = referenceBase64;
-            payload.mimeType = 'image/png';
+            payload.mimeType = referenceMimeType;
           }
 
           const resp = await fetch('/api/generate-character-pose', {
@@ -787,12 +946,15 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
           const { imageBase64, error } = await resp.json();
           if (error) throw new Error(error);
 
-          if (i === 0) referenceBase64 = imageBase64;
+          if (!hasUserReference && !referenceBase64) {
+            referenceBase64 = imageBase64;
+            referenceMimeType = 'image/png';
+          }
 
           const blob = base64ToBlob(imageBase64, 'image/png');
-          const url = await uploadBlob(blob, 'image/png', `${projectId}/generated/${Date.now()}-${angle.label.replace(' ', '_')}.png`);
+          const url = await uploadBlob(blob, 'image/png', `${projectId}/generated/${Date.now()}-${view.label.replace(/\s+/g, '_')}.png`);
 
-          const imageData = { url, label: angle.label };
+          const imageData = { url, label: view.label };
           finalImages[i] = imageData;
 
           setGeneratingChar(prev => {
@@ -803,16 +965,34 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
           });
 
         } catch (e) {
-          console.error(`Failed ${angle.label}:`, e);
+          console.error(`Failed ${view.label}:`, e);
         }
       }
 
-      setCharProgressStep(5);
-      const newChar = { id: tempId, name: charName, description: desc, images: finalImages.filter(Boolean), source: 'ai' };
-      const updatedChars = [...projectCharacters, newChar];
+      const savedImages = finalImages.filter(Boolean);
+      if (savedImages.length < 7) {
+        throw new Error(`Only ${savedImages.length} character references were generated.`);
+      }
+
+      setCharProgressStep(CHARACTER_STEPS.length - 1);
+      const newChar = {
+        ...(existingChar || {}),
+        id: existingChar?.id || tempId,
+        name: charName,
+        description: desc,
+        visual_prompt: existingChar?.visual_prompt || desc,
+        images: savedImages,
+        source: 'ai',
+      };
+      const updatedChars = [...projectCharacters];
+      if (isReplacing) {
+        updatedChars[replaceIndex] = newChar;
+      } else {
+        updatedChars.push(newChar);
+      }
       await onDataUpdate({ characters: updatedChars });
-      setActiveTab(updatedChars.length - 1);
-      saveToGlobalLibrary(newChar, 'ai');
+      setActiveTab(isReplacing ? replaceIndex : updatedChars.length - 1);
+      if (!isReplacing) saveToGlobalLibrary(newChar, 'ai');
     } catch (err) {
       console.error('Generation failed:', err);
       alert('Character could not be created. Please try again.');
@@ -821,6 +1001,47 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       setCharProgressStep(-1);
       setGeneratingChar(null);
     }
+  };
+
+  const handleGenerateAngles = async () => {
+    if (!createName.trim()) return alert('Enter a character name');
+    if (!createDesc.trim()) return alert('Describe the character');
+    await generateCharacterReferences({
+      name: createName,
+      description: createDesc,
+      refImage: createRefImage,
+    });
+  };
+
+  const handleGenerateFromScript = async () => {
+    const projectIndex = activeCategory === 'project' && activeChar && activeChar.id !== 'generating'
+      ? activeTab
+      : -1;
+    const activeNeedsImages = projectIndex >= 0 && !projectCharacters[projectIndex]?.images?.length;
+    const firstMissingIndex = projectCharacters.findIndex(character => !character?.images?.length);
+    const targetIndex = activeNeedsImages ? projectIndex : firstMissingIndex;
+    const scriptCharacters = Array.isArray(projectState?.characters) ? projectState.characters : [];
+    const sourceCharacter = targetIndex >= 0
+      ? projectCharacters[targetIndex]
+      : scriptCharacters.find(character => character?.name || character?.visual_prompt || character?.description);
+
+    if (!sourceCharacter) {
+      alert('Generate or approve the script first so I can pull a character brief from it.');
+      return;
+    }
+
+    const name = sourceCharacter.name || 'SCRIPT CHARACTER';
+    const description = buildScriptCharacterDescription(sourceCharacter, projectState);
+    if (!description.trim()) {
+      alert('The script does not include enough character detail yet.');
+      return;
+    }
+
+    await generateCharacterReferences({
+      name,
+      description,
+      replaceIndex: targetIndex >= 0 ? targetIndex : null,
+    });
   };
 
   const handleEditSave = async () => {
@@ -910,6 +1131,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
     <div className="screen active" id="s4" style={{ height: '100%', overflow: 'hidden', background: '#080808' }}>
       <style>{`
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .skeleton-shimmer { background:linear-gradient(90deg,#111 25%,#1a1a1a 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
         .img-card {
           --board-card-scale: 1;
@@ -986,10 +1208,13 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
             <button
               className="btn-orange"
               style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
-              onClick={() => fileInputRef.current.click()}
+              onClick={() => {
+                setSheetReplaceTarget(null);
+                fileInputRef.current.click();
+              }}
               disabled={busy}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+              <Upload size={14} />
               {isProcessingSheet ? 'Reading sheet...' : 'Upload Reference Sheet'}
             </button>
             <button
@@ -999,6 +1224,16 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
               style={{ width: '100%', padding: '12px', justifyContent: 'center' }}
             >
               Create character
+            </button>
+            <button
+              onClick={handleGenerateFromScript}
+              disabled={busy}
+              className="btn-outline"
+              title="Generate references for the next character described in the script"
+              style={{ width: '100%', padding: '12px', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '7px' }}
+            >
+              <FileText size={14} />
+              Generate from Script
             </button>
 
             {isGenerating && (
@@ -1030,7 +1265,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
                   <span style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.015em' }}>
                     {char.name}
                   </span>
-                  {char.id === 'generating' && (
+                  {(char.isGeneratingReference || char.id === 'generating') && (
                     <span style={{ marginLeft: '5px', opacity: 0.55, fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
                       {char.images.filter(x => x.url).length}/{char.images.length}
                     </span>
@@ -1085,10 +1320,28 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
                     {activeCategory === 'global' ? '◆ GLOBAL' : '◇ PROJECT'}
                   </span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.015em' }}>
-                    {activeChar?.description || 'No notes yet.'}
+                    {truncateCharacterDescription(activeChar?.description) || 'No notes yet.'}
                   </span>
                 </div>
               </div>
+              {activeChar && !isGeneratingActive && activeCategory === 'global' && (
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    onClick={handleAddGlobalToProject}
+                    className="btn-teal"
+                    style={{ padding: '8px 14px', fontSize: '11.5px', whiteSpace: 'nowrap' }}
+                  >
+                    Add to project
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className="btn-outline"
+                    style={{ padding: '8px 14px', fontSize: '11.5px', color: '#ff7a7a', borderColor: 'rgba(239,68,68,0.2)' }}
+                  >
+                    Delete from history
+                  </button>
+                </div>
+              )}
               {activeChar && !isGeneratingActive && activeCategory === 'project' && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   {activeChar.sheetUrl && (
@@ -1331,6 +1584,14 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
               <button className="btn-orange" style={{ width: '100%', padding: '13px', fontSize: '12px' }} onClick={handleGenerateAngles}>
                 Create Reference Sheet
               </button>
+              <button
+                className="btn-outline"
+                style={{ width: '100%', padding: '13px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                onClick={handleGenerateFromScript}
+              >
+                <Wand2 size={14} />
+                Generate from Script
+              </button>
             </div>
           </div>
         </div>
@@ -1353,7 +1614,15 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
               </div>
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px' }}>
                 <label style={{ fontSize: '10px', fontWeight: 700, color: '#2a2a2a', letterSpacing: '0.1em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>REPLACE IMAGES</label>
-                <button onClick={() => { setShowEditModal(false); fileInputRef.current.click(); }}
+                <button onClick={() => {
+                  setSheetReplaceTarget({
+                    index: activeTab,
+                    name: (editName || activeChar.name || '').trim().toUpperCase(),
+                    description: editDesc.trim(),
+                  });
+                  setShowEditModal(false);
+                  fileInputRef.current.click();
+                }}
                   style={{ width: '100%', padding: '10px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.07)', color: '#444', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
                   Upload New Character Sheet
                 </button>
@@ -1388,11 +1657,17 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
       {showSheetCropModal && sheetPreviewUrl && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={handleCloseSheetCropModal}>
           <div style={{ background: '#0c0c0c', width: '100%', maxWidth: '500px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }} onClick={e => e.stopPropagation()}>
-            <button onClick={handleCloseSheetCropModal} style={{ position: 'absolute', top: '14px', right: '14px', background: 'none', border: 'none', color: '#444', fontSize: '18px', cursor: 'pointer', zIndex: 10 }}>✕</button>
+            <button
+              onClick={handleCloseSheetCropModal}
+              disabled={isProcessingSheet}
+              style={{ position: 'absolute', top: '14px', right: '14px', background: 'none', border: 'none', color: '#444', fontSize: '18px', cursor: isProcessingSheet ? 'not-allowed' : 'pointer', zIndex: 10, opacity: isProcessingSheet ? 0.35 : 1 }}
+            >✕</button>
             <div style={{ padding: '28px' }}>
               <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>Crop Selection</div>
               <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 700, marginBottom: '6px', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>Choose Crop Method</h3>
-              <p style={{ color: '#444', fontSize: '12px', marginBottom: '20px', lineHeight: 1.6 }}>Automatically detect and refine character poses from your sheet.</p>
+              <p style={{ color: isProcessingSheet ? 'var(--teal)' : '#444', fontSize: '12px', marginBottom: '20px', lineHeight: 1.6 }}>
+                {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Automatically detect and refine character poses from your sheet.'}
+              </p>
 
               <div style={{ width: '100%', height: '260px', background: '#080808', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
                 <img src={sheetPreviewUrl} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Preview" />
@@ -1401,17 +1676,29 @@ export default function CharactersScreen({ onNavigate, projectData = [], onDataU
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <button
                   onClick={() => processSheetFile(pendingSheetFile)}
-                  style={{ ...MODAL_BTN, background: 'var(--teal)', color: '#000', border: 'none', padding: '16px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, fontFamily: 'var(--font-display)' }}
+                  disabled={isProcessingSheet}
+                  style={{ ...MODAL_BTN, background: 'var(--teal)', color: '#000', border: 'none', padding: '16px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: isProcessingSheet ? 'wait' : 'pointer', opacity: isProcessingSheet ? 0.82 : 1 }}
                 >
-                  Auto-detect Poses
+                  {isProcessingSheet && <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />}
+                  {isProcessingSheet ? 'Detecting Poses...' : 'Auto-detect Poses'}
                 </button>
                 <div>
-                  <button onClick={handleCloseSheetCropModal} style={{ ...MODAL_BTN, width: '100%', padding: '16px', borderRadius: '9px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <button disabled={isProcessingSheet} onClick={handleCloseSheetCropModal} style={{ ...MODAL_BTN, width: '100%', padding: '16px', borderRadius: '9px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isProcessingSheet ? 0.45 : 1, cursor: isProcessingSheet ? 'not-allowed' : 'pointer' }}>
                     Cancel Upload
                   </button>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {busy && (
+        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--teal)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <Loader2 size={24} style={{ color: 'var(--teal)', animation: 'spin 1s linear infinite' }} />
+          <div>
+            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating references...'}</div>
+            <div style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
           </div>
         </div>
       )}

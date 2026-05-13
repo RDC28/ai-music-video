@@ -77,11 +77,13 @@ function splitModels(value) {
 }
 
 export function getFallbackModels(primary, fallbackModels) {
-  const ordered = [
-    ...splitModels(primary),
-    ...(Array.isArray(fallbackModels) ? fallbackModels : []),
-  ];
-  return [...new Set(ordered.filter(Boolean))];
+  const configuredModels = splitModels(primary);
+  if (configuredModels.length) return [configuredModels[0]];
+
+  const defaultModels = Array.isArray(fallbackModels)
+    ? fallbackModels.filter(Boolean)
+    : [];
+  return defaultModels.length ? [defaultModels[0]] : [];
 }
 
 export async function runWithModelFallback({
@@ -94,27 +96,22 @@ export async function runWithModelFallback({
   if (!modelList.length) throw new Error(`${label} has no configured Google models`);
 
   const attempts = [];
-  let lastError;
+  const model = modelList[0];
 
-  for (let index = 0; index < modelList.length; index += 1) {
-    const model = modelList[index];
-
-    try {
-      const result = await operation(model);
-      return { result, model, attempts };
-    } catch (error) {
-      lastError = error;
-      const serialized = serializeModelError(error);
-      attempts.push({ model, ...serialized });
-      console.warn(`${label} failed on model ${model}:`, serialized);
-
-      if (!shouldFallback(error) || index === modelList.length - 1) break;
+  try {
+    const result = await operation(model);
+    return { result, model, attempts };
+  } catch (error) {
+    const serialized = serializeModelError(error);
+    attempts.push({ model, ...serialized });
+    console.warn(`${label} failed on model ${model}:`, serialized);
+    if (shouldFallback(error)) {
+      console.warn(`${label} model fallback is disabled; not retrying with alternate models.`);
     }
+    const finalError = error instanceof Error
+      ? error
+      : new Error(String(error || `${label} failed`));
+    finalError.modelFallbackAttempts = attempts;
+    throw finalError;
   }
-
-  const finalError = lastError instanceof Error
-    ? lastError
-    : new Error(String(lastError || `${label} failed`));
-  finalError.modelFallbackAttempts = attempts;
-  throw finalError;
 }

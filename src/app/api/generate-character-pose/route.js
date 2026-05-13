@@ -52,17 +52,23 @@ export async function POST(req) {
     // 1. REFERENCE-LOCKED GENERATION (Sequential Flow)
     if (base64 && characterDescription && angleDescription) {
       console.log(`NB Pro generating reference-locked angle: ${label}`);
-      
+
       const prompt = `
-        STRICT CHARACTER CONSISTENCY.
-        MATCH THIS CHARACTER EXACTLY: I am providing a master reference image.
+        FICTIONAL CHARACTER — PRODUCTION IDENTITY LOCK.
+        This character is entirely fictional. The character name is a production label only.
+        Do NOT associate the character name with any real-world person, celebrity, athlete, politician, or public figure.
+        Do NOT look up the name or infer appearance from cultural associations. Appearance is defined SOLELY by the attached reference image and the description below.
+
+        MATCH THIS EXACT CHARACTER from the provided master reference image.
         TARGET ANGLE: ${angleDescription}
         CHARACTER DETAILS: ${characterDescription}
-        
+
         RULES:
-        1. Preserve the exact face, hair, outfit, and jewelry from the reference.
-        2. Change ONLY the angle/pose to match "${label}".
-        3. Maintain the professional studio lighting and clean white background.
+        1. Preserve the exact face, skull shape, eyes, nose, lips, skin tone, hairline, hairstyle, body proportions, wardrobe, accessories, and age as shown in the reference image.
+        2. Change ONLY the camera angle/framing/pose needed for "${label}".
+        3. Output one clean professional reference image on a white or soft neutral studio background.
+        4. No text, labels, split panels, grids, borders, watermarks, or extra people.
+        5. Keep this view consistent enough to sit beside the other reference images as the same person.
       `;
 
       const { generatedB64, model } = await generateImage([{
@@ -76,23 +82,63 @@ export async function POST(req) {
       return NextResponse.json({ success: true, imageBase64: generatedB64, image_model: model });
     }
 
-    // 2. MASTER FRONT VIEW GENERATION (First Angle)
+    // 2. TWO-STAGE MASTER GENERATION (Stage 1: Original Face → Stage 2: Reference-Locked Angle)
+    // This prevents celebrity name lookup (e.g. "Mahi" → MS Dhoni) by never exposing
+    // the character name during face generation. Stage 1 creates an original face from
+    // physical description only; Stage 2 uses that face image as a pixel-locked reference.
     if (characterDescription && angleDescription) {
-      console.log(`NB Pro generating master front view: ${label}`);
-      
-      const fullPrompt = `Generate a high-end, studio-quality MASTER CHARACTER REFERENCE. 
-      CHARACTER: ${characterDescription}
-      ANGLE: ${angleDescription}
-      STYLE: Photorealistic, cinematic studio lighting, isolated on a clean white studio background. 
-      Ensure the character is standing and clearly visible.`;
+      console.log(`NB Pro: 2-stage master generation for label=${label}`);
+
+      // STAGE 1: Generate a face portrait from physical description only — no character name exposed
+      const stage1Prompt = `FICTIONAL PERSON FACE PORTRAIT — PRODUCTION ASSET.
+You are creating a completely original fictional person for a creative production.
+Do NOT associate this with any real-world person, celebrity, athlete, politician, or public figure.
+Generate a photorealistic face portrait based ONLY on the physical description below.
+
+PHYSICAL DESCRIPTION:
+${characterDescription}
+
+OUTPUT RULES:
+- One person only, face and upper body (chest-up), front-facing
+- Photorealistic cinematic studio lighting on a clean white or soft neutral background
+- Make the face, hair, skin tone, age, and any visible clothing highly distinctive and repeatable
+- The person must be a completely original fictional individual
+- No text, labels, borders, watermarks, or collage`;
+
+      const { generatedB64: stage1B64, model: _stage1Model } = await generateImage(
+        [{ role: "user", parts: [{ text: stage1Prompt }] }],
+        `Character 2-stage: face portrait (${label || "front"})`
+      );
+
+      // STAGE 2: Use stage-1 face as a pixel-locked reference to generate the target angle
+      const stage2Prompt = `FICTIONAL CHARACTER — REFERENCE-LOCKED ANGLE GENERATION.
+The attached image is an approved face reference for a completely fictional character.
+Do NOT associate this character with any real-world person, celebrity, or public figure.
+
+TASK: Generate a new view of this EXACT fictional character.
+TARGET ANGLE: ${angleDescription}
+CHARACTER CONTEXT: ${characterDescription}
+
+RULES:
+1. The face in the output MUST exactly match the attached reference image — same facial structure, skin tone, eyes, nose, lips, hairline, hair color/style, and age.
+2. Change ONLY what is needed for the target angle, pose, or framing.
+3. Preserve body proportions, outfit, and accessories from the reference.
+4. Output one clean professional studio image on a white or soft neutral background.
+5. No text, labels, split panels, grids, borders, watermarks, or extra people.`;
 
       const { generatedB64, model } = await generateImage(
-        [{ role: "user", parts: [{ text: fullPrompt }] }],
-        `Character master generation (${label || "front"})`
+        [{
+          role: "user",
+          parts: [
+            { text: stage2Prompt },
+            { inlineData: { mimeType: "image/png", data: stage1B64 } }
+          ]
+        }],
+        `Character 2-stage: reference-locked angle (${label || "front"})`
       );
 
       return NextResponse.json({ success: true, imageBase64: generatedB64, image_model: model });
-    } 
+    }
 
     // 3. REFINEMENT MODE (From Sheet Crops)
     if (base64 && mimeType) {

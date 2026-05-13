@@ -66,6 +66,7 @@ function compactCharacters(characters = []) {
   return characters.map(character => ({
     name: character.name,
     role: compactText(character.role || character.description, 180),
+    costume: compactText(character.costume || character.wardrobe || character.costume_prompt || character.outfit, 260),
     visual_prompt: compactText(character.visual_prompt || character.prompt || character.description, 420),
   }));
 }
@@ -77,6 +78,46 @@ function compactLocations(locations = []) {
     description: compactText(location.description, 220),
     visual_prompt: compactText(location.visual_prompt || location.prompt || location.description, 420),
   }));
+}
+
+function normalizeName(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function isLegacyWardrobeFallback(outfitName, characterName, locationName) {
+  const normalizedOutfit = normalizeName(outfitName);
+  if (!normalizedOutfit) return false;
+  return normalizedOutfit === `${normalizeName(characterName)} outfit for ${normalizeName(locationName)}`;
+}
+
+function compactWardrobe(wardrobe = []) {
+  if (!Array.isArray(wardrobe)) return [];
+  return wardrobe
+    .map((location, index) => ({
+      location_id: location?.location_id || location?.id || `location-${index + 1}`,
+      location_name: location?.location_name || location?.name || `Location ${index + 1}`,
+      outfits: Array.isArray(location?.outfits)
+        ? location.outfits.map((outfit, outfitIndex) => {
+            const characterName = outfit?.character_name || outfit?.name || `Character ${outfitIndex + 1}`;
+            const rawOutfitName = outfit?.outfit_name || outfit?.name || '';
+            const outfitName = isLegacyWardrobeFallback(rawOutfitName, characterName, location?.location_name || location?.name)
+              ? ''
+              : compactText(rawOutfitName, 160);
+            const description = compactText(outfit?.description || outfit?.outfit_description || outfit?.prompt, 420);
+            const hasImageReference = Boolean(outfit?.image_url || outfit?.imageUrl || outfit?.url);
+            return {
+              character_id: outfit?.character_id || outfit?.id || `character-${outfitIndex + 1}`,
+              character_name: characterName,
+              has_outfit_override: Boolean(outfitName || description || hasImageReference),
+              outfit_name: outfitName,
+              description,
+              has_image_reference: hasImageReference,
+              image_url: outfit?.image_url || outfit?.imageUrl || outfit?.url || '',
+            };
+          })
+        : [],
+    }))
+    .filter(location => location.location_name || location.outfits.length);
 }
 
 /**
@@ -109,7 +150,7 @@ export const geminiAgent = {
           ]
         },
         "characters": [
-          { "name": "Character Name", "role": "Role description", "visual_prompt": "Highly detailed visual description for AI image generation (consistency is key)" }
+          { "name": "Character Name", "role": "Role description", "costume": "Locked wardrobe/costume details", "visual_prompt": "Highly detailed visual description for AI image generation (consistency is key)" }
         ],
         "locations": [
           { "name": "Location Name", "description": "Atmospheric description", "visual_prompt": "Highly detailed environment description for AI image generation" }
@@ -121,7 +162,7 @@ export const geminiAgent = {
       
       Requirements:
       - Cinematic and high-end creative direction.
-      - Consistency between characters/locations and the script.
+      - Consistency between script concept, shot concepts, characters, costumes, and locations is mandatory. Treat character identity, wardrobe/costume, and location identity as locked production continuity.
       - Ensure the 'lyrics_timeline' is populated with the word-by-word timestamps from the provided transcript.
     `;
 
@@ -162,6 +203,7 @@ export const geminiAgent = {
       },
       characters: compactCharacters(projectState.characters),
       locations: compactLocations(projectState.locations),
+      wardrobe: compactWardrobe(projectState.wardrobe),
       existing_draft_shots: normalizeShotList(projectState.shot_list).map((shot, index) => ({
         shot_number: index + 1,
         n: shot.n,
@@ -180,12 +222,29 @@ The app generates raw clips only. The user will add transitions, cuts, effects, 
 The shot list must treat these as unavoidable inputs:
 - Transcript/vocal timing and every available word timestamp.
 - The approved script scenes and their time ranges.
-- The approved characters, using exact names and visual identity.
-- The approved locations, using exact names and environmental identity.
+- The approved story concept, script events, and emotional arc.
+- The approved characters, using exact names, visual identity, wardrobe, costumes, age, and role.
+- The approved locations, using exact names, geography, architecture, set dressing, palette, era, and environmental identity.
+- The approved wardrobe map, where every location can optionally define outfit overrides for characters.
 - The song analysis, including mood, genre, BPM, and emotional journey.
 
-Create a coherent raw-footage shot list that covers the full song in chronological order. Each shot must attach to a script scene and a vocal/timestamp cue when timing exists. Use only provided character and location names unless no usable names exist. Do not invent random cast or sets.
+These are NON-NEGOTIABLE continuity locks. Do not rewrite, rename, redesign, swap, merge, or ignore them. If a shot needs variation, vary only camera angle, action, framing, lighting, movement, or performance while preserving the locked script, character, costume, wardrobe-by-location, and location facts.
+
+Create a coherent raw-footage shot list that covers the full song in chronological order. Each shot must attach to a script scene and a vocal/timestamp cue when timing exists. Use only provided character and location names unless no usable names exist. Do not invent random cast, costumes, props, sets, or story concepts that contradict the approved plan.
+When a wardrobe entry has an outfit override for a character at a location, the "costumes" field and prompt wording must use that exact outfit name/description verbatim. When a wardrobe entry has has_image_reference: true and a non-empty image_url, the image pipeline will attach the actual outfit photo as a locked reference. In that case write the shot's "costumes" field using only the exact outfit_name and description from the wardrobe entry — do not paraphrase, generalize, or invent clothing details, because the image model will receive the actual outfit photo and will cross-reference it against what the text says. When a wardrobe row is blank or has no override, do not treat that character as absent; use the character's base outfit from the approved character reference sheet.
 Every shot is edited over the original song audio later. Treat lyrics as timing/emotional cues, not as a request for the video model to perform exact mouth-to-word lip sync.
+
+Prompt depth standard:
+- Every shot must include three distinct prompt fields: "p" for the master shot brief, "image_prompt" for the still frame, and "video_prompt" for the moving clip.
+- "p" is the shared production brief. Keep it useful for humans reviewing the shot list, but do not rely on it as the final image or video prompt.
+- "image_prompt" must describe one frozen 16:9 cinematic frame only. Include subject placement, pose, facial expression, wardrobe, location, foreground/midground/background, lighting, lens/framing, textures, and the exact visual moment to capture. Do not include dialogue, sound design, clip duration, bracketed action timing, camera moves over time, or instructions like "the video should last".
+- "video_prompt" must describe the full 4-8 second source clip. Include action timing, subtle motion, camera behavior over time, dialogue only when the video model needs visible speech, and realistic environmental movement.
+- Write 120-220 words in "p", 140-260 words in "image_prompt", and 180-360 words in "video_prompt" for normal shots. Complex narrative shots can be longer when needed.
+- Include specific foreground subjects, background action, environment geography, set dressing, props, lighting direction, color temperature, weather/atmosphere, clothing fabric/color, facial expression, body posture, and realistic micro-actions.
+- Include a clear camera grammar: static/locked-off/handheld/dolly only when appropriate, shot size, lens/framing, camera height, depth of field, and whether there is no pan/no zoom/no cut.
+- Include action timing inside "video_prompt" and "action_timing" for 6-8 second clips when motion matters, using bracketed beats such as [00:00-00:02], [00:02-00:05], [00:05-00:08]. Never put those bracketed timing beats in "image_prompt".
+- Keep movement subtle and filmable: small steps, eye shifts, hand movement, breathing, fabric movement, background extras working naturally. Avoid generic posing.
+- Do not produce bland prompts like "character in location." The still prompt must be rich enough for a photorealistic image model; the video prompt must be rich enough for an 8-second video model.
 
 Shot count guidance:
 - Do not mirror the script scene count. A single script scene can and should become multiple smaller shots when that improves image/video quality.
@@ -209,7 +268,9 @@ Return STRICTLY one JSON object:
   "shots": [
     {
       "n": "Short raw source shot title",
-      "p": "Plain raw source-footage prompt with exact characters, exact location, one continuous action, lighting, lens/framing, mood, and continuity details. No transitions or edit instructions.",
+      "p": "Shared master production brief for the shot. Include exact characters, exact costumes/wardrobe, exact location, story concept, camera setup, visual mood, and key continuity locks. Keep it reviewable and do not include final edit transitions.",
+      "image_prompt": "Still-frame-only prompt. Describe one photorealistic 16:9 frame with exact characters, wardrobe, location, pose, expression, composition, foreground/midground/background, props, lighting, color, lens/framing, texture, and mood. No action timing, no dialogue, no sound design, no clip duration, no camera movement over time.",
+      "video_prompt": "Video-only source clip prompt. Describe one continuous 4-8 second 16:9 shot with exact characters, wardrobe, location, camera behavior, subtle action timing, natural motion, environmental movement, performance/dialogue if needed, and continuity constraints. No transitions or edit instructions.",
       "start": 0.0,
       "end": 4.0,
       "duration": 4,
@@ -217,6 +278,12 @@ Return STRICTLY one JSON object:
       "words": [{ "word": "lyric", "start": 0.0, "end": 0.4 }],
       "characters": ["Exact Character Name"],
       "locations": ["Exact Location Name"],
+      "concept": "The locked story/script concept this shot serves",
+      "costumes": "Locked wardrobe/costume continuity visible in this shot",
+      "continuity": "Non-negotiable script, character, costume, and location facts preserved in this shot",
+      "action_timing": "[00:00-00:02] first visual beat; [00:02-00:05] subtle subject action; [00:05-00:08] final held beat or reaction",
+      "visual_style": "Photorealistic cinematic realism, specific lighting, color palette, texture, and mood",
+      "negative_constraints": "No cuts, no transitions, no exaggerated gestures, no extra main characters, no distorted anatomy, no changing layout or wardrobe",
       "shot_size": "establishing | wide | medium | close-up | insert",
       "camera": "Simple 16:9 lens/framing direction",
       "movement": "Simple stable camera movement",

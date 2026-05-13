@@ -4,6 +4,7 @@ const labels = [
   'Brain Dump',
   'Characters',
   'Locations',
+  'Wardrobe',
   'Shotlist',
   'Shots',
   'Images',

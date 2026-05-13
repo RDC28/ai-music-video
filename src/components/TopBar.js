@@ -13,11 +13,12 @@ export default function TopBar({ activeScreen, onNavigate, userName, projectName
     { id: 3, name: 'Story' },
     { id: 4, name: 'Cast' },
     { id: 5, name: 'Sets' },
-    { id: 6, name: 'Plan' },
-    { id: 7, name: 'Shots' },
-    { id: 8, name: 'Frames' },
-    { id: 9, name: 'Clips' },
-    { id: 10, name: 'Editor' },
+    { id: 6, name: 'Looks' },
+    { id: 7, name: 'Plan' },
+    { id: 8, name: 'Shots' },
+    { id: 9, name: 'Frames' },
+    { id: 10, name: 'Clips' },
+    { id: 11, name: 'Editor' },
   ], []);
 
   const activeStep = steps.find(step => step.id === activeScreen) || steps[0];

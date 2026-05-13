@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import {
   Home, Music2, BookOpen, Users, MapPin, Film,
-  Layers, Image, Video, Scissors,
+  Layers, Image, Video, Scissors, Shirt,
   CheckCircle2, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
@@ -14,11 +14,12 @@ const STEPS = [
   { id: 3,  name: 'Story',  icon: BookOpen },
   { id: 4,  name: 'Cast',   icon: Users },
   { id: 5,  name: 'Sets',   icon: MapPin },
-  { id: 6,  name: 'Plan',   icon: Film },
-  { id: 7,  name: 'Shots',  icon: Layers },
-  { id: 8,  name: 'Frames', icon: Image },
-  { id: 9,  name: 'Clips',  icon: Video },
-  { id: 10, name: 'Editor', icon: Scissors },
+  { id: 6,  name: 'Looks',  icon: Shirt },
+  { id: 7,  name: 'Plan',   icon: Film },
+  { id: 8,  name: 'Shots',  icon: Layers },
+  { id: 9,  name: 'Frames', icon: Image },
+  { id: 10, name: 'Clips',  icon: Video },
+  { id: 11, name: 'Editor', icon: Scissors },
 ];
 
 export default function StageRail({ activeScreen, onNavigate, userName, projectName }) {

@@ -115,13 +115,69 @@ function compactText(value, maxLength = 700) {
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 }
 
+function compactAssetImages(images = [], maxImages = 6) {
+  if (!Array.isArray(images)) return [];
+
+  return images
+    .map((image, index) => {
+      let imageData = image;
+      if (typeof image === 'string') {
+        const text = image.trim();
+        if (text.charAt(0) === '{') {
+          try {
+            imageData = JSON.parse(text);
+          } catch {
+            imageData = { url: text };
+          }
+        } else {
+          imageData = { url: text };
+        }
+      }
+
+      if (!imageData || typeof imageData !== 'object') return null;
+      const url = imageData.url || imageData.src || imageData.image_url || imageData.publicUrl;
+      if (!url || !/^https?:\/\//i.test(url)) return null;
+
+      return {
+        url,
+        label: compactText(imageData.label || imageData.name || `Reference ${index + 1}`, 80),
+        width: Number.isFinite(imageData.width) ? imageData.width : null,
+        height: Number.isFinite(imageData.height) ? imageData.height : null,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, maxImages);
+}
+
 function compactAssetList(items = []) {
   if (!Array.isArray(items)) return [];
   return items.map(item => ({
     name: item?.name,
     role: compactText(item?.role || item?.description, 220),
     description: compactText(item?.description, 320),
+    costume: compactText(item?.costume || item?.wardrobe || item?.costume_prompt || item?.outfit, 320),
     visual_prompt: compactText(item?.visual_prompt || item?.prompt || item?.description, 700),
+    images: compactAssetImages(item?.images),
+    sheetUrl: item?.sheetUrl || item?.sheet_url || null,
+  }));
+}
+
+function compactWardrobe(wardrobe = []) {
+  if (!Array.isArray(wardrobe)) return [];
+  return wardrobe.slice(0, 24).map((location, index) => ({
+    location_id: location?.location_id || location?.id || `location-${index + 1}`,
+    location_name: location?.location_name || location?.name || `Location ${index + 1}`,
+    outfits: Array.isArray(location?.outfits)
+      ? location.outfits.map((outfit, outfitIndex) => ({
+          character_id: outfit?.character_id || outfit?.id || `character-${outfitIndex + 1}`,
+          character_name: outfit?.character_name || outfit?.name || `Character ${outfitIndex + 1}`,
+          has_outfit_override: Boolean(outfit?.outfit_name || outfit?.name || outfit?.description || outfit?.outfit_description || outfit?.prompt || outfit?.image_url || outfit?.imageUrl || outfit?.url),
+          outfit_name: compactText(outfit?.outfit_name || outfit?.name, 160),
+          description: compactText(outfit?.description || outfit?.outfit_description || outfit?.prompt, 500),
+          image_url: outfit?.image_url || outfit?.imageUrl || outfit?.url || '',
+          image_path: outfit?.image_path || '',
+        }))
+      : [],
   }));
 }
 
@@ -141,18 +197,35 @@ function buildGenerationContext(projectData, sourceShots) {
       title: script.title,
       mood: compactText(script.mood, 500),
       storyline: compactText(script.storyline, 700),
+      scenes: Array.isArray(script.scenes)
+        ? script.scenes.slice(0, 24).map(scene => ({
+            start: scene?.start,
+            end: scene?.end,
+            visual: compactText(scene?.visual || scene?.description, 420),
+            lyrics: compactText(scene?.lyrics, 220),
+          }))
+        : [],
     },
     characters: compactAssetList(sourceState.characters),
     locations: compactAssetList(sourceState.locations),
+    wardrobe: compactWardrobe(sourceState.wardrobe),
     shot_list: sourceShots.map(shot => ({
       n: shot.n,
-      p: compactText(shot.p || shot.prompt, 900),
+      p: compactText(shot.p || shot.prompt, 2200),
+      image_prompt: compactText(shot.image_prompt, 2200),
       start: shot.start,
       end: shot.end,
       duration: shot.duration,
       lyrics: compactText(shot.lyrics, 300),
       characters: shot.characters,
       locations: shot.locations,
+      concept: compactText(shot.concept, 400),
+      costumes: compactText(shot.costumes || shot.costume || shot.wardrobe, 360),
+      continuity: compactText(shot.continuity || shot.required_continuity || shot.continuity_notes, 520),
+      action_timing: compactText(shot.action_timing || shot.timing || shot.actionTiming, 900),
+      visual_style: compactText(shot.visual_style || shot.style || shot.look, 700),
+      negative_constraints: compactText(shot.negative_constraints || shot.constraints || shot.avoid, 700),
+      source_scene: compactText(shot.source_scene, 300),
       shot_size: shot.shot_size,
       camera: shot.camera,
       movement: shot.movement,
@@ -164,8 +237,10 @@ function buildGenerationContext(projectData, sourceShots) {
 function compactShotForRequest(shot) {
   return {
     n: shot.n,
-    p: compactText(shot.p || shot.prompt, 1800),
-    prompt: compactText(shot.prompt, 1800),
+    p: compactText(shot.p || shot.prompt, 5600),
+    prompt: compactText(shot.prompt, 5600),
+    image_prompt: compactText(shot.image_prompt, 5600),
+    video_prompt: compactText(shot.video_prompt, 1600),
     start: shot.start,
     end: shot.end,
     duration: shot.duration,
@@ -173,6 +248,13 @@ function compactShotForRequest(shot) {
     words: Array.isArray(shot.words) ? shot.words.slice(0, 60) : [],
     characters: shot.characters || [],
     locations: shot.locations || [],
+    concept: compactText(shot.concept, 500),
+    costumes: compactText(shot.costumes || shot.costume || shot.wardrobe, 500),
+    continuity: compactText(shot.continuity || shot.required_continuity || shot.continuity_notes, 700),
+    action_timing: compactText(shot.action_timing || shot.timing || shot.actionTiming, 1400),
+    visual_style: compactText(shot.visual_style || shot.style || shot.look, 900),
+    negative_constraints: compactText(shot.negative_constraints || shot.constraints || shot.avoid, 900),
+    source_scene: compactText(shot.source_scene, 400),
     shot_size: shot.shot_size,
     camera: shot.camera,
     movement: shot.movement,
@@ -214,7 +296,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
 
   const openEditor = (index) => {
     setEditModalIndex(index);
-    setPromptDraft(shots[index]?.p || shots[index]?.prompt || '');
+    setPromptDraft(shots[index]?.image_prompt || shots[index]?.p || shots[index]?.prompt || '');
     setModelDraft(resolveImageModelOption(shots[index]?.image_model || modelDraft || DEFAULT_IMAGE_MODEL).value);
     setGenerationError('');
     setQueueSummary('');
@@ -244,7 +326,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
       ...shot,
       image_url: result.image_url,
       image_path: result.image_path,
-      image_prompt: result.prompt,
+      image_prompt: promptOverride || shot.image_prompt || shot.p,
       image_model: result.image_model || modelDraft || DEFAULT_IMAGE_MODEL,
       image_generated_at: new Date().toISOString(),
       image_error: null,
@@ -324,10 +406,10 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
     await onDataUpdate({
       shot_list: shots,
       images_approved: true,
-      current_step: 9,
+      current_step: 10,
     });
     setIsApproving(false);
-    onNavigate(9);
+    onNavigate(10);
   };
 
   const inputStyle = {
@@ -350,7 +432,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   const failedCount = shots.filter(shot => !shot.image_url && shot.image_error).length;
 
   return (
-    <div className="screen active" id="s6" style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+    <div className="screen active" id="s9" style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
         <div style={{
@@ -548,7 +630,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
               <div style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>
                 No shots generated yet.
               </div>
-              <button className="btn-outline" onClick={() => onNavigate(7)} style={{ fontSize: '12px' }}>
+              <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '12px' }}>
                 Back to Shots
               </button>
             </div>

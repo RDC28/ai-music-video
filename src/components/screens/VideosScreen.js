@@ -47,6 +47,14 @@ function getClipErrorMessage(error) {
   if (error?.name === 'AbortError' || status === 408 || message.includes('timeout')) {
     return 'This clip took too long. Try again.';
   }
+  if (
+    message.includes('seedance video generation requires') ||
+    message.includes('bytedance_api_key') ||
+    message.includes('seedance_api_key') ||
+    message.includes('ark_api_key')
+  ) {
+    return 'Seedance needs an API key. Add BYTEDANCE_API_KEY to .env.local and restart Next.js, or choose a Veo model.';
+  }
   if (message.includes('temporarily unavailable') || status >= 500) {
     return 'Clip creation is temporarily unavailable. Try again soon.';
   }
@@ -127,13 +135,69 @@ function compactText(value, maxLength = 700) {
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 }
 
+function compactAssetImages(images = [], maxImages = 6) {
+  if (!Array.isArray(images)) return [];
+
+  return images
+    .map((image, index) => {
+      let imageData = image;
+      if (typeof image === 'string') {
+        const text = image.trim();
+        if (text.charAt(0) === '{') {
+          try {
+            imageData = JSON.parse(text);
+          } catch {
+            imageData = { url: text };
+          }
+        } else {
+          imageData = { url: text };
+        }
+      }
+
+      if (!imageData || typeof imageData !== 'object') return null;
+      const url = imageData.url || imageData.src || imageData.image_url || imageData.publicUrl;
+      if (!url || !/^https?:\/\//i.test(url)) return null;
+
+      return {
+        url,
+        label: compactText(imageData.label || imageData.name || `Reference ${index + 1}`, 80),
+        width: Number.isFinite(imageData.width) ? imageData.width : null,
+        height: Number.isFinite(imageData.height) ? imageData.height : null,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, maxImages);
+}
+
 function compactAssetList(items = []) {
   if (!Array.isArray(items)) return [];
   return items.map(item => ({
     name: item?.name,
     role: compactText(item?.role || item?.description, 220),
     description: compactText(item?.description, 320),
+    costume: compactText(item?.costume || item?.wardrobe || item?.costume_prompt || item?.outfit, 320),
     visual_prompt: compactText(item?.visual_prompt || item?.prompt || item?.description, 700),
+    images: compactAssetImages(item?.images),
+    sheetUrl: item?.sheetUrl || item?.sheet_url || null,
+  }));
+}
+
+function compactWardrobe(wardrobe = []) {
+  if (!Array.isArray(wardrobe)) return [];
+  return wardrobe.slice(0, 24).map((location, index) => ({
+    location_id: location?.location_id || location?.id || `location-${index + 1}`,
+    location_name: location?.location_name || location?.name || `Location ${index + 1}`,
+    outfits: Array.isArray(location?.outfits)
+      ? location.outfits.map((outfit, outfitIndex) => ({
+          character_id: outfit?.character_id || outfit?.id || `character-${outfitIndex + 1}`,
+          character_name: outfit?.character_name || outfit?.name || `Character ${outfitIndex + 1}`,
+          has_outfit_override: Boolean(outfit?.outfit_name || outfit?.name || outfit?.description || outfit?.outfit_description || outfit?.prompt || outfit?.image_url || outfit?.imageUrl || outfit?.url),
+          outfit_name: compactText(outfit?.outfit_name || outfit?.name, 160),
+          description: compactText(outfit?.description || outfit?.outfit_description || outfit?.prompt, 500),
+          image_url: outfit?.image_url || outfit?.imageUrl || outfit?.url || '',
+          image_path: outfit?.image_path || '',
+        }))
+      : [],
   }));
 }
 
@@ -171,13 +235,22 @@ function buildGenerationContext(projectData, sourceShots) {
       title: script.title,
       mood: compactText(script.mood, 500),
       storyline: compactText(script.storyline, 700),
+      scenes: Array.isArray(script.scenes)
+        ? script.scenes.slice(0, 24).map(scene => ({
+            start: scene?.start,
+            end: scene?.end,
+            visual: compactText(scene?.visual || scene?.description, 420),
+            lyrics: compactText(scene?.lyrics, 220),
+          }))
+        : [],
     },
     transcript: compactTranscript(transcript),
     characters: compactAssetList(sourceState.characters),
     locations: compactAssetList(sourceState.locations),
+    wardrobe: compactWardrobe(sourceState.wardrobe),
     shot_list: sourceShots.map(shot => ({
       n: shot.n,
-      p: compactText(shot.p || shot.prompt, 900),
+      p: compactText(shot.p || shot.prompt, 2200),
       start: shot.start,
       end: shot.end,
       duration: shot.duration,
@@ -185,12 +258,21 @@ function buildGenerationContext(projectData, sourceShots) {
       lyrics: compactText(shot.lyrics, 300),
       characters: shot.characters,
       locations: shot.locations,
+      concept: compactText(shot.concept, 400),
+      costumes: compactText(shot.costumes || shot.costume || shot.wardrobe, 360),
+      continuity: compactText(shot.continuity || shot.required_continuity || shot.continuity_notes, 520),
+      action_timing: compactText(shot.action_timing || shot.timing || shot.actionTiming, 1200),
+      visual_style: compactText(shot.visual_style || shot.style || shot.look, 800),
+      sound_design: compactText(shot.sound_design || shot.soundDesign || shot.audio_notes, 500),
+      negative_constraints: compactText(shot.negative_constraints || shot.constraints || shot.avoid, 900),
+      source_scene: compactText(shot.source_scene, 300),
       shot_size: shot.shot_size,
       camera: shot.camera,
       movement: shot.movement,
       beat: compactText(shot.beat, 260),
       image_url: shot.image_url,
-      image_prompt: compactText(shot.image_prompt, 500),
+      image_prompt: compactText(shot.image_prompt, 1200),
+      video_prompt: compactText(shot.video_prompt, 2200),
     })),
   };
 }
@@ -198,8 +280,8 @@ function buildGenerationContext(projectData, sourceShots) {
 function compactShotForRequest(shot) {
   return {
     n: shot.n,
-    p: compactText(shot.p || shot.prompt, 1800),
-    prompt: compactText(shot.prompt, 1800),
+    p: compactText(shot.p || shot.prompt, 6400),
+    prompt: compactText(shot.prompt, 6400),
     start: shot.start,
     end: shot.end,
     duration: shot.duration,
@@ -208,13 +290,21 @@ function compactShotForRequest(shot) {
     words: Array.isArray(shot.words) ? shot.words.slice(0, 80) : [],
     characters: shot.characters || [],
     locations: shot.locations || [],
+    concept: compactText(shot.concept, 500),
+    costumes: compactText(shot.costumes || shot.costume || shot.wardrobe, 500),
+    continuity: compactText(shot.continuity || shot.required_continuity || shot.continuity_notes, 700),
+    action_timing: compactText(shot.action_timing || shot.timing || shot.actionTiming, 1600),
+    visual_style: compactText(shot.visual_style || shot.style || shot.look, 1000),
+    sound_design: compactText(shot.sound_design || shot.soundDesign || shot.audio_notes, 700),
+    negative_constraints: compactText(shot.negative_constraints || shot.constraints || shot.avoid, 1000),
+    source_scene: compactText(shot.source_scene, 400),
     shot_size: shot.shot_size,
     camera: shot.camera,
     movement: shot.movement,
     beat: compactText(shot.beat, 500),
     image_url: shot.image_url,
-    image_prompt: compactText(shot.image_prompt, 800),
-    video_prompt: compactText(shot.video_prompt, 1800),
+    image_prompt: compactText(shot.image_prompt, 2000),
+    video_prompt: compactText(shot.video_prompt, 6400),
   };
 }
 
@@ -394,7 +484,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
         });
         successCount += 1;
       } catch (error) {
-        console.error(`Shot ${index + 1} video generation failed:`, error);
+        console.warn(`Shot ${index + 1} video generation failed:`, error);
         nextShots = markShotFailure(nextShots, index, error);
         failureCount += 1;
       }
@@ -407,7 +497,12 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     setIsGeneratingAll(false);
 
     if (failureCount) {
-      setGenerationError(`${failureCount} shot${failureCount === 1 ? '' : 's'} need another try. Generate Remaining will retry unfinished clips.`);
+      const setupFailureCount = nextShots.filter(shot => !shot.video_url && shot.video_error && !shot.video_error.retryable).length;
+      setGenerationError(
+        setupFailureCount
+          ? `${setupFailureCount} shot${setupFailureCount === 1 ? '' : 's'} need setup before retrying. Open the shot for details.`
+          : `${failureCount} shot${failureCount === 1 ? '' : 's'} need another try. Generate Remaining will retry unfinished clips.`
+      );
     }
     setQueueSummary(`${successCount} ready, ${failureCount} need retry, ${nextShots.filter(shot => !shot.video_url).length} remaining.`);
   };
@@ -491,10 +586,10 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     await onDataUpdate({
       shot_list: shots,
       videos_approved: true,
-      current_step: 10,
+      current_step: 11,
     });
     setIsApproving(false);
-    onNavigate(10);
+    onNavigate(11);
   };
 
   const handleDownload = (shot, index) => {
@@ -525,7 +620,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   const failedCount = shots.filter(shot => !shot.video_url && shot.video_error).length;
 
   return (
-    <div className="screen active" id="s7" style={{ flexDirection: 'row', alignItems: 'flex-start', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+    <div className="screen active" id="s10" style={{ flexDirection: 'row', alignItems: 'flex-start', height: '100%', minHeight: 0, overflow: 'hidden' }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
         <div style={{
@@ -720,7 +815,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
               <div style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>
                 No shots to display. Please add shots in the Shot List step first.
               </div>
-              <button className="btn-outline" onClick={() => onNavigate(7)} style={{ fontSize: '12px' }}>
+              <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '12px' }}>
                 Back to Shots
               </button>
             </div>

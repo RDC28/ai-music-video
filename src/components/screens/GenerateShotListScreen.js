@@ -8,6 +8,7 @@ import {
   FileText,
   MapPin,
   Mic2,
+  Shirt,
   Sparkles,
   Upload,
   Users,
@@ -44,6 +45,37 @@ function parseLooseShotLines(text) {
     });
 }
 
+function cleanName(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function isLegacyWardrobeFallback(outfitName, characterName, locationName) {
+  const normalizedOutfit = cleanName(outfitName);
+  if (!normalizedOutfit) return false;
+  return normalizedOutfit === `${cleanName(characterName)} outfit for ${cleanName(locationName)}`;
+}
+
+function hasWardrobeOverride(outfit, locationName) {
+  const outfitName = outfit?.outfit_name || outfit?.name || '';
+  const hasOnlyLegacyName = outfitName &&
+    !outfit?.description &&
+    !outfit?.outfit_description &&
+    !outfit?.prompt &&
+    !outfit?.image_url &&
+    !outfit?.imageUrl &&
+    !outfit?.url &&
+    isLegacyWardrobeFallback(outfitName, outfit?.character_name || outfit?.name, locationName);
+  return Boolean(!hasOnlyLegacyName && (
+    outfitName ||
+    outfit?.description ||
+    outfit?.outfit_description ||
+    outfit?.prompt ||
+    outfit?.image_url ||
+    outfit?.imageUrl ||
+    outfit?.url
+  ));
+}
+
 export default function GenerateShotListScreen({ onNavigate, projectData, onDataUpdate }) {
   const audioDuration = getProjectAudioDuration(projectData);
   const initialShots = normalizeShotListForVeo(projectData?.shot_list || [], { audioDuration });
@@ -65,6 +97,12 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
 
   const characters = projectData?.characters || [];
   const locations = projectData?.locations || [];
+  const wardrobe = Array.isArray(projectData?.wardrobe) ? projectData.wardrobe : [];
+  const wardrobeOutfitCount = wardrobe.reduce((total, location) => (
+    total + (Array.isArray(location?.outfits)
+      ? location.outfits.filter(outfit => hasWardrobeOverride(outfit, location?.location_name || location?.name)).length
+      : 0)
+  ), 0);
   const transcript = projectData?.analysis?.lyrics || projectData?.script?.lyrics_timeline || [];
   const scriptScenes = projectData?.script?.scenes || [];
   const wordCount = countTranscriptWords(transcript);
@@ -99,6 +137,12 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
       label: 'Locations',
       value: `${locations.length} sets`,
       ready: locations.length > 0,
+    },
+    {
+      icon: Shirt,
+      label: 'Wardrobe',
+      value: `${wardrobeOutfitCount} looks`,
+      ready: wardrobeOutfitCount > 0,
     },
   ];
 
@@ -194,18 +238,28 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
           timed_words: wordCount,
           characters: characters.length,
           locations: locations.length,
+          wardrobe_locations: wardrobe.length,
+          wardrobe_outfits: wardrobeOutfitCount,
           veo_durations: [4, 6, 8],
           max_shot_duration: 8,
+          non_negotiables: [
+            'script',
+            'shot_concepts',
+            'characters',
+            'costumes',
+            'wardrobe_by_location',
+            'locations',
+          ],
         },
       },
-      current_step: 7,
+      current_step: 8,
     });
     setIsApproving(false);
-    onNavigate(7);
+    onNavigate(8);
   };
 
   return (
-    <div className="screen active" id="s5" style={{ height: '100%', overflow: 'hidden' }}>
+    <div className="screen active" id="s7" style={{ height: '100%', overflow: 'hidden' }}>
       <input
         type="file"
         ref={fileInputRef}
@@ -234,7 +288,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
-          <button className="btn-outline" onClick={() => onNavigate(7)} style={{ fontSize: '12px' }}>
+          <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '12px' }}>
             Open shots →
           </button>
           <button

@@ -54,15 +54,17 @@ export async function POST(req) {
       console.log(`NB Pro generating reference-locked location angle: ${label}`);
       
       const prompt = `
-        STRICT LOCATION CONSISTENCY.
-        MATCH THIS ENVIRONMENT EXACTLY: I am providing a master reference image of the location.
+        STRICT LOCATION IDENTITY LOCK.
+        MATCH THIS EXACT ENVIRONMENT from the provided master reference image.
         TARGET VIEW/ANGLE: ${angleDescription}
         LOCATION DETAILS: ${locationDescription}
         
         RULES:
-        1. Preserve the exact architecture, materials, color palette, and environmental details from the reference.
-        2. Change ONLY the angle/viewpoint to match "${label}".
-        3. Maintain the consistent lighting and atmosphere.
+        1. Preserve the exact architecture, geography, materials, props, signage, color palette, weather logic, and environmental details.
+        2. Change ONLY the camera angle/viewpoint/framing needed for "${label}".
+        3. Output one clean cinematic environment reference, not a collage or moodboard.
+        4. No text, labels, split panels, borders, watermarks, or unrelated locations.
+        5. Keep this view consistent enough to sit beside the other reference images as the same place.
       `;
 
       const { generatedB64, model } = await generateImage([{
@@ -80,10 +82,18 @@ export async function POST(req) {
     if (locationDescription && angleDescription) {
       console.log(`NB Pro generating master wide shot: ${label}`);
       
-      const fullPrompt = `Generate a high-end, cinematic MASTER LOCATION REFERENCE. 
-      LOCATION: ${locationDescription}
-      ANGLE/VIEW: ${angleDescription}
-      STYLE: Photorealistic, cinematic lighting, epic composition, isolated as a pristine architectural or environmental asset.`;
+      const fullPrompt = `Generate a high-end, cinematic MASTER LOCATION IDENTITY REFERENCE.
+LOCATION BRIEF:
+${locationDescription}
+
+TARGET VIEW:
+${angleDescription}
+
+STRICT OUTPUT RULES:
+- One coherent location only, no collage, no split panels, no text or labels.
+- Photorealistic cinematic lighting and a clear production-design presentation.
+- Make the architecture, layout, materials, set dressing, palette, geography, and atmosphere distinctive and repeatable for later reference-locked views.
+- Ensure the requested view is clearly readable and not cropped awkwardly.`;
 
       const { generatedB64, model } = await generateImage(
         [{ role: "user", parts: [{ text: fullPrompt }] }],

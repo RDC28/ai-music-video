@@ -31,6 +31,46 @@ const BYTEDANCE_IMAGE_BASE_URL = (
 ).replace(/\/+$/, "");
 const TARGET_ASPECT_RATIO = 16 / 9;
 const ASPECT_RATIO_TOLERANCE = 0.08;
+const REFERENCE_IMAGE_TIMEOUT_MS = 25000;
+const REFERENCE_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const MAX_REFERENCE_IMAGES = 12;
+const MAX_REFERENCE_IMAGES_PER_CHARACTER = 3;
+const MAX_REFERENCE_IMAGES_PER_LOCATION = 3;
+const QUALITY_CANDIDATE_COUNT = Number(process.env.IMAGE_QUALITY_CANDIDATES || 2);
+const FACE_SCORE_THRESHOLD = Number(process.env.FACE_SCORE_THRESHOLD || 6);
+const OUTFIT_SCORE_THRESHOLD = Number(process.env.OUTFIT_SCORE_THRESHOLD || 5);
+const QUALITY_CHECK_TIMEOUT_MS = 15000;
+const QUALITY_CHECK_MODEL = process.env.GOOGLE_QUALITY_CHECK_MODEL || "gemini-2.5-flash";
+
+const CHARACTER_REFERENCE_PRIORITY = [
+  "face close-up front",
+  "face close-up",
+  "face front",
+  "mid portrait",
+  "face 3/4",
+  "portrait front",
+  "full body front",
+  "outfit front",
+  "full body",
+  "portrait",
+  "front",
+  "outfit",
+];
+
+const LOCATION_REFERENCE_PRIORITY = [
+  "establishing",
+  "wide",
+  "ground level",
+  "interior",
+  "exterior",
+  "night",
+  "dusk",
+  "golden hour",
+  "day",
+  "atmosphere",
+  "detail",
+  "texture",
+];
 
 const compact = (value, maxLength = 900) => {
   if (!value) return '';
@@ -47,6 +87,183 @@ const rawShotText = (value, maxLength = 900, fallback = '') => (
     .replace(/\s+([,.!?;:])/g, '$1')
     .trim() || fallback
 );
+
+function inferImageMimeType(url, headerValue) {
+  const header = String(headerValue || "").split(";")[0].trim().toLowerCase();
+  if (header.startsWith("image/")) return header;
+  const lowerUrl = String(url || "").toLowerCase();
+  if (lowerUrl.includes(".jpg") || lowerUrl.includes(".jpeg")) return "image/jpeg";
+  if (lowerUrl.includes(".webp")) return "image/webp";
+  return "image/png";
+}
+
+function normalizeReferenceImage(image, index) {
+  let imageData = image;
+  if (typeof image === "string") {
+    const text = image.trim();
+    if (text.charAt(0) === "{") {
+      try {
+        imageData = JSON.parse(text);
+      } catch {
+        imageData = { url: text };
+      }
+    } else {
+      imageData = { url: text };
+    }
+  }
+
+  if (!imageData || typeof imageData !== "object") return null;
+  const url = imageData.url || imageData.src || imageData.image_url || imageData.publicUrl;
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+
+  return {
+    url,
+    label: compact(imageData.label || imageData.name || `Reference ${index + 1}`, 80),
+  };
+}
+
+function scoreReferenceLabel(kind, label, index) {
+  const lowerLabel = String(label || "").toLowerCase();
+  const priorities = kind === "character" ? CHARACTER_REFERENCE_PRIORITY : LOCATION_REFERENCE_PRIORITY;
+  const priorityIndex = priorities.findIndex(term => lowerLabel.includes(term));
+  const priorityScore = priorityIndex === -1 ? priorities.length + 1 : priorityIndex;
+  return priorityScore * 100 + index;
+}
+
+function getAssetReferenceImages(asset, kind, perAssetLimit) {
+  const images = Array.isArray(asset?.images) ? asset.images : [];
+  const references = images
+    .map((image, index) => {
+      const ref = normalizeReferenceImage(image, index);
+      if (!ref) return null;
+      return {
+        ...ref,
+        kind,
+        name: asset?.name || (kind === "character" ? "Character" : "Location"),
+        score: scoreReferenceLabel(kind, ref.label, index),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, perAssetLimit);
+
+  if (!references.length && asset?.sheetUrl && /^https?:\/\//i.test(asset.sheetUrl)) {
+    references.push({
+      kind,
+      name: asset?.name || (kind === "character" ? "Character" : "Location"),
+      label: "Full reference sheet",
+      url: asset.sheetUrl,
+      score: 999,
+    });
+  }
+
+  return references;
+}
+
+function normalizeLookupName(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function wantedSet(names = []) {
+  return new Set((Array.isArray(names) ? names : []).map(normalizeLookupName).filter(Boolean));
+}
+
+function matchesWanted(value, wanted) {
+  if (!wanted.size) return true;
+  return wanted.has(normalizeLookupName(value));
+}
+
+function isLegacyOutfitFallback(outfitName, characterName, locationName) {
+  const normalizedName = normalizeLookupName(outfitName);
+  if (!normalizedName) return false;
+  return normalizedName === `${normalizeLookupName(characterName)} outfit for ${normalizeLookupName(locationName)}`;
+}
+
+function hasWardrobeOverride(outfit, characterName, locationName) {
+  const outfitName = compact(outfit?.outfit_name || outfit?.name, 160);
+  const description = compact(outfit?.description || outfit?.outfit_description || outfit?.prompt, 360);
+  const hasImage = Boolean(outfit?.image_url || outfit?.imageUrl || outfit?.url);
+  const onlyLegacyName = outfitName && !description && !hasImage && isLegacyOutfitFallback(outfitName, characterName, locationName);
+  return Boolean(
+    !onlyLegacyName && (
+      outfitName ||
+      description ||
+      hasImage
+    )
+  );
+}
+
+function collectWardrobeItems(wardrobe = [], shotCharacters = [], shotLocations = []) {
+  if (!Array.isArray(wardrobe)) return [];
+  const wantedCharacters = wantedSet(shotCharacters);
+  const wantedLocations = wantedSet(shotLocations);
+
+  return wardrobe.flatMap((location, locationIndex) => {
+    const locationName = location?.location_name || location?.name || `Location ${locationIndex + 1}`;
+    const locationId = location?.location_id || location?.id || "";
+    const locationMatches = matchesWanted(locationName, wantedLocations) || matchesWanted(locationId, wantedLocations);
+    if (!locationMatches) return [];
+
+    return (Array.isArray(location?.outfits) ? location.outfits : [])
+      .filter(outfit => {
+        const characterName = outfit?.character_name || outfit?.name;
+        const characterId = outfit?.character_id || outfit?.id;
+        if (!hasWardrobeOverride(outfit, characterName, locationName)) return false;
+        return matchesWanted(characterName, wantedCharacters) || matchesWanted(characterId, wantedCharacters);
+      })
+      .map(outfit => ({
+        location_name: locationName,
+        character_name: outfit?.character_name || outfit?.name || "Character",
+        outfit_name: isLegacyOutfitFallback(outfit?.outfit_name || outfit?.name, outfit?.character_name || outfit?.name, locationName) ? "" : (outfit?.outfit_name || outfit?.name || ""),
+        description: outfit?.description || outfit?.outfit_description || outfit?.prompt || "",
+        image_url: outfit?.image_url || outfit?.imageUrl || outfit?.url || "",
+      }));
+  });
+}
+
+function getWardrobeReferenceImages(wardrobe, shotCharacters, shotLocations) {
+  return collectWardrobeItems(wardrobe, shotCharacters, shotLocations)
+    .map((item, index) => {
+      if (!item.image_url || !/^https?:\/\//i.test(item.image_url)) return null;
+      return {
+        kind: "wardrobe",
+        name: `${item.character_name} @ ${item.location_name}`,
+        label: compact(item.outfit_name || `Outfit reference ${index + 1}`, 80),
+        url: item.image_url,
+        score: index,
+      };
+    })
+    .filter(Boolean);
+}
+
+function dedupeReferenceImages(references = []) {
+  const seen = new Set();
+  return references
+    .filter(reference => {
+      if (seen.has(reference.url)) return false;
+      seen.add(reference.url);
+      return true;
+    })
+    .slice(0, MAX_REFERENCE_IMAGES);
+}
+
+function collectShotReferenceImages(matchedCharacters, matchedLocations, wardrobe = [], shotCharacters = [], shotLocations = []) {
+  // Wardrobe refs are reserved first so they are never crowded out by character/location refs
+  const wardrobeRefs = getWardrobeReferenceImages(wardrobe, shotCharacters, shotLocations);
+  const remaining = Math.max(MAX_REFERENCE_IMAGES - wardrobeRefs.length, 0);
+
+  // 60% of remaining budget for characters (identity-critical), 40% for locations
+  const charBudget = Math.ceil(remaining * 0.6);
+  const locBudget = remaining - charBudget;
+  const perChar = matchedCharacters.length ? Math.max(Math.floor(charBudget / matchedCharacters.length), 1) : 0;
+  const perLoc = matchedLocations.length ? Math.max(Math.floor(locBudget / matchedLocations.length), 1) : 0;
+
+  const charRefs = matchedCharacters.flatMap(c => getAssetReferenceImages(c, "character", perChar));
+  const locRefs = matchedLocations.flatMap(l => getAssetReferenceImages(l, "location", perLoc));
+
+  // Order: identity first, outfit second, environment third
+  return dedupeReferenceImages([...charRefs, ...wardrobeRefs, ...locRefs]);
+}
 
 function parsePngDimensions(buffer) {
   if (buffer.length < 24 || buffer.toString("ascii", 1, 4) !== "PNG") return null;
@@ -229,7 +446,60 @@ async function fetchRemoteImageBuffer(url) {
   return { buffer, mimeType };
 }
 
-async function generateGoogleImage({ prompt, modelName, shotIndex }) {
+async function fetchReferenceImage(reference, shotIndex) {
+  const response = await withTimeout(
+    () => fetch(reference.url),
+    REFERENCE_IMAGE_TIMEOUT_MS,
+    `Shot ${shotIndex + 1} reference image download`
+  );
+
+  if (!response.ok) {
+    throw createProviderError(`Reference image download failed with ${response.status}`, {
+      status: response.status,
+      retryable: response.status >= 500,
+    });
+  }
+
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > REFERENCE_IMAGE_MAX_BYTES) {
+    throw createProviderError("Reference image is too large for prompt conditioning", {
+      status: 413,
+      retryable: false,
+    });
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  if (arrayBuffer.byteLength > REFERENCE_IMAGE_MAX_BYTES) {
+    throw createProviderError("Reference image is too large for prompt conditioning", {
+      status: 413,
+      retryable: false,
+    });
+  }
+
+  const mimeType = inferImageMimeType(reference.url, response.headers.get("content-type"));
+  return {
+    ...reference,
+    mimeType,
+    imageBase64: Buffer.from(arrayBuffer).toString("base64"),
+  };
+}
+
+async function loadReferenceImages(references, shotIndex) {
+  if (!Array.isArray(references) || !references.length) return [];
+
+  const loaded = await Promise.all(references.map(async (reference) => {
+    try {
+      return await fetchReferenceImage(reference, shotIndex);
+    } catch (error) {
+      console.warn(`Shot ${shotIndex + 1} skipped ${reference.kind} reference ${reference.name}:`, serializeError(error));
+      return null;
+    }
+  }));
+
+  return loaded.filter(Boolean).slice(0, MAX_REFERENCE_IMAGES);
+}
+
+async function generateGoogleImage({ prompt, modelName, shotIndex, referenceImages = [] }) {
   if (!genAI) {
     throw createProviderError("Frame generation is temporarily unavailable.", { status: 500 });
   }
@@ -238,10 +508,20 @@ async function generateGoogleImage({ prompt, modelName, shotIndex }) {
     label: `Shot ${shotIndex + 1} image generation`,
     models: getFallbackModels(modelName || process.env.GOOGLE_IMAGE_MODEL, IMAGE_MODEL_FALLBACKS),
     operation: async (activeModelName) => withRetry(async () => {
+      const parts = [
+        { text: prompt },
+        ...referenceImages.map(reference => ({
+          inlineData: {
+            mimeType: reference.mimeType,
+            data: reference.imageBase64,
+          },
+        })),
+      ];
+
       const result = await withTimeout(
         () => genAI.models.generateContent({
           model: activeModelName,
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          contents: [{ role: "user", parts }],
           config: {
             responseModalities: ["IMAGE"],
             imageConfig: {
@@ -357,6 +637,117 @@ async function generateByteDanceImage({ prompt, modelName, shotIndex }) {
   };
 }
 
+async function qualityCheckImage(generatedBase64, generatedMimeType, characterAndWardrobeRefs) {
+  if (!genAI || !characterAndWardrobeRefs.length) {
+    return { faceScore: 10, outfitScore: 10, pass: true, issues: [] };
+  }
+
+  try {
+    const hasWardrobeRef = characterAndWardrobeRefs.some(r => r.kind === "wardrobe");
+    const refParts = characterAndWardrobeRefs.map(ref => ({
+      inlineData: { mimeType: ref.mimeType, data: ref.imageBase64 },
+    }));
+    const candidatePart = {
+      inlineData: { mimeType: generatedMimeType || "image/png", data: generatedBase64 },
+    };
+    const textPart = {
+      text: `You are a quality-control inspector for an AI music video pipeline.
+
+The first ${refParts.length} image${refParts.length > 1 ? "s are" : " is"} approved reference${refParts.length > 1 ? "s" : ""} showing character identity (faces, hair, skin tone, body) and wardrobe/outfits.
+The LAST image is a generated shot candidate to evaluate.
+
+Score the candidate out of 10:
+- face_score: How closely the main character's face, skin tone, hair, and body match the character references. 10 = perfect match, 1 = completely different person.
+- outfit_score: How closely the clothing/outfit matches the wardrobe references${hasWardrobeRef ? "" : " (no wardrobe references provided — set to 10)"}. 10 = exact match.
+
+PASS requires face_score >= ${FACE_SCORE_THRESHOLD} AND outfit_score >= ${hasWardrobeRef ? OUTFIT_SCORE_THRESHOLD : 0}.
+
+Respond with ONLY this JSON, no other text:
+{"face_score": <0-10>, "outfit_score": <0-10>, "pass": <true|false>, "issues": ["brief issue"]}`,
+    };
+
+    const result = await withTimeout(
+      () => genAI.models.generateContent({
+        model: QUALITY_CHECK_MODEL,
+        contents: [{ role: "user", parts: [...refParts, candidatePart, textPart] }],
+      }),
+      QUALITY_CHECK_TIMEOUT_MS,
+      "Image quality check"
+    );
+
+    const text = result.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || "";
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) throw new Error("Could not parse quality check JSON");
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      faceScore: Number(parsed.face_score ?? 5),
+      outfitScore: Number(parsed.outfit_score ?? 10),
+      pass: Boolean(parsed.pass),
+      issues: Array.isArray(parsed.issues) ? parsed.issues : [],
+    };
+  } catch (error) {
+    console.warn(`Quality check failed, accepting candidate (${error.message})`);
+    return { faceScore: 10, outfitScore: 10, pass: true, issues: [] };
+  }
+}
+
+async function generateBestCandidate({ prompt, modelName, shotIndex, referenceImages = [] }) {
+  const charWardrobeRefs = referenceImages.filter(r => r.kind === "character" || r.kind === "wardrobe");
+
+  if (!charWardrobeRefs.length || QUALITY_CANDIDATE_COUNT <= 1) {
+    return generateGoogleImage({ prompt, modelName, shotIndex, referenceImages });
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = 0;
+    let bestGeneration = null;
+    let bestScore = -1;
+    let resolved = false;
+    const total = QUALITY_CANDIDATE_COUNT;
+
+    const onFail = (candidateIndex, err) => {
+      console.warn(`Shot ${shotIndex + 1} candidate ${candidateIndex + 1} failed:`, err?.message);
+      settled++;
+      if (settled === total && !resolved) {
+        resolved = true;
+        if (bestGeneration) {
+          resolve(bestGeneration);
+        } else {
+          generateGoogleImage({ prompt, modelName, shotIndex, referenceImages }).then(resolve).catch(reject);
+        }
+      }
+    };
+
+    for (let i = 0; i < total; i++) {
+      const candidateIndex = i;
+      generateGoogleImage({ prompt, modelName, shotIndex, referenceImages })
+        .then(async (generation) => {
+          if (resolved) return;
+          const { imageBase64, mimeType } = generation.result;
+          const qc = await qualityCheckImage(imageBase64, mimeType, charWardrobeRefs);
+          const score = (qc.faceScore ?? 0) + (qc.outfitScore ?? 0);
+          console.log(`Shot ${shotIndex + 1} candidate ${candidateIndex + 1}: face=${qc.faceScore} outfit=${qc.outfitScore} pass=${qc.pass}${qc.issues?.length ? ` issues=${qc.issues.join("; ")}` : ""}`);
+          if (score > bestScore) {
+            bestScore = score;
+            bestGeneration = generation;
+          }
+          settled++;
+          if (!resolved && qc.pass) {
+            resolved = true;
+            resolve(generation);
+            return;
+          }
+          if (settled === total && !resolved) {
+            resolved = true;
+            resolve(bestGeneration);
+          }
+        })
+        .catch((err) => onFail(candidateIndex, err));
+    }
+  });
+}
+
 const namesFrom = (items = []) => {
   if (!Array.isArray(items)) return [];
   return items.map(item => item?.name).filter(Boolean);
@@ -368,7 +759,7 @@ const selectedByName = (items = [], names = []) => {
   return items.filter(item => wanted.has(String(item?.name || '').toLowerCase()));
 };
 
-function buildPrompt({ shot, projectState, promptOverride }) {
+function resolveShotAssets(shot, projectState) {
   const characters = projectState?.characters || [];
   const locations = projectState?.locations || [];
   const shotCharacters = shot.characters?.length ? shot.characters : namesFrom(characters);
@@ -376,18 +767,228 @@ function buildPrompt({ shot, projectState, promptOverride }) {
   const matchedCharacters = selectedByName(characters, shotCharacters);
   const matchedLocations = selectedByName(locations, shotLocations);
 
-  const characterContext = matchedCharacters.map(character => (
-    `- ${character.name}: ${compact(character.visual_prompt || character.description || character.role, 450)}`
-  )).join('\n');
+  return {
+    characters,
+    locations,
+    shotCharacters,
+    shotLocations,
+    matchedCharacters,
+    matchedLocations,
+  };
+}
+
+function buildReferenceContext(referenceImages, charLabelMap = new Map()) {
+  if (!referenceImages.length) return "No visual reference images attached.";
+
+  const characterAndWardrobeRefs = referenceImages
+    .map((ref, i) => ({ ref, number: i + 1 }))
+    .filter(({ ref }) => ref.kind === "character" || ref.kind === "wardrobe");
+  const locationRefs = referenceImages
+    .map((ref, i) => ({ ref, number: i + 1 }))
+    .filter(({ ref }) => ref.kind === "location");
+
+  const charImageNumbers = characterAndWardrobeRefs.map(r => r.number);
+  const locImageNumbers = locationRefs.map(r => r.number);
+
+  const manifestLines = [];
+  if (charImageNumbers.length) {
+    manifestLines.push(`CHARACTER + OUTFIT IDENTITY — Image${charImageNumbers.length > 1 ? "s" : ""} ${charImageNumbers.join(", ")}: use ONLY these for main character faces, bodies, clothing, and accessories.`);
+  }
+  if (locImageNumbers.length) {
+    manifestLines.push(`LOCATION ENVIRONMENT — Image${locImageNumbers.length > 1 ? "s" : ""} ${locImageNumbers.join(", ")}: use ONLY these for architecture, set, materials, lighting, and atmosphere. ANY people visible inside these images are irrelevant production extras — NEVER copy their faces, hair, skin tone, or clothing to the main characters.`);
+  }
+
+  const imageLines = referenceImages.map((reference, index) => {
+    const number = index + 1;
+    // Use anonymous label for character/wardrobe names to prevent celebrity name lookup
+    let displayName = reference.name;
+    if (reference.kind === "character") {
+      displayName = applyCharLabel(reference.name, charLabelMap);
+    } else if (reference.kind === "wardrobe") {
+      const parts = reference.name.split(" @ ");
+      displayName = `${applyCharLabel(parts[0], charLabelMap)}${parts[1] ? ` @ ${parts[1]}` : ""}`;
+    }
+
+    const base = `  Image ${number} [${reference.kind.toUpperCase()}] "${displayName}"${reference.label ? ` — ${reference.label}` : ""}`;
+    if (reference.kind === "character") {
+      return `${base}\n    → COPY from this image: exact face shape, skin tone, eye color, nose, lips, hairline, hair color/style, body proportions, age. This is the authoritative face reference.`;
+    }
+    if (reference.kind === "wardrobe") {
+      return `${base}\n    → COPY from this image: exact outfit color, cut, fabric texture, silhouette, accessories, footwear, and styling. Apply this clothing to ${displayName.split(" @ ")[0]}. Do not invent or substitute clothing.`;
+    }
+    if (reference.kind === "location") {
+      return `${base}\n    → COPY from this image: architecture, materials, color palette, spatial layout, set dressing, signage, era markers, atmosphere.\n    → IGNORE: any people or faces inside this image — they are background extras with zero identity relevance.`;
+    }
+    return base;
+  });
+
+  return [
+    "━━━ ATTACHED REFERENCE IMAGES — MANIFEST ━━━",
+    ...manifestLines,
+    "",
+    "━━━ PER-IMAGE INSTRUCTIONS (images attached in this exact order) ━━━",
+    ...imageLines,
+    "",
+    "━━━ EXTRACTION RULES — NON-NEGOTIABLE ━━━",
+    "1. Main character identity (face, hair, skin tone, age, body) comes ONLY from CHARACTER images. Never from LOCATION images.",
+    "2. Outfit details come ONLY from WARDROBE images (if present) or CHARACTER images. Never from LOCATION images.",
+    "3. Background people visible in any LOCATION image are irrelevant production extras. Do not use them as character identity.",
+    "4. CHARACTER images override any text character description when they conflict. Copy the face, not words about a face.",
+    "5. WARDROBE images override any text costume description. Copy the outfit, not a summary of it.",
+    "6. LOCATION images override any text location description for environment/atmosphere only — not for character identity.",
+    "7. Do not copy reference-sheet backdrops, studio white fills, grid lines, borders, crop boxes, labels, or watermarks.",
+    "8. When multiple CHARACTER images show the same person, the face close-up or portrait is the primary identity anchor.",
+  ].join("\n");
+}
+
+function buildScriptSceneContext(scenes = []) {
+  if (!Array.isArray(scenes) || !scenes.length) return "No script scenes provided.";
+  return scenes
+    .slice(0, 24)
+    .map(scene => {
+      const timing = scene?.start !== undefined || scene?.end !== undefined
+        ? `${scene.start ?? "?"}-${scene.end ?? "?"}s`
+        : "untimed";
+      return `- ${timing}: ${compact(scene?.visual || scene?.description, 260)}${scene?.lyrics ? ` | lyrics: ${compact(scene.lyrics, 140)}` : ""}`;
+    })
+    .join("\n");
+}
+
+function buildWardrobeLockContext(wardrobe, shotCharacters, shotLocations, charLabelMap = new Map()) {
+  const items = collectWardrobeItems(wardrobe, shotCharacters, shotLocations);
+  if (!items.length) return "";
+  return items
+    .map(item => {
+      const label = applyCharLabel(item.character_name, charLabelMap);
+      const description = item.description ? ` — exact outfit description: ${compact(item.description, 420)}` : "";
+      const imageNote = item.image_url ? " [WARDROBE REFERENCE IMAGE ATTACHED — use it as the visual authority for this outfit]" : " [no image: use this text description as the outfit lock]";
+      const outfitName = compact(item.outfit_name, 140) || "base character wardrobe";
+      return `${item.location_name}: ${label} wears "${outfitName}"${description}${imageNote}`;
+    })
+    .join("\n");
+}
+
+function buildLockedShotFacts(shot, projectState, shotCharacters, shotLocations, charLabelMap = new Map()) {
+  const wardrobeLock = buildWardrobeLockContext(projectState?.wardrobe, shotCharacters, shotLocations, charLabelMap);
+  const timeOfDay = (() => {
+    const text = `${shot.beat || ''} ${shot.visual_style || ''} ${shot.source_scene || ''} ${shot.p || ''}`.toLowerCase();
+    if (text.includes('night')) return 'night';
+    if (text.includes('dusk') || text.includes('sunset')) return 'dusk/sunset';
+    if (text.includes('golden hour')) return 'golden hour';
+    if (text.includes('dawn') || text.includes('morning')) return 'dawn/morning';
+    return null;
+  })();
+  const facts = [
+    shot.source_scene ? `Source script scene: ${compact(shot.source_scene, 360)}` : "",
+    shot.concept ? `Shot concept: ${compact(shot.concept, 520)}` : "",
+    shot.costumes || shot.costume || shot.wardrobe ? `Costume/wardrobe lock: ${compact(shot.costumes || shot.costume || shot.wardrobe, 520)}` : "",
+    wardrobeLock ? `Wardrobe by location lock: ${wardrobeLock}` : "",
+    shot.continuity || shot.required_continuity || shot.continuity_notes ? `Continuity lock: ${compact(shot.continuity || shot.required_continuity || shot.continuity_notes, 700)}` : "",
+    timeOfDay ? `Time of day: ${timeOfDay} — use location references that match this lighting condition` : "",
+  ].filter(Boolean);
+  const fallback = "- Use the shot prompt, approved script, named characters, base character reference outfits, and locations as locked facts. Blank wardrobe rows are not absence notes.";
+  return facts.length ? facts.map(fact => `- ${fact}`).join("\n") : fallback;
+}
+
+function selectImagePrompt(shot, promptOverride) {
+  return (
+    promptOverride ||
+    shot.image_prompt ||
+    shot.still_prompt ||
+    shot.frame_prompt ||
+    shot.keyframe_prompt ||
+    shot.p ||
+    shot.prompt
+  );
+}
+
+function buildShotDetailContext(shot) {
+  const details = [
+    shot.visual_style || shot.style || shot.look ? `Visual style: ${compact(shot.visual_style || shot.style || shot.look, 900)}` : "",
+    shot.negative_constraints || shot.constraints || shot.avoid ? `Avoid/constraints: ${compact(shot.negative_constraints || shot.constraints || shot.avoid, 1000)}` : "",
+    shot.action_timing || shot.timing || shot.actionTiming ? "Motion timing exists for the later video clip; choose one strong representative frozen moment and do not render timing text, motion trails, or sequential action." : "",
+  ].filter(Boolean);
+
+  if (!details.length) {
+    return "No separate still-frame detail fields provided; infer a rich still composition from the image prompt, master shot brief, and locked context.";
+  }
+
+  return details.map(detail => `- ${detail}`).join("\n");
+}
+
+function buildCharacterLabelMap(shotCharacters) {
+  const map = new Map();
+  (Array.isArray(shotCharacters) ? shotCharacters : []).forEach((name, index) => {
+    const normalized = normalizeLookupName(name);
+    if (normalized) map.set(normalized, `CHAR_${String.fromCharCode(65 + index)}`);
+  });
+  return map;
+}
+
+function applyCharLabel(name, charLabelMap) {
+  return charLabelMap.get(normalizeLookupName(name)) || name;
+}
+
+function buildCharacterImageCrossRef(referenceImages, shotCharacters, charLabelMap = new Map()) {
+  const lines = [];
+  shotCharacters.forEach(characterName => {
+    const normalizedName = normalizeLookupName(characterName);
+    const label = applyCharLabel(characterName, charLabelMap);
+    const charRefs = referenceImages
+      .map((ref, index) => ({ ref, number: index + 1 }))
+      .filter(({ ref }) => ref.kind === "character" && normalizeLookupName(ref.name) === normalizedName);
+    const wardrobeRefs = referenceImages
+      .map((ref, index) => ({ ref, number: index + 1 }))
+      .filter(({ ref }) => ref.kind === "wardrobe" && normalizeLookupName(ref.name.split(" @ ")[0]) === normalizedName);
+    if (charRefs.length)
+      lines.push(`IDENTITY LOCK for ${label}: copy face from Image${charRefs.length > 1 ? "s" : ""} ${charRefs.map(r => r.number).join(", ")}`);
+    if (wardrobeRefs.length)
+      lines.push(`OUTFIT LOCK for ${label}: copy clothing from Image${wardrobeRefs.length > 1 ? "s" : ""} ${wardrobeRefs.map(r => r.number).join(", ")}`);
+  });
+  return lines.join("\n");
+}
+
+function buildLocationImageCrossRef(referenceImages, shotLocations) {
+  const lines = [];
+  shotLocations.forEach(locationName => {
+    const normalizedName = normalizeLookupName(locationName);
+    const locRefs = referenceImages
+      .map((ref, index) => ({ ref, number: index + 1 }))
+      .filter(({ ref }) => ref.kind === "location" && normalizeLookupName(ref.name) === normalizedName);
+    if (locRefs.length)
+      lines.push(`ENVIRONMENT LOCK for ${locationName}: copy architecture and atmosphere from Image${locRefs.length > 1 ? "s" : ""} ${locRefs.map(r => r.number).join(", ")}`);
+  });
+  return lines.join("\n");
+}
+
+function buildPrompt({ shot, projectState, promptOverride, shotAssets = null, referenceImages = [] }) {
+  const {
+    shotCharacters,
+    shotLocations,
+    matchedCharacters,
+    matchedLocations,
+  } = shotAssets || resolveShotAssets(shot, projectState);
+
+  // Map real character names → anonymous labels (CHAR_A, CHAR_B…) to prevent celebrity name lookup.
+  // The image model must NEVER see the real character name — only the label and the reference images.
+  const charLabelMap = buildCharacterLabelMap(shotCharacters);
+
+  const anonymousCharacterList = shotCharacters.map(n => applyCharLabel(n, charLabelMap)).join(', ') || 'No visible character required';
+
+  const characterContext = matchedCharacters.map(character => {
+    const label = applyCharLabel(character.name, charLabelMap);
+    const costumeText = character.costume ? ` Costume/wardrobe: ${compact(character.costume, 260)}` : '';
+    return `- ${label}: ${compact(character.visual_prompt || character.description || character.role, 450)}${costumeText}`;
+  }).join('\n');
 
   const locationContext = matchedLocations.map(location => (
     `- ${location.name}: ${compact(location.visual_prompt || location.description, 450)}`
   )).join('\n');
 
   const shotPrompt = rawShotText(
-    promptOverride || shot.p || shot.prompt,
-    1800,
-    'Raw source frame matching the shot title and project context.'
+    selectImagePrompt(shot, promptOverride),
+    5600,
+    'Photorealistic still frame matching the shot title and project context.'
   );
   const safeCamera = rawShotText(shot.camera, 300, 'plain 16:9 source-footage framing');
   const safeMovement = rawShotText(shot.movement, 300, 'clear simple motion direction');
@@ -400,23 +1001,44 @@ The image must be native widescreen 16:9 with no vertical, square, letterboxed, 
 SHOT TITLE:
 ${shot.n}
 
-RAW SOURCE SHOT PROMPT:
+STILL FRAME PROMPT:
 ${shotPrompt}
 
-TIMING AND VOCAL CUE:
+SHOT DETAIL FIELDS:
+${buildShotDetailContext(shot)}
+
+NONVISUAL TIMING AND VOCAL CONTEXT:
 ${shot.start ?? 'unknown'}s to ${shot.end ?? 'unknown'}s, duration ${shot.duration || 5}s
 Lyrics: ${compact(shot.lyrics || '', 500)}
 Timed words: ${Array.isArray(shot.words) ? shot.words.map(word => `${word.word}(${word.start ?? '?'}-${word.end ?? '?'})`).join(', ') : 'none'}
+Use this only for mood and story placement. Do not render lyrics, subtitles, speech, sound, time markers, or sequential timing in the image.
+
+PROJECT STORY AND SCRIPT LOCKS:
+Title: ${projectState?.script?.title || 'Untitled music video'}
+Mood: ${compact(projectState?.script?.mood || projectState?.analysis?.mood, 500)}
+Storyline/concept: ${compact(projectState?.script?.storyline || projectState?.analysis?.summary || projectState?.analysis?.theme, 900)}
+Genre/theme: ${compact(projectState?.analysis?.genre || projectState?.analysis?.theme, 360)}
+Script scenes:
+${buildScriptSceneContext(projectState?.script?.scenes)}
+
+SHOT NON-NEGOTIABLES:
+${buildLockedShotFacts(shot, projectState, shotCharacters, shotLocations, charLabelMap)}
 
 CHARACTER CONTINUITY:
-Use only these named characters when characters are visible:
-${shotCharacters.join(', ') || 'No visible character required'}
+Characters in this shot are referred to by anonymous production labels below. These labels carry no real-world name association. Do NOT look up any label or associate it with any celebrity, athlete, politician, actor, musician, or public figure. Appearance comes ONLY from the CHARACTER reference images and description text.
+Use only these characters when characters are visible:
+${anonymousCharacterList}
 ${characterContext || 'No character visual reference text provided.'}
+${referenceImages.length ? buildCharacterImageCrossRef(referenceImages, shotCharacters, charLabelMap) : ''}
 
 LOCATION CONTINUITY:
 Use only these named locations/sets:
 ${shotLocations.join(', ') || 'No specific location required'}
 ${locationContext || 'No location visual reference text provided.'}
+${referenceImages.length ? buildLocationImageCrossRef(referenceImages, shotLocations) : ''}
+
+ATTACHED VISUAL REFERENCES:
+${buildReferenceContext(referenceImages, charLabelMap)}
 
 CAMERA AND STYLE:
 - Shot size: ${shot.shot_size || 'plain source-footage framing'}
@@ -426,14 +1048,19 @@ CAMERA AND STYLE:
 - Overall project mood: ${compact(projectState?.script?.mood || projectState?.analysis?.mood, 500)}
 - Genre/theme: ${compact(projectState?.analysis?.genre || projectState?.analysis?.theme, 300)}
 
-Rules:
+Still-frame rules:
 1. Output exactly one photorealistic raw source frame. No text, captions, labels, watermarks, borders, UI, split panels, title cards, black bars, wipes, or transition devices.
-2. Preserve character and location continuity from the provided context.
-3. Make the frame usable as source footage for a video model: clear subject, readable action, natural depth, and clean lighting.
-4. Do not invent extra main characters unless the shot clearly needs background extras.
-5. Keep the main subject inside a 16:9 center-safe composition so the follow-up video generation and final render do not crop faces or bodies awkwardly.
-6. Do not frame a close-up mouth singing a lyric; use performance posture, gesture, profile, silhouette, dance, reaction, or atmosphere instead.
-7. Keep the tone grounded, natural, and serious unless the user explicitly requested a different tone.
+2. Treat the approved script, shot concept, named characters, explicit wardrobe-by-location overrides, costume/outfit images, base character reference outfits, and named locations as non-negotiable production locks. Do not rename, redesign, replace, merge, or contradict them.
+3. Preserve character and location continuity from the provided context and attached reference images. When text and reference images disagree, follow the attached reference images.
+4. CHARACTER IDENTITY — CRITICAL: Main characters' faces, skin tone, hair, and body must come ONLY from CHARACTER and WARDROBE reference images. Any people visible inside LOCATION reference images are irrelevant background extras — do NOT use them as the basis for any main character's appearance. This is the single most common generation error and must be treated as a hard, inviolable constraint.
+5. Make the frame visually rich and specific: foreground, midground, background, props, texture, clothing fabric, facial expression, body posture, environment geography, and practical lighting must all feel intentionally designed.
+6. Make the frame usable as source footage for a video model: clear subject, readable action, natural depth, clean lighting, and enough environmental detail for an 8-second clip.
+7. If the still-frame prompt is short, expand internally using the locked context instead of generating a generic image.
+8. Do not invent extra main characters unless the shot clearly needs background extras.
+9. Keep the main subject inside a 16:9 center-safe composition so the follow-up video generation and final render do not crop faces or bodies awkwardly.
+10. Do not frame a close-up mouth singing a lyric; use performance posture, gesture, profile, silhouette, dance, reaction, or atmosphere instead.
+11. Keep the tone grounded, natural, and serious unless the user explicitly requested a different tone.
+12. Ignore video-only instructions such as clip duration, dialogue, sound design, bracketed action timing, camera motion over time, or "the video should last". Freeze the single most cinematic moment.
 `;
 }
 
@@ -446,11 +1073,29 @@ export async function POST(req) {
     }
 
     const normalizedShot = normalizeShot(shot, shotIndex);
-    const prompt = buildPrompt({ shot: normalizedShot, projectState, promptOverride });
+    const selectedImagePrompt = selectImagePrompt(normalizedShot, promptOverride);
     const selectedModel = resolveImageModelOption(model || process.env.GOOGLE_IMAGE_MODEL || DEFAULT_IMAGE_MODEL);
+    const shotAssets = resolveShotAssets(normalizedShot, projectState);
+    const referenceCandidates = collectShotReferenceImages(
+      shotAssets.matchedCharacters,
+      shotAssets.matchedLocations,
+      projectState?.wardrobe,
+      shotAssets.shotCharacters,
+      shotAssets.shotLocations
+    );
+    const referenceImages = selectedModel.provider === IMAGE_MODEL_PROVIDER_BYTEDANCE
+      ? []
+      : await loadReferenceImages(referenceCandidates, shotIndex);
+    const prompt = buildPrompt({
+      shot: normalizedShot,
+      projectState,
+      promptOverride,
+      shotAssets,
+      referenceImages,
+    });
     const imageGeneration = selectedModel.provider === IMAGE_MODEL_PROVIDER_BYTEDANCE
       ? await generateByteDanceImage({ prompt, modelName: selectedModel.value, shotIndex })
-      : await generateGoogleImage({ prompt, modelName: selectedModel.value, shotIndex });
+      : await generateBestCandidate({ prompt, modelName: selectedModel.value, shotIndex, referenceImages });
     let generatedImage = imageGeneration.result;
 
     const extension = generatedImage.mimeType.includes("jpeg") || generatedImage.mimeType.includes("jpg") ? "jpg" : "png";
@@ -486,11 +1131,13 @@ export async function POST(req) {
       image_path: storagePath,
       shot: {
         ...normalizedShot,
-        p: promptOverride || normalizedShot.p,
+        p: normalizedShot.p,
         image_url: publicUrl,
         image_path: storagePath,
-        image_prompt: compact(promptOverride || normalizedShot.p, 1800),
+        image_prompt: compact(selectedImagePrompt, 5600),
         image_model: imageGeneration.model,
+        image_reference_count: referenceImages.length,
+        image_reference_names: referenceImages.map(reference => `${reference.kind}:${reference.name}:${reference.label}`),
         image_generated_at: new Date().toISOString(),
         image_error: null,
       },
