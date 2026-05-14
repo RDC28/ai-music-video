@@ -209,6 +209,7 @@ function buildGenerationContext(projectData, sourceShots) {
     characters: compactAssetList(sourceState.characters),
     locations: compactAssetList(sourceState.locations),
     wardrobe: compactWardrobe(sourceState.wardrobe),
+    style_bible: sourceState.style_bible || null,
     shot_list: sourceShots.map(shot => ({
       n: shot.n,
       p: compactText(shot.p || shot.prompt, 2200),
@@ -319,6 +320,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
         projectState: buildGenerationContext(projectData, sourceShots),
         promptOverride: promptOverride || undefined,
         model: modelDraft || DEFAULT_IMAGE_MODEL,
+        previousShotImageUrl: sourceShots[index - 1]?.image_url || null,
       }),
     });
 

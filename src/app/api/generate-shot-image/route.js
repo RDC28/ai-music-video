@@ -88,6 +88,72 @@ const rawShotText = (value, maxLength = 900, fallback = '') => (
     .trim() || fallback
 );
 
+function normalizeStyleBibleForPrompt(styleBible) {
+  let source = styleBible;
+  if (typeof source === "string") {
+    const text = source.trim();
+    if (!text) return null;
+    try {
+      source = JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!source || typeof source !== "object") return null;
+  const colourGrade = source.colour_grade && typeof source.colour_grade === "object"
+    ? source.colour_grade
+    : {};
+
+  const primaryPalette = Array.isArray(colourGrade.primary_palette)
+    ? colourGrade.primary_palette
+      .map((value) => compact(value, 40))
+      .filter(Boolean)
+    : [];
+
+  return {
+    colour_grade: {
+      primary_palette: primaryPalette.length ? primaryPalette : ["unspecified"],
+      shadow_tone: compact(colourGrade.shadow_tone || "unspecified", 220),
+      highlight_tone: compact(colourGrade.highlight_tone || "unspecified", 220),
+      saturation: compact(colourGrade.saturation || "unspecified", 60),
+      contrast: compact(colourGrade.contrast || "unspecified", 60),
+    },
+    lighting_style: compact(source.lighting_style || "unspecified", 260),
+    camera_rules: compact(source.camera_rules || "unspecified", 260),
+    visual_tone: compact(source.visual_tone || "unspecified", 280),
+    negative_constraints: compact(source.negative_constraints || "none provided", 420),
+    reference_summary: compact(source.reference_summary || "No style summary provided.", 460),
+  };
+}
+
+function buildStyleBibleContext(styleBible) {
+  const normalized = normalizeStyleBibleForPrompt(styleBible);
+  if (!normalized) return "";
+
+  return `━━━ STYLE BIBLE — APPLY TO EVERY SHOT ━━━
+These are locked visual rules for the entire music video. Every frame must conform.
+
+Colour grade:
+- Primary palette: ${normalized.colour_grade.primary_palette.join(", ")}
+- Shadows: ${normalized.colour_grade.shadow_tone}
+- Highlights: ${normalized.colour_grade.highlight_tone}
+- Saturation: ${normalized.colour_grade.saturation}
+- Contrast: ${normalized.colour_grade.contrast}
+
+Lighting: ${normalized.lighting_style}
+Camera rules: ${normalized.camera_rules}
+Visual tone: ${normalized.visual_tone}
+
+STRICTLY AVOID in every shot: ${normalized.negative_constraints}
+
+Reference aesthetic: ${normalized.reference_summary}
+
+These style rules override any conflicting aesthetic suggestion in the shot prompt.
+Every generated frame must look like it belongs to the same film as every other frame.
+`;
+}
+
 function inferImageMimeType(url, headerValue) {
   const header = String(headerValue || "").split(";")[0].trim().toLowerCase();
   if (header.startsWith("image/")) return header;
@@ -786,9 +852,13 @@ function buildReferenceContext(referenceImages, charLabelMap = new Map()) {
   const locationRefs = referenceImages
     .map((ref, i) => ({ ref, number: i + 1 }))
     .filter(({ ref }) => ref.kind === "location");
+  const continuityRefs = referenceImages
+    .map((ref, i) => ({ ref, number: i + 1 }))
+    .filter(({ ref }) => ref.kind === "continuity");
 
   const charImageNumbers = characterAndWardrobeRefs.map(r => r.number);
   const locImageNumbers = locationRefs.map(r => r.number);
+  const continuityImageNumbers = continuityRefs.map(r => r.number);
 
   const manifestLines = [];
   if (charImageNumbers.length) {
@@ -796,6 +866,9 @@ function buildReferenceContext(referenceImages, charLabelMap = new Map()) {
   }
   if (locImageNumbers.length) {
     manifestLines.push(`LOCATION ENVIRONMENT — Image${locImageNumbers.length > 1 ? "s" : ""} ${locImageNumbers.join(", ")}: use ONLY these for architecture, set, materials, lighting, and atmosphere. ANY people visible inside these images are irrelevant production extras — NEVER copy their faces, hair, skin tone, or clothing to the main characters.`);
+  }
+  if (continuityImageNumbers.length) {
+    manifestLines.push(`CONTINUITY — Image ${continuityImageNumbers.join(", ")}: match colour grade and lighting ONLY. Do not copy characters or composition.`);
   }
 
   const imageLines = referenceImages.map((reference, index) => {
@@ -818,6 +891,9 @@ function buildReferenceContext(referenceImages, charLabelMap = new Map()) {
     }
     if (reference.kind === "location") {
       return `${base}\n    → COPY from this image: architecture, materials, color palette, spatial layout, set dressing, signage, era markers, atmosphere.\n    → IGNORE: any people or faces inside this image — they are background extras with zero identity relevance.`;
+    }
+    if (reference.kind === "continuity") {
+      return `  Image ${number} [CONTINUITY] — Previous shot reference\n    → MATCH from this image: overall colour grade, lighting direction, ambient light colour, shadow depth, and atmosphere.\n    → DO NOT copy: characters, character faces, outfits, or scene composition from this image.\n    → USE ONLY FOR: ensuring this shot feels like it belongs to the same film as the previous shot.`;
     }
     return base;
   });
@@ -1048,6 +1124,8 @@ CAMERA AND STYLE:
 - Overall project mood: ${compact(projectState?.script?.mood || projectState?.analysis?.mood, 500)}
 - Genre/theme: ${compact(projectState?.analysis?.genre || projectState?.analysis?.theme, 300)}
 
+${buildStyleBibleContext(projectState?.style_bible)}
+
 Still-frame rules:
 1. Output exactly one photorealistic raw source frame. No text, captions, labels, watermarks, borders, UI, split panels, title cards, black bars, wipes, or transition devices.
 2. Treat the approved script, shot concept, named characters, explicit wardrobe-by-location overrides, costume/outfit images, base character reference outfits, and named locations as non-negotiable production locks. Do not rename, redesign, replace, merge, or contradict them.
@@ -1066,7 +1144,15 @@ Still-frame rules:
 
 export async function POST(req) {
   try {
-    const { projectId, shot, shotIndex = 0, projectState = {}, promptOverride, model } = await req.json();
+    const {
+      projectId,
+      shot,
+      shotIndex = 0,
+      projectState = {},
+      promptOverride,
+      model,
+      previousShotImageUrl = null,
+    } = await req.json();
 
     if (!projectId || !shot) {
       return NextResponse.json({ error: "Missing projectId or shot" }, { status: 400 });
@@ -1083,9 +1169,23 @@ export async function POST(req) {
       shotAssets.shotCharacters,
       shotAssets.shotLocations
     );
-    const referenceImages = selectedModel.provider === IMAGE_MODEL_PROVIDER_BYTEDANCE
+    let referenceImages = selectedModel.provider === IMAGE_MODEL_PROVIDER_BYTEDANCE
       ? []
       : await loadReferenceImages(referenceCandidates, shotIndex);
+
+    if (selectedModel.provider !== IMAGE_MODEL_PROVIDER_BYTEDANCE && previousShotImageUrl && /^https?:\/\//i.test(previousShotImageUrl)) {
+      const continuityReference = {
+        kind: "continuity",
+        name: "Previous shot",
+        label: "Continuity reference — match colour grade and lighting to this frame",
+        url: previousShotImageUrl,
+      };
+      const continuityImages = await loadReferenceImages([continuityReference], shotIndex);
+      if (continuityImages.length) {
+        // Continuity reference must be appended last so it never displaces character identity refs.
+        referenceImages = [...referenceImages, ...continuityImages];
+      }
+    }
     const prompt = buildPrompt({
       shot: normalizedShot,
       projectState,

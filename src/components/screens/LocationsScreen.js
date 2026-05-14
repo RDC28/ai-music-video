@@ -132,6 +132,16 @@ function truncateLocationDescription(value, maxLength = LOCATION_DESCRIPTION_DIS
   return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
 }
 
+async function readJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text };
+  }
+}
+
 function buildScriptLocationDescription(location = {}, projectState = {}) {
   const script = projectState?.script || {};
   const analysis = projectState?.analysis || {};
@@ -581,6 +591,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
   const [editDesc, setEditDesc] = useState('');
   const [isProcessingSheet, setIsProcessingSheet] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLockingStyle, setIsLockingStyle] = useState(false);
   const [generatingLoc, setGeneratingLoc] = useState(null);
   const [zoomCropTarget, setZoomCropTarget] = useState(null);
   const [activeCategory, setActiveCategory] = useState('project');
@@ -614,7 +625,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
     : globalLibrary;
   const activeLoc = displayedLocations[activeTab] || null;
   const isGeneratingActive = Boolean(activeLoc?.isGeneratingReference || activeLoc?.id === 'generating');
-  const busy = isProcessingSheet || isGenerating;
+  const busy = isProcessingSheet || isGenerating || isLockingStyle;
 
   const loadGlobalLibrary = useCallback(async () => {
     const { data, error } = await supabase.from('locations_library').select('*').order('created_at', { ascending: false });
@@ -1085,6 +1096,59 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
     setShowEditModal(false);
   };
 
+  const lockStyleBibleIfNeeded = async () => {
+    if (!projectId) return null;
+    if (projectState?.style_bible) return projectState.style_bible;
+
+    const characters = Array.isArray(projectState?.characters) ? projectState.characters : [];
+    const locations = Array.isArray(projectLocations) ? projectLocations : [];
+    const hasCharacterRefs = characters.some(character => (
+      Array.isArray(character?.images) && character.images.length > 0
+    ));
+    const hasLocationRefs = locations.some(location => (
+      Array.isArray(location?.images) && location.images.length > 0
+    ));
+
+    if (!hasCharacterRefs || !hasLocationRefs) return null;
+
+    const mergedState = {
+      ...projectState,
+      locations,
+    };
+
+    setIsLockingStyle(true);
+    try {
+      const response = await fetch('/api/generate-style-bible', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          projectState: mergedState,
+        }),
+      });
+      const result = await readJsonResponse(response);
+      if (!response.ok || result.error || !result.style_bible) {
+        throw new Error(result.error || 'Style bible generation failed');
+      }
+
+      await onDataUpdate({ style_bible: result.style_bible });
+      return result.style_bible;
+    } finally {
+      setIsLockingStyle(false);
+    }
+  };
+
+  const handleContinueToWardrobe = async () => {
+    if (busy) return;
+    try {
+      await lockStyleBibleIfNeeded();
+      onNavigate(6);
+    } catch (error) {
+      console.error('Style bible lock failed:', error);
+      alert('Could not lock the visual style yet. Please try again.');
+    }
+  };
+
   const handleApplyCrop = async (blob, newLabel, cropMeta = null) => {
     if (!zoomCropTarget) return;
     const { locIdx, imgIdx } = zoomCropTarget;
@@ -1275,8 +1339,13 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
           </div>
 
           <div style={{ padding: '24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <button onClick={() => onNavigate(6)} className="btn-teal" style={{ width: '100%', padding: '14px', fontSize: '13px', fontWeight: 600 }}>
-              Continue to Wardrobe →
+            <button
+              onClick={handleContinueToWardrobe}
+              disabled={busy}
+              className="btn-teal"
+              style={{ width: '100%', padding: '14px', fontSize: '13px', fontWeight: 600, opacity: busy ? 0.8 : 1 }}
+            >
+              {isLockingStyle ? 'Locking style...' : 'Continue to Wardrobe →'}
             </button>
           </div>
         </div>
@@ -1684,8 +1753,14 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       {busy && (
         <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--teal)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Loader2 size={24} style={{ color: 'var(--teal)', animation: 'spin 1s linear infinite' }} />
-          <div>
-            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating references...'}</div>
+            <div>
+            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>
+              {isProcessingSheet
+                ? (sheetProcessStatus || 'Reading sheet...')
+                : isLockingStyle
+                  ? 'Locking visual style...'
+                  : 'Creating references...'}
+            </div>
             <div style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
           </div>
         </div>
