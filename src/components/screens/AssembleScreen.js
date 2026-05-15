@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Film, GripHorizontal, Loader2, Music, Pause, Play, Scissors, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { drawClubScene } from '@/utils/drawClubScene';
 import { getProjectAudioDuration, normalizeShotListForVeo } from '@/utils/shotList';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { sidePanel } from '@/lib/motion';
 
 const TIMELINE_PADDING = 20;
 const MIN_ZOOM = 5;
@@ -114,6 +116,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
   const timelineRef = useRef(null);
   const timelineScrollRef = useRef(null);
 
+  const shouldReduceMotion = useReducedMotion();
   const projectAudioDuration = useMemo(() => getProjectAudioDuration(projectData), [projectData]);
   const shots = useMemo(
     () => normalizeShotListForVeo(projectData?.shot_list || [], { audioDuration: projectAudioDuration }),
@@ -555,7 +558,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
           {shots.map((shot, index) => {
             const isReady = Boolean(shot.video_url);
             return (
-              <div
+              <motion.div
                 className="editor-clip-card"
                 key={`${shot.n}-${index}`}
                 draggable={isReady}
@@ -567,6 +570,19 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                     seekTo(clip.start);
                   }
                 }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    const clip = timelineClips.find(item => item.shotIndex === index);
+                    if (clip) { setSelectedClipId(clip.id); seekTo(clip.start); }
+                  }
+                }}
+                tabIndex={isReady ? 0 : -1}
+                role="button"
+                aria-label={`${shot.n || `Shot ${index + 1}`} — ${isReady ? 'ready' : 'missing'}`}
+                whileHover={isReady && !shouldReduceMotion ? { scale: 1.025 } : undefined}
+                whileTap={isReady && !shouldReduceMotion ? { scale: 0.97 } : undefined}
+                transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
                 style={{
                   border: `1px solid ${isReady ? 'var(--border-mid)' : 'var(--border)'}`,
                   borderRadius: '10px',
@@ -611,7 +627,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                     </div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>
@@ -662,8 +678,16 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
             }}
           >
             <div className="kicker" style={{ marginBottom: '14px' }}>── Inspector</div>
+            <AnimatePresence mode="wait">
             {selectedClip ? (
-              <>
+              <motion.div
+                key={selectedClip.id}
+                initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -4 }}
+                transition={{ duration: shouldReduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
+                style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+              >
                 <div
                   style={{
                     fontFamily: 'var(--font-display)',
@@ -708,12 +732,21 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                   <Download size={14} />
                   Download Clip
                 </button>
-              </>
+              </motion.div>
             ) : (
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                Drop generated clips onto the timeline to build the final edit.
-              </div>
+              <motion.div
+                key="inspector-empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
+              >
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Drop generated clips onto the timeline to build the final edit.
+                </div>
+              </motion.div>
             )}
+            </AnimatePresence>
           </div>
         </div>
 
@@ -728,8 +761,10 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
           flexShrink: 0,
         }}>
           <span style={{ fontSize: '12.5px', fontWeight: 500, minWidth: '46px', color: 'var(--dark)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>{formatTime(currentTime)}</span>
-          <button
+          <motion.button
             onClick={togglePlay}
+            whileTap={!shouldReduceMotion ? { scale: 0.92 } : undefined}
+            transition={{ duration: 0.1, ease: [0.16, 1, 0.3, 1] }}
             style={{
               borderRadius: '50%',
               width: '38px',
@@ -742,12 +777,12 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
               color: isPlaying ? '#0A0A0A' : 'var(--dark)',
               border: '1px solid var(--border-mid)',
               cursor: 'pointer',
-              transition: 'all 0.15s',
+              transition: 'background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out',
             }}
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
-          </button>
+          </motion.button>
           <span style={{ fontSize: '12.5px', fontWeight: 500, minWidth: '46px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>{formatTime(displayDuration)}</span>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginLeft: 'auto', borderLeft: '1px solid var(--border)', paddingLeft: '18px' }}>
@@ -823,7 +858,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                         color: 'var(--text-muted)',
                         fontSize: '10px',
                         fontWeight: 700,
-                        fontFamily: 'monospace',
+                        fontFamily: 'var(--font-mono)',
                       }}
                     >
                       {formatTime(index * tickStep)}
@@ -839,7 +874,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                     const clipWidth = Math.max(clip.duration * zoom, 26);
                     const left = clip.start * zoom;
                     return (
-                      <div
+                      <motion.div
                         key={clip.id}
                         data-timeline-clip="true"
                         draggable
@@ -849,6 +884,19 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                           setSelectedClipId(clip.id);
                           seekTo(clip.start);
                         }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setSelectedClipId(clip.id);
+                            seekTo(clip.start);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`${shot?.n || 'Clip'} — ${formatSeconds(clip.duration)}`}
+                        aria-pressed={isSelected}
+                        whileHover={!shouldReduceMotion ? { filter: 'brightness(1.18)', transition: { duration: 0.12 } } : undefined}
                         style={{
                           position: 'absolute',
                           left: `${left}px`,
@@ -872,7 +920,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                         <span style={{ fontSize: '10px', fontWeight: 900, fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {clip.shotIndex + 1}. {shot?.n || 'Clip'} · {formatSeconds(clip.duration)}
                         </span>
-                      </div>
+                      </motion.div>
                     );
                   })}
                 </div>
@@ -936,41 +984,51 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
         </div>
       </div>
 
+      <AnimatePresence>
       {showExport && (
-        <div style={{
-          width: '300px',
-          height: '100%',
-          background: 'var(--card)',
-          borderLeft: '1px solid var(--border-mid)',
-          padding: '28px',
-          display: 'flex',
-          flexDirection: 'column',
-          animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-          overflowY: 'auto',
-          flexShrink: 0,
-          boxShadow: '-8px 0 32px rgba(0,0,0,0.3)',
-        }}>
+        <motion.div
+          key="export-panel"
+          variants={sidePanel}
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          style={{
+            width: '300px',
+            height: '100%',
+            background: 'var(--card)',
+            borderLeft: '1px solid var(--border-mid)',
+            padding: '28px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflowY: 'auto',
+            flexShrink: 0,
+            boxShadow: '-8px 0 32px rgba(0,0,0,0.3)',
+          }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
             <div className="editorial-title editorial-h3" style={{ fontSize: '24px' }}>
               Final <span className="text-grad">export.</span>
             </div>
-            <button
+            <motion.button
               onClick={() => setShowExport(false)}
+              whileHover={!shouldReduceMotion ? { backgroundColor: 'rgba(255,255,255,0.08)', scale: 1.06 } : undefined}
+              whileTap={!shouldReduceMotion ? { scale: 0.9 } : undefined}
+              transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
               style={{
                 background: 'transparent',
                 border: 'none',
                 color: 'var(--text-muted)',
                 cursor: 'pointer',
                 lineHeight: 1,
-                padding: '5px',
+                padding: '6px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                borderRadius: '6px',
               }}
               aria-label="Close export settings"
             >
               <X size={16} />
-            </button>
+            </motion.button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
@@ -1045,7 +1103,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                 </span>
               </div>
               {exportRenderId && (
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {exportRenderId}
                 </div>
               )}
@@ -1097,8 +1155,9 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
               Export Again
             </button>
           )}
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

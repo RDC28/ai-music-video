@@ -250,25 +250,91 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
 
   if (!locations.length || !characters.length) {
     return (
-      <div className="screen active" style={{ height: '100%', overflow: 'hidden', background: '#080808', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '28px' }}>
-        <div style={{ maxWidth: '520px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '32px', background: '#0d0d0d' }}>
-          <Shirt size={28} style={{ color: 'var(--teal)', marginBottom: '16px' }} />
-          <h1 className="editorial-title editorial-h2" style={{ marginBottom: '10px' }}>Wardrobe needs cast and locations.</h1>
-          <p style={{ color: 'var(--text-soft)', fontSize: '13px', lineHeight: 1.6, marginBottom: '22px' }}>
+      <div
+        className="screen active"
+        style={{
+          height: '100%',
+          overflow: 'hidden',
+          background: 'var(--bg)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '28px',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: '480px',
+            textAlign: 'center',
+            background: 'var(--surface-2)',
+            boxShadow: '6px 6px 14px #09090C, -6px -6px 14px #1A1A1F',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-xl)',
+            padding: '40px',
+          }}
+        >
+          <div
+            style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              background: 'var(--surface-2)',
+              boxShadow: '6px 6px 14px #09090C, -6px -6px 14px #1A1A1F',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+            }}
+          >
+            <Shirt size={28} style={{ color: 'var(--cyan)' }} />
+          </div>
+
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '22px',
+              fontWeight: 700,
+              color: 'var(--text)',
+              margin: '0 0 10px',
+            }}
+          >
+            Wardrobe needs cast and locations.
+          </h1>
+          <p
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: '13px',
+              color: 'var(--text-muted)',
+              lineHeight: 1.6,
+              margin: '0 0 22px',
+            }}
+          >
             Add at least one character and one location before locking outfits by set.
           </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '18px' }}>
             <button className="btn-outline" onClick={() => onNavigate(4)}>Open cast</button>
             <button className="btn-orange" onClick={() => onNavigate(5)}>Open locations</button>
           </div>
-          <div style={{ display: 'grid', gap: '10px', marginTop: '18px', textAlign: 'left' }}>
+
+          <div style={{ display: 'grid', gap: '10px', textAlign: 'left' }}>
             <select
               value=""
               onChange={event => {
                 const item = globalCharacters.find(character => String(character.id) === event.target.value);
                 if (item) addCharacterFromHistory(item);
               }}
-              style={{ width: '100%', background: '#090909', color: '#fff', border: '1px solid var(--border-mid)', borderRadius: '7px', padding: '10px 12px', fontSize: '12px' }}
+              style={{
+                background: 'var(--bg-deep)',
+                boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                padding: '10px 12px',
+                fontSize: '12px',
+                width: '100%',
+                outline: 'none',
+              }}
             >
               <option value="">Add character from history...</option>
               {globalCharacters.map(character => (
@@ -283,7 +349,17 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                 const item = globalLocations.find(location => String(location.id) === event.target.value);
                 if (item) addLocationFromHistory(item);
               }}
-              style={{ width: '100%', background: '#090909', color: '#fff', border: '1px solid var(--border-mid)', borderRadius: '7px', padding: '10px 12px', fontSize: '12px' }}
+              style={{
+                background: 'var(--bg-deep)',
+                boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                padding: '10px 12px',
+                fontSize: '12px',
+                width: '100%',
+                outline: 'none',
+              }}
             >
               <option value="">Add location from history...</option>
               {globalLocations.map(location => (
@@ -293,8 +369,16 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
               ))}
             </select>
           </div>
+
           {status && (
-            <div style={{ marginTop: '12px', color: status.includes('failed') || status.includes('could not') ? '#ff8a8a' : 'var(--teal)', fontSize: '12px', fontWeight: 600 }}>
+            <div
+              style={{
+                marginTop: '12px',
+                color: status.includes('failed') || status.includes('could not') ? 'var(--error)' : 'var(--cyan)',
+                fontSize: '12px',
+                fontWeight: 600,
+              }}
+            >
               {status}
             </div>
           )}
@@ -304,22 +388,76 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
   }
 
   return (
-    <div className="screen active" id="s6" style={{ height: '100%', overflow: 'hidden', background: '#080808' }}>
+    <div
+      className="screen active"
+      id="s6"
+      style={{ height: '100%', overflow: 'hidden', background: 'var(--bg)' }}
+    >
       <input ref={fileInputRef} type="file" accept="image/*" onChange={handleUploadImage} style={{ display: 'none' }} />
 
       <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
-        <aside style={{ width: '292px', flexShrink: 0, background: '#0a0a0a', borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '26px 24px 18px' }}>
-            <div className="kicker kicker--orange" style={{ marginBottom: '12px' }}>Wardrobe · Locks</div>
-            <h1 className="editorial-title editorial-h2" style={{ marginBottom: '10px' }}>
-              Dress each <span className="text-grad">set.</span>
+
+        {/* SIDEBAR */}
+        <aside
+          style={{
+            width: '292px',
+            flexShrink: 0,
+            background: 'var(--bg-deep)',
+            boxShadow: '4px 0 16px rgba(0,0,0,0.4)',
+            borderRight: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {/* Sidebar header */}
+          <div style={{ padding: '24px' }}>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '10px',
+                color: 'var(--cyan)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.12em',
+                marginBottom: '10px',
+              }}
+            >
+              ▪ Wardrobe · Locks
+            </div>
+            <h1
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '22px',
+                fontWeight: 700,
+                color: 'var(--text)',
+                margin: '0 0 8px',
+              }}
+            >
+              Dress each set.
             </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: '12.5px', lineHeight: 1.6 }}>
+            <p
+              style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: '12px',
+                color: 'var(--text-muted)',
+                lineHeight: 1.6,
+                margin: 0,
+              }}
+            >
               Optional outfit overrides by location. Blank rows use each character&apos;s base reference-sheet outfit.
             </p>
           </div>
 
-          <div style={{ padding: '0 18px 18px', display: 'grid', gap: '8px', overflowY: 'auto', flex: 1 }}>
+          {/* Location buttons */}
+          <div
+            style={{
+              padding: '0 16px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              overflowY: 'auto',
+              flex: 1,
+            }}
+          >
             {wardrobe.map((location, index) => {
               const active = index === activeLocationIndex;
               const lockedCount = (location.outfits || []).filter(hasOutfitLock).length;
@@ -329,21 +467,40 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                   type="button"
                   onClick={() => setActiveLocationIndex(index)}
                   style={{
-                    textAlign: 'left',
-                    border: `1px solid ${active ? 'rgba(124,58,237,0.48)' : 'rgba(255,255,255,0.07)'}`,
-                    background: active ? 'rgba(124,58,237,0.14)' : '#0d0d0d',
-                    color: '#fff',
-                    borderRadius: '8px',
+                    background: active ? 'var(--surface-2)' : 'transparent',
+                    boxShadow: active ? '3px 3px 8px #09090C, -3px -3px 8px #1A1A1F' : 'none',
+                    border: active ? '1px solid var(--cyan-border)' : '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
                     padding: '12px',
                     cursor: 'pointer',
-                    boxShadow: active ? '0 0 0 1px rgba(124,58,237,0.18)' : 'none',
+                    width: '100%',
+                    textAlign: 'left',
+                    transition: 'all 160ms ease-out',
+                    color: 'var(--text)',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                    <MapPin size={14} style={{ color: active ? 'var(--teal)' : 'var(--text-muted)' }} />
-                    <span style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 700, fontSize: '13px', letterSpacing: '-0.01em' }}>{location.location_name}</span>
+                    <MapPin size={14} style={{ color: active ? 'var(--cyan)' : 'var(--text-muted)' }} />
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-display)',
+                        fontWeight: 700,
+                        fontSize: '13px',
+                        color: 'var(--text)',
+                      }}
+                    >
+                      {location.location_name}
+                    </span>
                   </div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '10.5px', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '10px',
+                      color: 'var(--text-muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                    }}
+                  >
                     {lockedCount}/{characters.length} outfit locks
                   </div>
                 </button>
@@ -351,9 +508,29 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
             })}
           </div>
 
-          <div style={{ padding: '0 18px 18px', display: 'grid', gap: '10px' }}>
-            <div style={libraryPanelStyle}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'var(--font-mono)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+          {/* Library panels */}
+          <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div
+              style={{
+                background: 'var(--bg-deep)',
+                boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '10px',
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.12em',
+                }}
+              >
                 Add cast from history
               </div>
               <select
@@ -362,7 +539,16 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                   const item = globalCharacters.find(character => String(character.id) === event.target.value);
                   if (item) addCharacterFromHistory(item);
                 }}
-                style={{ width: '100%', background: '#090909', color: '#fff', border: '1px solid var(--border-mid)', borderRadius: '7px', padding: '9px 10px', fontSize: '11px' }}
+                style={{
+                  background: 'var(--bg-deep)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '7px',
+                  padding: '8px 10px',
+                  fontSize: '11px',
+                  width: '100%',
+                  outline: 'none',
+                }}
               >
                 <option value="">Select character...</option>
                 {globalCharacters.map(character => (
@@ -373,8 +559,27 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
               </select>
             </div>
 
-            <div style={libraryPanelStyle}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'var(--font-mono)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            <div
+              style={{
+                background: 'var(--bg-deep)',
+                boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '10px',
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.12em',
+                }}
+              >
                 Add set from history
               </div>
               <select
@@ -383,7 +588,16 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                   const item = globalLocations.find(location => String(location.id) === event.target.value);
                   if (item) addLocationFromHistory(item);
                 }}
-                style={{ width: '100%', background: '#090909', color: '#fff', border: '1px solid var(--border-mid)', borderRadius: '7px', padding: '9px 10px', fontSize: '11px' }}
+                style={{
+                  background: 'var(--bg-deep)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '7px',
+                  padding: '8px 10px',
+                  fontSize: '11px',
+                  width: '100%',
+                  outline: 'none',
+                }}
               >
                 <option value="">Select location...</option>
                 {globalLocations.map(location => (
@@ -395,30 +609,77 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
             </div>
           </div>
 
-          <div style={{ padding: '18px 24px 24px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          {/* Continue button */}
+          <div style={{ borderTop: '1px solid var(--border)', padding: '16px' }}>
             <button
               className="btn-teal"
               onClick={() => saveWardrobe(7)}
               disabled={isSaving || isUploading}
-              style={{ width: '100%', padding: '14px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              style={{
+                width: '100%',
+                padding: '14px',
+                fontSize: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+              }}
             >
-              {isSaving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={14} />}
+              {isSaving
+                ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                : <Check size={14} />
+              }
               Continue to Shot Plan
             </button>
           </div>
         </aside>
 
+        {/* MAIN AREA */}
         <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <header style={{ padding: '24px 32px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: '#0d0d0d', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '18px', flexWrap: 'wrap' }}>
+
+          {/* Main header */}
+          <header
+            style={{
+              padding: '20px 28px',
+              borderBottom: '1px solid var(--border)',
+              background: 'rgba(17,17,20,0.95)',
+              backdropFilter: 'blur(12px)',
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: '18px',
+                flexWrap: 'wrap',
+              }}
+            >
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                  <Shirt size={18} style={{ color: 'var(--teal)' }} />
-                  <h2 className="editorial-title editorial-h2" style={{ margin: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                  <Shirt size={18} style={{ color: 'var(--cyan)' }} />
+                  <h2
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: '20px',
+                      fontWeight: 700,
+                      color: 'var(--text)',
+                      margin: 0,
+                    }}
+                  >
                     {activeLocation?.location_name || 'Wardrobe'}
                   </h2>
                 </div>
-                <p style={{ margin: 0, color: 'var(--text-soft)', maxWidth: '720px', fontSize: '13px', lineHeight: 1.6 }}>
+                <p
+                  style={{
+                    margin: 0,
+                    color: 'var(--text-muted)',
+                    maxWidth: '720px',
+                    fontSize: '13px',
+                    lineHeight: 1.6,
+                  }}
+                >
                   Every project character stays available here. Fill only the outfits you want to override; blank rows fall back to each character&apos;s base reference-sheet outfit.
                 </p>
               </div>
@@ -428,38 +689,80 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                   <Users size={12} /> {summary.outfitCount} locked
                 </span>
                 <span className="tag-badge tag-outline">{summary.locationCount} locations</span>
-                <button className="btn-outline" onClick={() => saveWardrobe()} disabled={isSaving || isUploading} style={{ fontSize: '12px' }}>
+                <button
+                  className="btn-outline"
+                  onClick={() => saveWardrobe()}
+                  disabled={isSaving || isUploading}
+                  style={{ fontSize: '12px' }}
+                >
                   {isSaving ? 'Saving...' : 'Save wardrobe'}
                 </button>
               </div>
             </div>
+
             {status && (
-              <div style={{ marginTop: '12px', color: status.includes('failed') || status.includes('could not') ? '#ff8a8a' : 'var(--teal)', fontSize: '12px', fontWeight: 600 }}>
+              <div
+                style={{
+                  marginTop: '12px',
+                  color: status.includes('failed') || status.includes('could not') ? 'var(--error)' : 'var(--cyan)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                }}
+              >
                 {status}
               </div>
             )}
           </header>
 
-          <section style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px 32px 100px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', alignItems: 'stretch' }}>
+          {/* Section grid */}
+          <section style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px 28px 80px' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '16px',
+                alignItems: 'stretch',
+              }}
+            >
               {(activeLocation?.outfits || []).map((outfit, charIndex) => (
                 <article
                   key={outfit.character_id || charIndex}
                   style={{
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: '8px',
-                    background: '#0d0d0d',
-                    padding: '14px',
+                    background: 'var(--surface-2)',
+                    boxShadow: '6px 6px 14px #09090C, -6px -6px 14px #1A1A1F',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-lg)',
+                    padding: '16px',
                     display: 'grid',
-                    gap: '12px',
+                    gap: '14px',
                   }}
                 >
+                  {/* Card header row */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 700, fontSize: '16px', letterSpacing: '-0.015em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div
+                        style={{
+                          fontFamily: 'var(--font-display)',
+                          fontWeight: 700,
+                          fontSize: '15px',
+                          color: 'var(--text)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {outfit.character_name}
                       </div>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: '3px' }}>
+                      <div
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '10px',
+                          color: 'var(--text-muted)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.1em',
+                          marginTop: '3px',
+                        }}
+                      >
                         {hasOutfitLock(outfit) ? 'Outfit override locked' : 'Uses base character outfit'}
                       </div>
                     </div>
@@ -468,14 +771,27 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                     </span>
                   </div>
 
+                  {/* Image area */}
                   {outfit.image_url ? (
                     <button
                       type="button"
                       onClick={() => handleUploadClick(activeLocationIndex, charIndex)}
-                      style={{ padding: 0, border: '1px solid rgba(255,255,255,0.08)', background: '#050505', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', aspectRatio: '16 / 10' }}
+                      style={{
+                        padding: 0,
+                        aspectRatio: '16/10',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius)',
+                        overflow: 'hidden',
+                        cursor: 'pointer',
+                        background: 'transparent',
+                      }}
                       title="Replace outfit image"
                     >
-                      <img src={outfit.image_url} alt={`${outfit.character_name} outfit`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      <img
+                        src={outfit.image_url}
+                        alt={`${outfit.character_name} outfit`}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
                     </button>
                   ) : (
                     <button
@@ -483,39 +799,70 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                       onClick={() => handleUploadClick(activeLocationIndex, charIndex)}
                       disabled={isUploading}
                       style={{
-                        border: '1px dashed rgba(255,255,255,0.14)',
-                        borderRadius: '8px',
-                        background: '#090909',
-                        color: 'var(--text-muted)',
-                        minHeight: '128px',
+                        background: 'var(--bg-deep)',
+                        boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
+                        border: '1.5px dashed var(--border-mid)',
+                        borderRadius: 'var(--radius)',
+                        minHeight: '120px',
                         cursor: isUploading ? 'wait' : 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         flexDirection: 'column',
                         gap: '8px',
+                        color: 'var(--text-muted)',
+                        transition: 'border-color 160ms ease-out',
                       }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
                     >
                       {isUploading && uploadTarget?.locIndex === activeLocationIndex && uploadTarget?.charIndex === charIndex
-                        ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: 'var(--teal)' }} />
-                        : <ImagePlus size={20} />
+                        ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: 'var(--cyan)' }} />
+                        : <ImagePlus size={20} style={{ color: 'var(--cyan)' }} />
                       }
-                      <span style={{ fontSize: '11px', fontWeight: 700 }}>Upload outfit image</span>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Upload outfit image</span>
                     </button>
                   )}
 
+                  {/* Inputs */}
                   <div style={{ display: 'grid', gap: '8px' }}>
                     <input
                       value={outfit.outfit_name || ''}
                       onChange={event => updateOutfit(activeLocationIndex, charIndex, { outfit_name: event.target.value })}
                       placeholder="Optional outfit name"
-                      style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--border-mid)', borderRadius: '7px', background: '#0f0f0f', color: '#fff', padding: '10px 12px', fontSize: '12px', outline: 'none' }}
+                      style={{
+                        background: 'var(--bg-deep)',
+                        boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius)',
+                        padding: '10px 12px',
+                        color: 'var(--text)',
+                        fontSize: '12px',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      }}
                     />
                     <textarea
                       value={outfit.description || ''}
                       onChange={event => updateOutfit(activeLocationIndex, charIndex, { description: event.target.value })}
                       placeholder="Optional override. Leave blank to use the base outfit from the character reference sheet."
-                      style={{ width: '100%', minHeight: '96px', resize: 'vertical', boxSizing: 'border-box', border: '1px solid var(--border-mid)', borderRadius: '7px', background: '#0f0f0f', color: '#fff', padding: '10px 12px', fontSize: '12px', lineHeight: 1.5, outline: 'none', fontFamily: 'var(--font-body)' }}
+                      style={{
+                        background: 'var(--bg-deep)',
+                        boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius)',
+                        padding: '10px 12px',
+                        color: 'var(--text)',
+                        fontSize: '12px',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        minHeight: '88px',
+                        resize: 'vertical',
+                        lineHeight: 1.5,
+                        fontFamily: 'var(--font-body)',
+                      }}
                     />
                   </div>
                 </article>

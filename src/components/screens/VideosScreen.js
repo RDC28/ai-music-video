@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check, Download, Loader2, Play, RotateCcw, Upload, Video, Wand2 } from 'lucide-react';
+import { AlertTriangle, Check, Download, Loader2, Play, RotateCcw, Upload, Video, Wand2, X } from 'lucide-react';
 import { drawClubScene } from '@/utils/drawClubScene';
 import {
   DEFAULT_VIDEO_MODEL,
@@ -600,219 +600,378 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     a.click();
   };
 
-  const inputStyle = {
-    width: '100%',
-    padding: '10px 14px',
-    border: '1px solid var(--border-mid)',
-    borderRadius: '8px',
-    background: 'var(--surface)',
-    color: 'var(--dark)',
-    fontSize: '13px',
-    fontFamily: 'var(--font-body)',
-    outline: 'none',
-    transition: 'border-color 0.15s',
-    boxSizing: 'border-box',
-    resize: 'none',
-  };
-
   const generatedCount = shots.filter(shot => shot.video_url).length;
   const remainingCount = shots.length - generatedCount;
   const failedCount = shots.filter(shot => !shot.video_url && shot.video_error).length;
 
   return (
-    <div className="screen active" id="s10" style={{ flexDirection: 'row', alignItems: 'flex-start', height: '100%', minHeight: 0, overflow: 'hidden' }}>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    <div
+      className="screen active"
+      id="s10"
+      style={{
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        background: 'var(--bg)',
+      }}
+    >
+      <style>{`
+        @keyframes slideInRight {
+          from { opacity: 0; transform: translateX(20px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
+      {/* LEFT PANEL */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
+
+        {/* Header */}
         <div style={{
           padding: '20px 28px',
           borderBottom: '1px solid var(--border)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
           flexShrink: 0,
-          gap: '16px',
+          background: 'rgba(17,17,20,0.95)',
         }}>
-          <div>
-            <div className="kicker kicker--orange" style={{ marginBottom: '10px' }}>Clips · Render</div>
-            <h1 className="editorial-title editorial-h2" style={{ marginBottom: '8px' }}>
-              Bring frames to <span className="text-grad">life.</span>
-            </h1>
-            <p
-              style={{
-                fontSize: '12.5px',
-                color: 'var(--text-soft)',
-                fontFamily: shots.length ? 'var(--font-mono)' : 'var(--font-body)',
-                letterSpacing: shots.length ? '0.08em' : '-0.005em',
-                textTransform: shots.length ? 'uppercase' : 'none',
-              }}
-            >
-              {shots.length
-                ? `${String(generatedCount).padStart(2,'0')} / ${String(shots.length).padStart(2,'0')} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
-                : 'Create and review video clips for each shot.'}
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
-              <span className="tag-badge tag-teal">◇ Standard clips</span>
-              <span className="tag-badge tag-outline">○ Muted · song sync</span>
-            </div>
-            {queueSummary && (
-              <p style={{ fontSize: '11px', color: 'rgba(234,234,234,0.58)', marginTop: '5px' }}>
-                {queueSummary}
-              </p>
-            )}
-            {generationError && (
-              <p style={{ fontSize: '12px', color: '#ff8a8a', marginTop: '5px' }}>
-                {generationError}
-              </p>
-            )}
-          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-            <select
-              value={modelDraft}
-              onChange={(event) => handleModelDraftChange(event.target.value)}
-              style={{ ...inputStyle, width: '176px', height: '38px', padding: '8px 10px', flexShrink: 0 }}
-              title="Video model"
-            >
-              {VIDEO_GENERATION_MODELS.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <button
-              className="btn-teal"
-              onClick={handleGenerateRemaining}
-              disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}
-              style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
-            >
-              {isGeneratingAll ? (
-                <>
-                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                  Generating {generatingIndex !== null ? `${generatingIndex + 1}/${shots.length}` : 'Videos'}
-                </>
-              ) : (
-                <>
-                  <Wand2 size={14} />
-                  {remainingCount === shots.length ? 'Generate Clips' : `Generate Remaining (${remainingCount})`}
-                </>
+            {/* Left block */}
+            <div>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '10px',
+                color: 'var(--cyan)',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                marginBottom: '6px',
+              }}>
+                ▪ Clips · Render
+              </div>
+              <h2 style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '30px',
+                fontWeight: 700,
+                letterSpacing: '-0.03em',
+                color: 'var(--text)',
+                margin: 0,
+                marginBottom: '6px',
+                lineHeight: 1.1,
+              }}>
+                Bring frames to life.
+              </h2>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '10px',
+                color: 'var(--text-muted)',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}>
+                {shots.length
+                  ? `${String(generatedCount).padStart(2, '0')} / ${String(shots.length).padStart(2, '0')} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
+                  : 'Create and review video clips for each shot.'}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <span className="tag-badge tag-teal">◇ Standard clips</span>
+                <span className="tag-badge tag-outline">○ Muted · song sync</span>
+              </div>
+              {queueSummary && (
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
+                  {queueSummary}
+                </p>
               )}
-            </button>
-            <button
-              className="btn-outline"
-              onClick={handleGenerateAll}
-              disabled={!shots.length || isGeneratingAll || generatingIndex !== null}
-              style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
-              title="Regenerate every shot, including completed videos"
-            >
-              <RotateCcw size={14} />
-              Regenerate All
-            </button>
-            <button
-              className="btn-teal"
-              onClick={handleApproveAll}
-              disabled={isApproving}
-              style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
-            >
-              {isApproving ? 'Saving...' : 'Approve All'}
-              {!isApproving && <Check size={14} />}
-            </button>
+              {generationError && (
+                <p style={{ fontSize: '12px', color: 'var(--error)', marginTop: '6px', marginBottom: 0 }}>
+                  {generationError}
+                </p>
+              )}
+            </div>
+
+            {/* Right block */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-end', flexShrink: 0 }}>
+              <select
+                value={modelDraft}
+                onChange={(event) => handleModelDraftChange(event.target.value)}
+                title="Video model"
+                style={{
+                  background: 'var(--surface-2)',
+                  boxShadow: 'var(--neo-inset)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)',
+                  color: 'var(--text)',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  width: '176px',
+                  outline: 'none',
+                  fontFamily: 'var(--font-body)',
+                }}
+              >
+                {VIDEO_GENERATION_MODELS.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  className="btn-teal"
+                  onClick={handleGenerateRemaining}
+                  disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}
+                  style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
+                >
+                  {isGeneratingAll ? (
+                    <>
+                      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                      Generating {generatingIndex !== null ? `${generatingIndex + 1}/${shots.length}` : 'Videos'}
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 size={14} />
+                      {remainingCount === shots.length ? 'Generate Clips' : `Generate Remaining (${remainingCount})`}
+                    </>
+                  )}
+                </button>
+                <button
+                  className="btn-outline"
+                  onClick={handleGenerateAll}
+                  disabled={!shots.length || isGeneratingAll || generatingIndex !== null}
+                  title="Regenerate every shot, including completed videos"
+                  style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
+                >
+                  <RotateCcw size={14} />
+                  Regenerate All
+                </button>
+                <button
+                  className="btn-teal"
+                  onClick={handleApproveAll}
+                  disabled={isApproving}
+                  style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
+                >
+                  {isApproving ? 'Saving...' : 'Approve All'}
+                  {!isApproving && <Check size={14} />}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div id="vidList" className="visible-scrollbar video-gallery-grid" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px 28px 112px', display: 'grid', gap: '18px', alignContent: 'start', scrollbarGutter: 'stable' }}>
-          {shots.length > 0 ? shots.map((shot, i) => (
-            <div
-              className="video-gallery-card"
-              key={`${shot.n}-${i}`}
-              role="button"
-              tabIndex={0}
-              onClick={() => openEditor(i)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  openEditor(i);
-                }
-              }}
-              style={{
-                border: `1px solid ${editModalIndex === i ? 'rgba(124,58,237,0.58)' : 'var(--border-mid)'}`,
-                borderRadius: '14px',
-                background: 'var(--surface)',
-                overflow: 'hidden',
-                cursor: 'pointer',
-                boxShadow: editModalIndex === i ? '0 0 0 1px rgba(124,58,237,0.22), 0 16px 48px rgba(124,58,237,0.12)' : '0 12px 40px rgba(0,0,0,0.22)',
-                transition: 'border-color 0.18s, box-shadow 0.18s, transform 0.18s',
-              }}
-            >
-              <div className="video-gallery-frame">
-                {shot.video_url ? (
-                  <video
-                    src={shot.video_url}
-                    poster={shot.image_url || undefined}
-                    muted
-                    playsInline
-                    preload="metadata"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
-                ) : shot.image_url ? (
-                  <img src={shot.image_url} alt={shot.n || `Shot ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                ) : (
-                  <canvas
-                    ref={(el) => (canvasRefs.current[i] = el)}
-                    width={640}
-                    height={360}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
-                )}
-                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.16) 0%, transparent 42%, rgba(0,0,0,0.76) 100%)', pointerEvents: 'none' }} />
-                <div style={{ position: 'absolute', left: '12px', right: '12px', bottom: '10px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 1px 10px rgba(0,0,0,0.8)' }}>
-                      {i + 1}. {shot.n || shot.title || `Shot ${i + 1}`}
-                    </div>
-                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', marginTop: '2px' }}>
-                      {shot.video_url ? 'Clip ready' : shot.video_error ? 'Try again' : 'Ready to generate'}
-                    </div>
-                  </div>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(0,0,0,0.56)', border: '1px solid rgba(255,255,255,0.24)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
-                    <Play size={12} fill="white" />
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="btn-outline"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openEditor(i);
+        {/* Video Gallery */}
+        <div
+          id="vidList"
+          className="visible-scrollbar"
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            minHeight: 0,
+            padding: '20px 28px 80px',
+          }}
+        >
+          {shots.length > 0 ? (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '16px',
+              alignContent: 'start',
+            }}>
+              {shots.map((shot, i) => (
+                <div
+                  key={`${shot.n}-${i}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openEditor(i)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openEditor(i);
+                    }
                   }}
                   style={{
-                    position: 'absolute',
-                    top: '10px',
-                    right: '10px',
-                    fontSize: '10px',
-                    padding: '5px 9px',
-                    borderColor: editModalIndex === i ? 'rgba(124,58,237,0.78)' : 'rgba(255,255,255,0.22)',
-                    background: 'rgba(0,0,0,0.58)',
-                    color: '#fff',
+                    background: 'var(--surface-2)',
+                    boxShadow: editModalIndex === i ? 'var(--neo-active)' : 'var(--neo-raised)',
+                    border: editModalIndex === i ? '1px solid var(--cyan-border)' : '1px solid var(--border)',
+                    borderRadius: 'var(--radius-lg)',
+                    overflow: 'hidden',
+                    cursor: 'pointer',
+                    transition: 'box-shadow 160ms ease-out, border-color 160ms ease-out',
                   }}
                 >
-                  {editModalIndex === i ? 'Editing' : shot.video_url ? 'Edit' : shot.video_error ? 'Retry' : 'Generate'}
-                </button>
-                {generatingIndex === i && (
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.62)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--orange)', fontSize: '11px', fontWeight: 700 }}>
-                    <Loader2 size={15} style={{ animation: 'spin 1s linear infinite', marginRight: '8px' }} />
-                    Generating...
+                  <div className="video-gallery-frame">
+                    {shot.video_url ? (
+                      <video
+                        src={shot.video_url}
+                        poster={shot.image_url || undefined}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : shot.image_url ? (
+                      <img
+                        src={shot.image_url}
+                        alt={shot.n || `Shot ${i + 1}`}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : (
+                      <canvas
+                        ref={(el) => (canvasRefs.current[i] = el)}
+                        width={640}
+                        height={360}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    )}
+
+                    {/* Gradient overlay */}
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, transparent 40%, rgba(0,0,0,0.8) 100%)',
+                      pointerEvents: 'none',
+                    }} />
+
+                    {/* Bottom label */}
+                    <div style={{
+                      position: 'absolute',
+                      left: '12px',
+                      right: '12px',
+                      bottom: '10px',
+                      display: 'flex',
+                      alignItems: 'flex-end',
+                      justifyContent: 'space-between',
+                    }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{
+                          fontFamily: 'var(--font-display)',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          color: '#fff',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          textShadow: '0 1px 8px rgba(0,0,0,0.9)',
+                        }}>
+                          {i + 1}. {shot.n || shot.title || `Shot ${i + 1}`}
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.65)', marginTop: '2px' }}>
+                          {shot.video_url ? 'Clip ready' : shot.video_error ? 'Try again' : 'Ready to generate'}
+                        </div>
+                      </div>
+                      <div style={{
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '50%',
+                        background: 'rgba(0,0,0,0.6)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        flexShrink: 0,
+                      }}>
+                        <Play size={10} fill="white" />
+                      </div>
+                    </div>
+
+                    {/* Edit button */}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openEditor(i);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '10px',
+                        background: 'rgba(0,0,0,0.65)',
+                        border: editModalIndex === i ? '1px solid var(--cyan-border)' : '1px solid rgba(255,255,255,0.2)',
+                        borderRadius: 'var(--radius)',
+                        padding: '5px 9px',
+                        color: editModalIndex === i ? 'var(--cyan)' : '#fff',
+                        fontSize: '10px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'var(--font-body)',
+                      }}
+                    >
+                      {editModalIndex === i ? 'Editing' : shot.video_url ? 'Edit' : shot.video_error ? 'Retry' : 'Generate'}
+                    </button>
+
+                    {/* Generating overlay */}
+                    {generatingIndex === i && (
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        color: 'var(--cyan)',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                      }}>
+                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                        Generating...
+                      </div>
+                    )}
+
+                    {/* Error badge */}
+                    {!shot.video_url && shot.video_error && generatingIndex !== i && (
+                      <div style={{
+                        position: 'absolute',
+                        left: '10px',
+                        top: '10px',
+                        background: 'rgba(60,0,0,0.8)',
+                        border: '1px solid rgba(248,113,113,0.3)',
+                        borderRadius: '999px',
+                        padding: '4px 8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        color: 'var(--error)',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                      }}>
+                        <AlertTriangle size={10} />
+                        Retry
+                      </div>
+                    )}
                   </div>
-                )}
-                {!shot.video_url && shot.video_error && generatingIndex !== i && (
-                  <div style={{ position: 'absolute', left: '10px', top: '10px', display: 'flex', alignItems: 'center', gap: '5px', color: '#ffb0b0', background: 'rgba(82,0,0,0.68)', border: '1px solid rgba(255,138,138,0.28)', borderRadius: '999px', padding: '5px 8px', fontSize: '10px', fontWeight: 800 }}>
-                    <AlertTriangle size={11} />
-                    Retry
-                  </div>
-                )}
-              </div>
+                </div>
+              ))}
             </div>
-          )) : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', gap: '12px' }}>
-              <Video size={28} color="var(--text-muted)" />
-              <div style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>
+          ) : (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '16px',
+              padding: '80px 40px',
+            }}>
+              <div style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--neo-raised)',
+                background: 'var(--surface-2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--cyan)',
+              }}>
+                <Video size={22} />
+              </div>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '18px',
+                fontWeight: 700,
+                color: 'var(--text)',
+                textAlign: 'center',
+              }}>
                 No shots to display. Please add shots in the Shot List step first.
               </div>
               <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '12px' }}>
@@ -823,46 +982,92 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
         </div>
       </div>
 
+      {/* RIGHT PANEL — Edit modal */}
       {editModalIndex !== null && selectedShot && (
         <div style={{
           position: 'sticky',
           top: 0,
           width: '440px',
           height: '100%',
-          background: 'var(--card)',
+          background: 'var(--surface-2)',
+          boxShadow: '-4px 0 20px rgba(0,0,0,0.4)',
           borderLeft: '1px solid var(--border-mid)',
-          padding: '28px',
+          padding: '24px',
           display: 'flex',
           flexDirection: 'column',
-          animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-          overflowY: 'auto',
           flexShrink: 0,
+          overflowY: 'auto',
+          animation: 'slideInRight 0.22s cubic-bezier(0.2,0,0,1)',
         }}>
+
+          {/* Panel header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: 'var(--dark)' }}>
-              Edit Clip
+            <div>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '10px',
+                color: 'var(--cyan)',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                marginBottom: '4px',
+              }}>
+                ▪ Edit Clip
+              </div>
+              <h3 style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '18px',
+                fontWeight: 700,
+                color: 'var(--text)',
+                margin: 0,
+              }}>
+                Clip.
+              </h3>
             </div>
             <button
               onClick={() => setEditModalIndex(null)}
               style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-muted)',
-                fontSize: '20px',
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                boxShadow: 'var(--neo-flat)',
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--text-soft)',
                 cursor: 'pointer',
-                lineHeight: 1,
-                padding: '2px 6px',
-                borderRadius: '4px',
               }}
-            >x</button>
+            >
+              <X size={13} />
+            </button>
           </div>
 
+          {/* Panel content */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Current clip preview */}
             <div>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '6px', fontFamily: 'var(--font-display)' }}>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '10px',
+                fontWeight: 700,
+                color: 'var(--text-muted)',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                marginBottom: '6px',
+              }}>
                 Current
               </div>
-              <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', aspectRatio: '16/9', background: 'var(--surface)', position: 'relative' }}>
+              <div style={{
+                background: 'var(--bg-deep)',
+                boxShadow: 'var(--neo-inset)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                aspectRatio: '16/9',
+                overflow: 'hidden',
+                position: 'relative',
+              }}>
                 {selectedShot.video_url ? (
                   <video
                     src={selectedShot.video_url}
@@ -874,33 +1079,71 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   />
                 ) : selectedShot.image_url ? (
-                  <img src={selectedShot.image_url} alt={selectedShot.n || 'Current shot source'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <img
+                    src={selectedShot.image_url}
+                    alt={selectedShot.n || 'Current shot source'}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
                 ) : (
-                  <canvas ref={modalCanvasRef} width={560} height={315} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <canvas
+                    ref={modalCanvasRef}
+                    width={560}
+                    height={315}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
                 )}
                 {!selectedShot.video_url && (
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                    <span style={{ fontSize: '10px', color: 'var(--teal)', fontWeight: 700, background: 'rgba(0,0,0,0.52)', padding: '6px 10px', borderRadius: '6px' }}>
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    pointerEvents: 'none',
+                  }}>
+                    <span style={{
+                      background: 'rgba(0,0,0,0.6)',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      color: 'var(--cyan)',
+                    }}>
                       {selectedShot.image_url ? 'Source image ready' : 'Not generated yet'}
                     </span>
                   </div>
                 )}
               </div>
               {!selectedShot.video_url && selectedShot.video_error && (
-                <div style={{ marginTop: '8px', color: '#ff8a8a', fontSize: '11px', lineHeight: 1.45 }}>
+                <div style={{ marginTop: '8px', color: 'var(--error)', fontSize: '12px', lineHeight: 1.45 }}>
                   {selectedShot.video_error.message}
                 </div>
               )}
             </div>
 
+            {/* Divider */}
             <div style={{ height: '1px', background: 'var(--border)' }} />
 
-            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>
+            {/* Replace With heading */}
+            <div style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '13px',
+              fontWeight: 700,
+              color: 'var(--text)',
+              letterSpacing: '-0.01em',
+            }}>
               Replace With
             </div>
 
+            {/* Section 1: Upload */}
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--dark)', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: 'var(--text)',
+                marginBottom: '8px',
+              }}>
                 1. Upload Your Own
               </div>
               <input
@@ -915,43 +1158,84 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading || generatingIndex !== null}
                 style={{
-                  width: '100%',
-                  border: '1px dashed var(--border-mid)',
-                  borderRadius: '8px',
-                  background: 'var(--surface)',
+                  background: 'var(--bg-deep)',
+                  boxShadow: 'var(--neo-inset)',
+                  border: '1.5px dashed var(--border-mid)',
+                  borderRadius: 'var(--radius)',
+                  padding: '18px',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   gap: '8px',
-                  padding: '20px',
-                  cursor: isUploading || generatingIndex !== null ? 'not-allowed' : 'pointer',
+                  width: '100%',
+                  cursor: isUploading || generatingIndex !== null ? 'wait' : 'pointer',
                   opacity: isUploading || generatingIndex !== null ? 0.55 : 1,
-                  color: 'var(--text-muted)',
+                  color: 'var(--text-soft)',
+                  boxSizing: 'border-box',
                 }}
               >
-                {isUploading ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={20} />}
-                <span style={{ fontSize: '12px', fontWeight: 600 }}>{isUploading ? 'Uploading...' : 'Browse Files'}</span>
+                {isUploading
+                  ? <Loader2 size={20} color="var(--cyan)" style={{ animation: 'spin 1s linear infinite' }} />
+                  : <Upload size={20} color={generatingIndex !== null ? 'var(--text-muted)' : 'var(--cyan)'} />
+                }
+                <span style={{ fontSize: '12px', fontWeight: 600, fontFamily: 'var(--font-body)' }}>
+                  {isUploading ? 'Uploading...' : 'Browse Files'}
+                </span>
               </button>
             </div>
 
+            {/* Section 2: Generate with Prompt */}
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--dark)', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: 'var(--text)',
+                marginBottom: '8px',
+              }}>
                 2. Generate with Prompt
               </div>
               <textarea
                 value={promptDraft}
                 onChange={(e) => setPromptDraft(e.target.value)}
-                style={{ ...inputStyle, minHeight: '120px', lineHeight: 1.45 }}
-                onFocus={(e) => e.target.style.borderColor = 'var(--teal)'}
-                onBlur={(e) => e.target.style.borderColor = 'var(--border-mid)'}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan)'; }}
+                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+                style={{
+                  background: 'var(--bg-deep)',
+                  boxShadow: 'var(--neo-inset)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)',
+                  padding: '12px',
+                  color: 'var(--text)',
+                  fontFamily: 'var(--font-body)',
+                  fontSize: '13px',
+                  resize: 'vertical',
+                  minHeight: '120px',
+                  width: '100%',
+                  lineHeight: 1.45,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  transition: 'border-color 0.15s',
+                }}
               />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 96px', gap: '8px', marginTop: '8px' }}>
                 <select
                   value={modelDraft}
                   onChange={(event) => handleModelDraftChange(event.target.value)}
-                  style={{ ...inputStyle, height: '38px', padding: '8px 10px' }}
                   title="Video model"
+                  style={{
+                    background: 'var(--bg-deep)',
+                    boxShadow: 'var(--neo-inset)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    color: 'var(--text)',
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    height: '38px',
+                    outline: 'none',
+                    fontFamily: 'var(--font-body)',
+                  }}
                 >
                   {VIDEO_GENERATION_MODELS.map(option => (
                     <option key={option.value} value={option.value}>{option.label}</option>
@@ -960,14 +1244,32 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 <select
                   value={durationDraft}
                   onChange={(e) => setDurationDraft(e.target.value)}
-                  style={{ ...inputStyle, height: '38px', padding: '8px 10px' }}
+                  style={{
+                    background: 'var(--bg-deep)',
+                    boxShadow: 'var(--neo-inset)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    color: 'var(--text)',
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    height: '38px',
+                    outline: 'none',
+                    fontFamily: 'var(--font-body)',
+                  }}
                 >
                   {durationOptions.map(seconds => (
                     <option key={seconds} value={String(seconds)}>{seconds}s</option>
                   ))}
                 </select>
               </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic' }}>
+
+              <div style={{
+                fontSize: '10px',
+                color: 'var(--text-muted)',
+                marginTop: '6px',
+                fontStyle: 'italic',
+                fontFamily: 'var(--font-body)',
+              }}>
                 Available clip lengths follow the selected model. Audio stays muted so the final edit stays synced to your main track.
               </div>
 
@@ -975,7 +1277,17 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 className="btn-orange"
                 onClick={handleGenerateOne}
                 disabled={generatingIndex !== null || !promptDraft.trim()}
-                style={{ width: '100%', fontSize: '12px', padding: '10px', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                style={{
+                  width: '100%',
+                  fontSize: '12px',
+                  padding: '10px',
+                  marginTop: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '7px',
+                  boxSizing: 'border-box',
+                }}
               >
                 {generatingIndex === editModalIndex ? (
                   <>
@@ -994,7 +1306,17 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 <button
                   className="btn-outline"
                   onClick={() => handleDownload(selectedShot, editModalIndex)}
-                  style={{ width: '100%', fontSize: '12px', padding: '10px', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                  style={{
+                    width: '100%',
+                    fontSize: '12px',
+                    padding: '10px',
+                    marginTop: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '7px',
+                    boxSizing: 'border-box',
+                  }}
                 >
                   <Download size={14} />
                   Download Clip

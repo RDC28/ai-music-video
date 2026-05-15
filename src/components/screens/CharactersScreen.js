@@ -107,6 +107,10 @@ function truncateCharacterDescription(value, maxLength = CHARACTER_DESCRIPTION_D
   return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
 }
 
+function normalizeCharacterName(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
 function buildScriptCharacterDescription(character = {}, projectState = {}) {
   const script = projectState?.script || {};
   const analysis = projectState?.analysis || {};
@@ -557,13 +561,16 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
   const [sheetProcessStatus, setSheetProcessStatus] = useState('');
   const [charProgressStep, setCharProgressStep] = useState(-1);
   const [imgRatios, setImgRatios] = useState({});
+  const [anchorStatus, setAnchorStatus] = useState({});
 
   const fileInputRef = useRef(null);
   const refFileInputRef = useRef(null);
   const collageRef = useRef(null);
+  const projectCharacters = useMemo(() => (Array.isArray(projectData) ? projectData : []), [projectData]);
+  const anchorInFlightRef = useRef(new Set());
+  const latestCharactersRef = useRef(projectCharacters);
   const [collageSize, setCollageSize] = useState({ width: PINBOARD_WIDTH, height: PINBOARD_HEIGHT });
   const supabase = useMemo(() => createClient(), []);
-  const projectCharacters = projectData || [];
   const generatingReplaceIndex = Number.isInteger(generatingChar?.replaceIndex)
     ? generatingChar.replaceIndex
     : null;
@@ -577,6 +584,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
     : globalLibrary;
   const activeChar = displayedCharacters[activeTab] || null;
   const isGeneratingActive = Boolean(activeChar?.isGeneratingReference || activeChar?.id === 'generating');
+  const activeAnchorState = activeChar?.name
+    ? (anchorStatus[activeChar.name] || (activeChar?.anchor_image_url ? 'done' : undefined))
+    : undefined;
+  const anyAnchorsGenerating = Object.values(anchorStatus).some(status => status === 'generating');
   const busy = isProcessingSheet || isGenerating;
 
   const loadGlobalLibrary = useCallback(async () => {
@@ -653,6 +664,57 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
     return () => { cancelled = true; };
   }, [activeChar?.images, imgRatios]);
 
+  useEffect(() => {
+    latestCharactersRef.current = projectCharacters;
+  }, [projectCharacters]);
+
+  const generateAnchorForCharacter = useCallback(async (character, projectStateSnapshot = projectState) => {
+    if (!projectId || !character?.name) return;
+    const normalizedName = normalizeCharacterName(character.name);
+    if (!normalizedName || anchorInFlightRef.current.has(normalizedName)) return;
+    if (character?.anchor_image_url) {
+      setAnchorStatus(prev => (prev[character.name] === 'done' ? prev : { ...prev, [character.name]: 'done' }));
+      return;
+    }
+
+    anchorInFlightRef.current.add(normalizedName);
+    setAnchorStatus(prev => ({ ...prev, [character.name]: 'generating' }));
+
+    try {
+      const res = await fetch('/api/generate-character-anchor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, character, projectState: projectStateSnapshot }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data?.success && data?.anchor_image_url) {
+        setAnchorStatus(prev => ({ ...prev, [character.name]: 'done' }));
+        const anchorGeneratedAt = new Date().toISOString();
+        const baseCharacters = Array.isArray(latestCharactersRef.current) ? latestCharactersRef.current : [];
+        let matched = false;
+        const updatedChars = baseCharacters.map(existingChar => {
+          if (normalizeCharacterName(existingChar?.name) !== normalizedName) return existingChar;
+          matched = true;
+          return {
+            ...existingChar,
+            anchor_image_url: data.anchor_image_url,
+            anchor_generated_at: anchorGeneratedAt,
+          };
+        });
+        if (!matched) return;
+        await onDataUpdate({ characters: updatedChars });
+      } else {
+        setAnchorStatus(prev => ({ ...prev, [character.name]: 'failed' }));
+      }
+    } catch (error) {
+      console.error('Anchor generation failed for', character?.name, error);
+      setAnchorStatus(prev => ({ ...prev, [character.name]: 'failed' }));
+    } finally {
+      anchorInFlightRef.current.delete(normalizedName);
+    }
+  }, [onDataUpdate, projectId, projectState]);
+
   const base64ToBlob = (b64, mime) => {
     const bytes = atob(b64);
     const arr = new Uint8Array(bytes.length);
@@ -718,6 +780,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
     };
     const updatedChars = [...projectCharacters, newChar];
     await onDataUpdate({ characters: updatedChars });
+    if (newChar.images?.length && !newChar.anchor_image_url) {
+      void generateAnchorForCharacter(
+        newChar,
+        { ...projectState, characters: updatedChars }
+      );
+    }
     setActiveCategory('project');
     setActiveTab(updatedChars.length - 1);
   };
@@ -874,6 +942,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         updatedChars.push(newChar);
       }
       await onDataUpdate({ characters: updatedChars });
+      if (newChar.images?.length && !newChar.anchor_image_url) {
+        void generateAnchorForCharacter(
+          newChar,
+          { ...projectState, characters: updatedChars }
+        );
+      }
       setActiveTab(replaceIndex !== null ? replaceIndex : updatedChars.length - 1);
       if (replaceIndex === null) saveToGlobalLibrary(newChar, 'upload');
     } catch (err) {
@@ -991,6 +1065,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         updatedChars.push(newChar);
       }
       await onDataUpdate({ characters: updatedChars });
+      if (newChar.images?.length && !newChar.anchor_image_url) {
+        void generateAnchorForCharacter(
+          newChar,
+          { ...projectState, characters: updatedChars }
+        );
+      }
       setActiveTab(isReplacing ? replaceIndex : updatedChars.length - 1);
       if (!isReplacing) saveToGlobalLibrary(newChar, 'ai');
     } catch (err) {
@@ -1128,11 +1208,11 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
   };
 
   return (
-    <div className="screen active" id="s4" style={{ height: '100%', overflow: 'hidden', background: '#080808' }}>
+    <div className="screen active" id="s4" style={{ height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
       <style>{`
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .skeleton-shimmer { background:linear-gradient(90deg,#111 25%,#1a1a1a 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
+        .skeleton-shimmer { background:linear-gradient(90deg,var(--bg-deep) 25%,var(--surface-2) 50%,var(--bg-deep) 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
         .img-card {
           --board-card-scale: 1;
           transition: transform 0.16s ease, filter 0.16s ease;
@@ -1140,14 +1220,14 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         .img-card:hover {
           --board-card-scale: 1.06;
           z-index: 20;
-          filter: brightness(1.04);
+          filter: brightness(1.1);
         }
       `}</style>
 
       <div className="studio-shell" style={{ display: 'flex', height: '100%' }}>
 
         {/* ── Sidebar ── */}
-        <div className="studio-sidebar" style={{ width: '256px', minWidth: '256px', background: '#0D0D0D', borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', padding: '24px', height: '100%', overflowY: 'auto' }}>
+        <div className="studio-sidebar" style={{ width: '256px', minWidth: '256px', background: 'var(--bg-deep)', boxShadow: '4px 0 16px rgba(0,0,0,0.4)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', padding: '24px', height: '100%', overflowY: 'auto' }}>
 
           <div style={{ marginBottom: '26px' }}>
             <div className="kicker" style={{ marginBottom: '12px' }}>Character · Studio</div>
@@ -1165,12 +1245,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
           <div
             style={{
               display: 'flex',
-              background: 'rgba(255,255,255,0.025)',
-              borderRadius: '999px',
+              background: 'var(--bg)',
+              boxShadow: 'var(--neo-inset)',
+              borderRadius: '10px',
               padding: '4px',
               marginBottom: '22px',
-              border: '1px solid rgba(255,255,255,0.06)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+              border: '1px solid var(--border)',
             }}
           >
             {['project', 'global'].map(cat => (
@@ -1179,22 +1259,17 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                 onClick={() => { setActiveCategory(cat); setActiveTab(0); }}
                 style={{
                   flex: 1,
-                  padding: '9px',
-                  borderRadius: '999px',
-                  border: 'none',
-                  background: activeCategory === cat
-                    ? 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(124,58,237,0.06))'
-                    : 'transparent',
-                  color: activeCategory === cat
-                    ? (cat === 'project' ? 'var(--teal)' : 'var(--orange)')
-                    : 'var(--text-muted)',
+                  padding: '8px',
+                  borderRadius: '7px',
+                  border: activeCategory === cat ? '1px solid var(--cyan-border)' : '1px solid transparent',
+                  background: activeCategory === cat ? 'var(--surface-2)' : 'transparent',
+                  boxShadow: activeCategory === cat ? 'var(--neo-flat)' : 'none',
+                  color: activeCategory === cat ? 'var(--cyan)' : 'var(--text-muted)',
                   fontWeight: 600,
                   fontSize: '11px',
                   cursor: 'pointer',
-                  letterSpacing: '-0.005em',
                   fontFamily: 'var(--font-body)',
-                  transition: 'background 0.18s, color 0.18s',
-                  boxShadow: activeCategory === cat ? '0 0 0 1px rgba(124,58,237,0.22), inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
+                  transition: 'background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out',
                 }}
               >
                 {cat === 'project' ? 'Project' : 'History'}
@@ -1242,6 +1317,11 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
           </div>
 
           <div style={{ marginTop: 'auto', paddingTop: '24px' }}>
+            {anyAnchorsGenerating && (
+              <div style={{ marginBottom: '10px', color: '#f4d67a', fontSize: '11px', lineHeight: 1.5 }}>
+                Identity anchors still processing — shot consistency will be better if you wait.
+              </div>
+            )}
             <button className="btn-teal" style={{ width: '100%', padding: '13px', borderRadius: '8px', fontSize: '12px' }} onClick={() => onNavigate(5)}>
               Continue to Locations →
             </button>
@@ -1249,10 +1329,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         </div>
 
         {/* ── Right panel ── */}
-        <div className="studio-main" style={{ flex: 1, background: '#080808', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div className="studio-main" style={{ flex: 1, background: 'var(--bg)', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
           {/* Header */}
-          <div style={{ flexShrink: 0, background: 'rgba(8,8,8,0.95)', backdropFilter: 'blur(16px)', padding: '18px 32px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ flexShrink: 0, background: 'rgba(17,17,20,0.95)', backdropFilter: 'blur(16px)', padding: '18px 32px', borderBottom: '1px solid var(--border)' }}>
             {/* Character tabs */}
             <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '14px' }}>
               {displayedCharacters.map((char, i) => (
@@ -1262,13 +1342,25 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                   className={`tab-pill ${activeTab === i ? 'active' : ''}`}
                   style={{ whiteSpace: 'nowrap' }}
                 >
-                  <span style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.015em' }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '-0.01em' }}>
                     {char.name}
                   </span>
                   {(char.isGeneratingReference || char.id === 'generating') && (
                     <span style={{ marginLeft: '5px', opacity: 0.55, fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
                       {char.images.filter(x => x.url).length}/{char.images.length}
                     </span>
+                  )}
+                  {!char.isGeneratingReference && anchorStatus[char.name] === 'generating' && (
+                    <span style={{ marginLeft: '6px', opacity: 0.75, fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} />
+                      ANCHOR
+                    </span>
+                  )}
+                  {!char.isGeneratingReference && (anchorStatus[char.name] === 'done' || char?.anchor_image_url) && (
+                    <span style={{ marginLeft: '6px', color: '#9be0a0', fontSize: '9px' }}>✓</span>
+                  )}
+                  {!char.isGeneratingReference && anchorStatus[char.name] === 'failed' && (
+                    <span style={{ marginLeft: '6px', color: '#f4d67a', fontSize: '9px' }}>!</span>
                   )}
                 </div>
               ))}
@@ -1322,6 +1414,17 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                   <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.015em' }}>
                     {truncateCharacterDescription(activeChar?.description) || 'No notes yet.'}
                   </span>
+                  {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'generating' && (
+                    <span style={{ color: '#8fd9ff', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                      Building identity anchor…
+                    </span>
+                  )}
+                  {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'failed' && (
+                    <span style={{ color: '#f4d67a', fontSize: '11px' }}>
+                      Anchor failed — will use reference panels
+                    </span>
+                  )}
                 </div>
               </div>
               {activeChar && !isGeneratingActive && activeCategory === 'global' && (
@@ -1344,6 +1447,18 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
               )}
               {activeChar && !isGeneratingActive && activeCategory === 'project' && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {activeAnchorState === 'done' && activeChar.anchor_image_url && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginRight: '8px' }}>
+                      <img
+                        src={activeChar.anchor_image_url}
+                        alt={`${activeChar.name} anchor`}
+                        style={{ width: '160px', height: '90px', objectFit: 'cover', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.14)' }}
+                      />
+                      <div style={{ color: '#9be0a0', fontSize: '10px', fontWeight: 600 }}>
+                        Identity anchor ready ✓
+                      </div>
+                    </div>
+                  )}
                   {activeChar.sheetUrl && (
                     <button
                       onClick={() => setZoomCropTarget({ charIdx: activeTab, imgIdx: null, url: activeChar.sheetUrl, label: '', showLabelInput: true })}
@@ -1387,7 +1502,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
 
           {/* Image collage */}
           <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'hidden', padding: '8px 24px 18px', boxSizing: 'border-box' }}>
-            <div className="studio-board" ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="studio-board" ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: 'var(--bg-deep)', boxShadow: 'var(--neo-inset)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {activeChar?.images?.length > 0 ? (() => {
                 const charIdx = activeCategory === 'project' ? activeTab : -1;
                 const collageItems = activeChar.images.map((img, i) => {
@@ -1514,12 +1629,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                   </div>
                 );
               })() : (
-                <div style={{ width: `${Math.min(PINBOARD_WIDTH, collageSize.width - 24)}px`, aspectRatio: `${PINBOARD_WIDTH} / ${PINBOARD_HEIGHT}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.06)', borderRadius: '8px', background: '#0a0a0a' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
+                <div style={{ width: `${Math.min(PINBOARD_WIDTH, collageSize.width - 24)}px`, aspectRatio: `${PINBOARD_WIDTH} / ${PINBOARD_HEIGHT}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1.5px dashed var(--border-mid)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-deep)' }}>
+                  <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'var(--surface-2)', boxShadow: 'var(--neo-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
                   </div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: 600, fontFamily: 'var(--font-display)', marginBottom: '4px' }}>No reference images yet</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Upload a character sheet or create a reference set</div>
+                  <div style={{ color: 'var(--text)', fontSize: '15px', fontWeight: '700', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', marginBottom: '6px' }}>No reference images yet</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-body)' }}>Upload a character sheet or create a reference set</div>
                 </div>
               )}
             </div>

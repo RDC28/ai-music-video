@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { ArrowRight, FileText, Mic2, PenLine, Sparkles } from 'lucide-react';
+import { ArrowRight, FileText, Mic2, PenLine, Sparkles, Loader2, Users, MapPin, Film } from 'lucide-react';
 import ProgressBar from '../ProgressBar';
 
 export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, projectState }) {
-  const [idea, setIdea] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [progressStep, setProgressStep] = useState(-1);
+  const [idea, setIdea]                   = useState('');
+  const [isAnalyzing, setIsAnalyzing]     = useState(false);
+  const [progressStep, setProgressStep]   = useState(-1);
   const [generatedPlan, setGeneratedPlan] = useState(null);
   const [isEditingIdea, setIsEditingIdea] = useState(false);
 
@@ -15,7 +15,7 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
     'Writing scenes',
     'Drafting cast and locations',
     'Building the shot plan',
-    'Saving creative plan'
+    'Saving creative plan',
   ];
 
   const savedPlan = useMemo(() => {
@@ -24,47 +24,35 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
         script: projectState.script,
         characters: projectState.characters,
         locations: projectState.locations,
-        shot_list: projectState.shot_list
+        shot_list: projectState.shot_list,
       };
     }
     return null;
   }, [projectState]);
 
   const reviewPlan = generatedPlan || (!isEditingIdea ? savedPlan : null);
-
   const transcript = projectState?.analysis?.lyrics;
 
   const handleBrainDump = async (customPrompt = null) => {
     const finalPrompt = customPrompt || idea;
     if (!finalPrompt.trim()) return alert('Please enter an idea first');
-
     setIsAnalyzing(true);
     setProgressStep(0);
     try {
       setProgressStep(1);
       setTimeout(() => setProgressStep(2), 600);
-
       const response = await fetch('/api/generate-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idea: finalPrompt, transcript })
+        body: JSON.stringify({ idea: finalPrompt, transcript }),
       });
-
       const plan = await response.json();
       if (plan.error) throw new Error(plan.error);
-
       setProgressStep(3);
       setGeneratedPlan(plan);
       setIsEditingIdea(false);
-
       setProgressStep(4);
-      await onDataUpdate({
-        script: plan.script,
-        characters: plan.characters,
-        locations: plan.locations,
-        shot_list: plan.shot_list,
-        current_step: 4
-      });
+      await onDataUpdate({ script: plan.script, characters: plan.characters, locations: plan.locations, shot_list: plan.shot_list, current_step: 4 });
       setProgressStep(5);
     } catch (error) {
       console.error('Creative plan failed:', error);
@@ -77,20 +65,18 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
 
   const handleUseTranscript = () => {
     if (!transcript) {
-      const confirmGen = confirm('No lyrics or timing found yet. Would you like to analyze the song first?');
-      if (confirmGen) onNavigate(2);
+      if (confirm('No lyrics found yet. Analyze the song first?')) onNavigate(2);
       return;
     }
-    const transcriptText = transcript.map(l => l.text).join(' ');
-    handleBrainDump(`Based on these lyrics: "${transcriptText}". ${idea}`);
+    handleBrainDump(`Based on these lyrics: "${transcript.map(l => l.text).join(' ')}". ${idea}`);
   };
 
-  /* ── Generated Plan View ── */
+  /* ── Review mode ── */
   if (reviewPlan) {
-    const scenes = reviewPlan.script?.scenes || [];
+    const scenes         = reviewPlan.script?.scenes || [];
     const lyricsTimeline = reviewPlan.script?.lyrics_timeline || [];
-    const characters = reviewPlan.characters || [];
-    const locations = reviewPlan.locations || [];
+    const characters     = reviewPlan.characters || [];
+    const locations      = reviewPlan.locations || [];
 
     return (
       <div className="screen active" id="s3">
@@ -99,170 +85,175 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
             <div className="screen-kicker">Creative plan · ready</div>
             <h1 className="screen-title">The story has shape.</h1>
             <p className="screen-subtitle">
-              Review the story, cast, locations, and shot count before moving into visual references.
+              Review the scenes, cast, and locations before moving into visual references.
             </p>
           </div>
           <div className="screen-actions">
             <button
               className="btn-outline"
-              onClick={() => {
-                setGeneratedPlan(null);
-                setIsEditingIdea(true);
-              }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+              onClick={() => { setGeneratedPlan(null); setIsEditingIdea(true); }}
             >
-              <PenLine size={14} />
-              Edit Idea
+              <PenLine size={13} />
+              Edit idea
             </button>
-            <button
-              className="btn-orange"
-              onClick={() => onNavigate(4)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-            >
+            <button className="btn-orange" onClick={() => onNavigate(4)}>
               Continue to Cast
-              <ArrowRight size={14} />
+              <ArrowRight size={13} />
             </button>
           </div>
         </div>
 
-        <div className="brain-review-layout">
-          <section className="premium-panel brain-panel-scroll" style={{ padding: '26px' }}>
-            <div className="panel-label" style={{ marginBottom: '14px' }}>
-              ── Master Script
-            </div>
-            <div
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontStyle: 'italic',
-                fontSize: '32px',
-                fontWeight: 500,
-                color: 'var(--dark)',
-                marginBottom: '6px',
-                letterSpacing: '-0.03em',
-                lineHeight: 1.05,
-              }}
-            >
-              {reviewPlan.script?.title || 'Untitled music video'}
-            </div>
-            <div
-              style={{
-                fontSize: '12px',
-                color: 'var(--text-muted)',
-                marginBottom: '24px',
+        {/* Asymmetric 58/42 */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '58fr 42fr',
+          gap: '20px',
+          padding: '0 24px 24px',
+          flex: 1,
+          minHeight: 0,
+        }}>
+          {/* Script panel — scrollable */}
+          <section style={{
+            background: 'var(--surface-2)',
+            boxShadow: 'var(--neo-raised)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-xl)',
+            padding: '26px',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+          }}>
+            <div>
+              <div style={{
                 fontFamily: 'var(--font-mono)',
-                letterSpacing: '0.08em',
+                fontSize: '10px',
+                fontWeight: '700',
+                letterSpacing: '0.14em',
                 textTransform: 'uppercase',
-              }}
-            >
-              Mood · {reviewPlan.script?.mood || 'Not specified'}
+                color: 'var(--text-muted)',
+                marginBottom: '10px',
+              }}>
+                ▪ Master Script
+              </div>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '28px',
+                fontWeight: '700',
+                color: 'var(--text)',
+                letterSpacing: '-0.03em',
+                lineHeight: 1.1,
+                marginBottom: '6px',
+              }}>
+                {reviewPlan.script?.title || 'Untitled music video'}
+              </div>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '10px',
+                color: 'var(--text-muted)',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+              }}>
+                Mood · {reviewPlan.script?.mood || 'Not specified'}
+              </div>
             </div>
 
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: lyricsTimeline.length > 0 ? 'minmax(0, 1.1fr) minmax(280px, 0.9fr)' : '1fr',
-                gap: '18px',
-                minHeight: 0,
-              }}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: lyricsTimeline.length > 0 ? '1fr 280px' : '1fr',
+              gap: '16px',
+              alignItems: 'start',
+            }}>
+              {/* Scenes */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {scenes.map((scene, i) => (
-                  <div
-                    key={i}
-                    className="subtle-panel"
-                    style={{
-                      padding: '16px 18px',
-                      borderLeft: '2px solid rgba(124,58,237,0.5)',
-                      position: 'relative',
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: '10px',
-                        color: 'var(--teal)',
-                        fontWeight: 500,
-                        fontFamily: 'var(--font-mono)',
-                        marginBottom: '8px',
-                        letterSpacing: '0.12em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
+                  <div key={i} style={{
+                    background: 'var(--bg-deep)',
+                    boxShadow: 'var(--neo-inset)',
+                    border: '1px solid var(--border)',
+                    borderLeft: '2px solid var(--cyan-border)',
+                    borderRadius: 'var(--radius)',
+                    padding: '14px 16px',
+                  }}>
+                    <div style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '9px',
+                      fontWeight: '700',
+                      color: 'var(--cyan)',
+                      letterSpacing: '0.12em',
+                      textTransform: 'uppercase',
+                      marginBottom: '8px',
+                    }}>
                       Scene {String(i + 1).padStart(2, '0')} · {scene.start}s — {scene.end}s
                     </div>
-                    <div
-                      style={{
-                        color: 'var(--dark)',
-                        fontSize: '14px',
-                        lineHeight: 1.6,
-                        marginBottom: scene.lyrics ? '10px' : 0,
-                        fontFamily: 'var(--font-body)',
-                        letterSpacing: '-0.005em',
-                      }}
-                    >
+                    <p style={{
+                      fontFamily: 'var(--font-body)',
+                      fontSize: '13px',
+                      color: 'var(--text)',
+                      lineHeight: 1.6,
+                      marginBottom: scene.lyrics ? '10px' : 0,
+                    }}>
                       {scene.visual}
-                    </div>
+                    </p>
                     {scene.lyrics && (
-                      <div
-                        style={{
-                          fontSize: '13px',
-                          color: 'var(--text-soft)',
-                          fontFamily: 'var(--font-display)',
-                          fontStyle: 'italic',
-                          fontWeight: 400,
-                          lineHeight: 1.55,
-                          letterSpacing: '-0.01em',
-                          paddingLeft: '14px',
-                          borderLeft: '1px solid rgba(124,58,237,0.22)',
-                        }}
-                      >
-                        “{scene.lyrics}”
-                      </div>
+                      <p style={{
+                        fontFamily: 'var(--font-body)',
+                        fontSize: '12px',
+                        color: 'var(--text-muted)',
+                        lineHeight: 1.55,
+                        paddingLeft: '12px',
+                        borderLeft: '1px solid var(--border-mid)',
+                        fontStyle: 'italic',
+                      }}>
+                        &ldquo;{scene.lyrics}&rdquo;
+                      </p>
                     )}
                   </div>
                 ))}
               </div>
 
+              {/* Lyrics timeline */}
               {lyricsTimeline.length > 0 && (
-                <div className="subtle-panel brain-panel-scroll" style={{ padding: '16px', maxHeight: '100%' }}>
-                  <div className="panel-label" style={{ color: 'var(--orange)', marginBottom: '14px' }}>
-                    ── Lyrics Timeline
+                <div style={{
+                  background: 'var(--bg-deep)',
+                  boxShadow: 'var(--neo-inset)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius)',
+                  padding: '14px',
+                  maxHeight: '420px',
+                  overflowY: 'auto',
+                }}>
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '10px',
+                    fontWeight: '700',
+                    letterSpacing: '0.14em',
+                    textTransform: 'uppercase',
+                    color: 'var(--text-muted)',
+                    marginBottom: '12px',
+                  }}>
+                    ▪ Lyrics Timeline
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {lyricsTimeline.map((line, i) => (
-                      <div key={i} style={{ paddingBottom: '12px', borderBottom: '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      <div key={i} style={{ paddingBottom: '10px', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                           {(line.words || []).map((w, j) => (
-                            <div
-                              key={j}
-                              style={{
-                                background: 'rgba(124,58,237,0.04)',
-                                padding: '5px 9px',
-                                borderRadius: '8px',
-                                border: '1px solid rgba(124,58,237,0.12)',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                              }}
-                            >
-                              <span
-                                style={{
-                                  color: 'var(--dark)',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  fontFamily: 'var(--font-body)',
-                                  letterSpacing: '-0.005em',
-                                }}
-                              >
+                            <div key={j} style={{
+                              background: 'var(--surface)',
+                              boxShadow: 'var(--neo-flat)',
+                              border: '1px solid var(--border)',
+                              padding: '4px 7px',
+                              borderRadius: '6px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              gap: '2px',
+                            }}>
+                              <span style={{ fontFamily: 'var(--font-body)', fontSize: '11px', fontWeight: '600', color: 'var(--text)' }}>
                                 {w.word}
                               </span>
-                              <span
-                                style={{
-                                  color: 'var(--text-muted)',
-                                  fontSize: '8.5px',
-                                  fontFamily: 'var(--font-mono)',
-                                  letterSpacing: '0.04em',
-                                }}
-                              >
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '8px', color: 'var(--text-muted)' }}>
                                 {w.start}s
                               </span>
                             </div>
@@ -276,97 +267,113 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
             </div>
           </section>
 
-          <aside className="brain-side-panel premium-panel">
-            <div className="subtle-panel" style={{ padding: '18px' }}>
-              <div className="panel-label" style={{ color: 'var(--orange)', marginBottom: '14px' }}>
-                ── Cast · {String(characters.length).padStart(2, '0')}
+          {/* Sidebar — starts 40px lower for asymmetry */}
+          <aside style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            paddingTop: '40px',
+          }}>
+            {/* Cast */}
+            <div style={{
+              background: 'var(--surface-2)',
+              boxShadow: 'var(--neo-flat)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '18px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+                <Users size={12} color="var(--cyan)" />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                  Cast · {String(characters.length).padStart(2, '0')}
+                </span>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {characters.map((char, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: '7px 13px',
-                      background: 'rgba(124,58,237,0.06)',
-                      borderRadius: '999px',
-                      border: '1px solid rgba(124,58,237,0.18)',
-                      fontSize: '13px',
-                      color: 'var(--dark)',
-                      fontFamily: 'var(--font-display)',
-                      fontStyle: 'italic',
-                      fontWeight: 500,
-                      letterSpacing: '-0.015em',
-                    }}
-                  >
+                  <div key={i} style={{
+                    padding: '8px 12px',
+                    background: 'var(--bg-deep)',
+                    boxShadow: 'var(--neo-inset)',
+                    borderRadius: 'var(--radius)',
+                    fontFamily: 'var(--font-display)',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: 'var(--text)',
+                    letterSpacing: '-0.01em',
+                  }}>
                     {char.name}
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="subtle-panel" style={{ padding: '18px' }}>
-              <div className="panel-label" style={{ marginBottom: '14px' }}>
-                ── Locations · {String(locations.length).padStart(2, '0')}
+            {/* Locations */}
+            <div style={{
+              background: 'var(--surface-2)',
+              boxShadow: 'var(--neo-flat)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '18px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+                <MapPin size={12} color="var(--cyan)" />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                  Locations · {String(locations.length).padStart(2, '0')}
+                </span>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {locations.map((loc, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: '7px 13px',
-                      background: 'rgba(124,58,237,0.06)',
-                      borderRadius: '999px',
-                      border: '1px solid rgba(124,58,237,0.18)',
-                      fontSize: '13px',
-                      color: 'var(--dark)',
-                      fontFamily: 'var(--font-display)',
-                      fontStyle: 'italic',
-                      fontWeight: 500,
-                      letterSpacing: '-0.015em',
-                    }}
-                  >
+                  <div key={i} style={{
+                    padding: '8px 12px',
+                    background: 'var(--bg-deep)',
+                    boxShadow: 'var(--neo-inset)',
+                    borderRadius: 'var(--radius)',
+                    fontFamily: 'var(--font-display)',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: 'var(--text)',
+                    letterSpacing: '-0.01em',
+                  }}>
                     {loc.name}
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="subtle-panel" style={{ padding: '20px', marginTop: 'auto' }}>
-              <div className="panel-label" style={{ color: 'var(--text-muted)', marginBottom: '10px' }}>
-                ── Shot List
+            {/* Shot count */}
+            <div style={{
+              background: 'var(--surface-2)',
+              boxShadow: 'var(--neo-flat)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '18px',
+              marginTop: 'auto',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                <Film size={12} color="var(--cyan)" />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                  Shot List
+                </span>
               </div>
-              <div
-                style={{
-                  fontSize: '40px',
-                  color: 'var(--dark)',
-                  fontWeight: 500,
-                  fontFamily: 'var(--font-display)',
-                  fontStyle: 'italic',
-                  letterSpacing: '-0.04em',
-                  lineHeight: 1,
-                  background: 'linear-gradient(135deg, var(--orange), var(--teal))',
-                  WebkitBackgroundClip: 'text',
-                  backgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '44px',
+                fontWeight: '700',
+                color: 'var(--cyan)',
+                letterSpacing: '-0.04em',
+                lineHeight: 1,
+              }}>
                 {reviewPlan.shot_list?.length || 0}
               </div>
-              <div
-                style={{
-                  fontSize: '11px',
-                  color: 'var(--text-muted)',
-                  marginTop: '4px',
-                  fontFamily: 'var(--font-mono)',
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Shots Generated
-              </div>
-              <div style={{ fontSize: '12.5px', color: 'var(--text-soft)', marginTop: '10px', lineHeight: 1.6 }}>
-                You can review and edit these in the Shot List step.
-              </div>
+              <p style={{
+                fontFamily: 'var(--font-body)',
+                fontSize: '12px',
+                color: 'var(--text-muted)',
+                lineHeight: 1.55,
+                marginTop: '8px',
+              }}>
+                Review and edit these in the Shot List step.
+              </p>
             </div>
           </aside>
         </div>
@@ -374,7 +381,7 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
     );
   }
 
-  /* ── Input View ── */
+  /* ── Input mode ── */
   return (
     <div className="screen active" id="s3">
       <div className="screen-header-modern">
@@ -392,88 +399,148 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
         </div>
       </div>
 
-      <div className="brain-input-layout">
-        <section className="brain-concept-panel premium-panel">
-          <div className="panel-label">── Your Concept</div>
-          <p
-            style={{
-              fontSize: '13.5px',
-              color: 'var(--text-soft)',
+      {/* Asymmetric 60/40 */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '60fr 40fr',
+        gap: '20px',
+        padding: '0 24px 24px',
+        flex: 1,
+        minHeight: 0,
+      }}>
+        {/* Concept panel */}
+        <section style={{
+          background: 'var(--surface-2)',
+          boxShadow: 'var(--neo-raised)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-xl)',
+          padding: '26px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+        }}>
+          <div>
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10px',
+              fontWeight: '700',
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'var(--text-muted)',
+              marginBottom: '8px',
+            }}>
+              ▪ Your Concept
+            </div>
+            <p style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: '13px',
+              color: 'var(--text-muted)',
               lineHeight: 1.65,
-              margin: '10px 0 18px',
-              maxWidth: '560px',
-            }}
-          >
-            Describe the mood, story, or visual style you&apos;re imagining for this music video.
-            One paragraph is plenty.
-          </p>
+            }}>
+              Describe the mood, story, or visual style you&apos;re imagining. One paragraph is plenty.
+            </p>
+          </div>
+
           <textarea
-            className="brain-textarea"
             placeholder="e.g. A lonely night-drive performance that becomes a neon city chase, with reflections, rain, and a final dawn rooftop scene."
             value={idea}
             onChange={(e) => setIdea(e.target.value)}
             disabled={isAnalyzing}
+            style={{
+              flex: 1,
+              width: '100%',
+              resize: 'none',
+              background: 'var(--bg-deep)',
+              boxShadow: 'var(--neo-inset)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              padding: '16px',
+              fontFamily: 'var(--font-body)',
+              fontSize: '14px',
+              color: 'var(--text)',
+              lineHeight: 1.7,
+              outline: 'none',
+              transition: 'border-color 160ms ease-out',
+              minHeight: '160px',
+            }}
+            onFocus={e => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+            onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
           />
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '18px' }}>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button
               className="btn-orange"
               onClick={() => handleBrainDump()}
               disabled={isAnalyzing || !idea.trim()}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
             >
-              <Sparkles size={15} />
+              {isAnalyzing
+                ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                : <Sparkles size={14} />}
               {isAnalyzing ? 'Generating…' : 'Generate creative plan'}
             </button>
-            {transcript ? (
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={handleUseTranscript}
-                disabled={isAnalyzing}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-              >
-                <Mic2 size={15} />
-                Use Lyrics
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={handleUseTranscript}
-                style={{ opacity: 0.7 }}
-              >
-                Add song insights first?
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={handleUseTranscript}
+              disabled={isAnalyzing}
+            >
+              <Mic2 size={13} />
+              {transcript ? 'Use lyrics' : 'Add song insights first?'}
+            </button>
           </div>
 
           {isAnalyzing && <ProgressBar steps={SCRIPT_STEPS} currentStep={progressStep} />}
         </section>
 
-        <aside className="brain-side-panel premium-panel">
-          <div className="subtle-panel" style={{ padding: '20px' }}>
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, rgba(124,58,237,0.14), rgba(124,58,237,0.04))',
-                border: '1px solid rgba(124,58,237,0.24)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--teal)',
-                marginBottom: '14px',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
-              }}
-            >
-              <FileText size={18} />
+        {/* Sidebar — offset lower */}
+        <aside style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px',
+          paddingTop: '40px',
+        }}>
+          {/* Skip options */}
+          <div style={{
+            background: 'var(--surface-2)',
+            boxShadow: 'var(--neo-flat)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '20px',
+          }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              background: 'var(--surface)',
+              boxShadow: 'var(--neo-raised)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--cyan)',
+              marginBottom: '12px',
+            }}>
+              <FileText size={16} />
             </div>
-            <div className="landing-card-title">Skip the prompt</div>
-            <p className="landing-card-copy">
-              Already have structure? Move directly into characters or the production shot list.
+            <div style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '15px',
+              fontWeight: '700',
+              color: 'var(--text)',
+              letterSpacing: '-0.01em',
+              marginBottom: '6px',
+            }}>
+              Skip the prompt
+            </div>
+            <p style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: '12px',
+              color: 'var(--text-muted)',
+              lineHeight: 1.6,
+              marginBottom: '16px',
+            }}>
+              Already have structure? Move directly into characters or the shot list.
             </p>
-            <div style={{ display: 'grid', gap: '8px', marginTop: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <button className="btn-outline" onClick={() => onNavigate(4)} style={{ width: '100%' }}>
                 Cast →
               </button>
@@ -483,45 +550,55 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
             </div>
           </div>
 
-          <div className="subtle-panel" style={{ padding: '20px', marginTop: 'auto' }}>
-            <div className="panel-label" style={{ color: transcript ? 'var(--teal)' : 'var(--text-muted)' }}>
-              ── Lyrics &amp; Timing
+          {/* Lyrics info */}
+          <div style={{
+            background: 'var(--surface-2)',
+            boxShadow: 'var(--neo-flat)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '20px',
+            marginTop: 'auto',
+          }}>
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10px',
+              fontWeight: '700',
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: transcript ? 'var(--cyan)' : 'var(--text-muted)',
+              marginBottom: '10px',
+            }}>
+              ▪ Lyrics & Timing
             </div>
-            <div
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontStyle: 'italic',
-                color: 'var(--dark)',
-                fontWeight: 500,
-                fontSize: '32px',
-                marginTop: '10px',
-                letterSpacing: '-0.03em',
-                lineHeight: 1,
-                background: transcript
-                  ? 'linear-gradient(135deg, var(--orange), var(--teal))'
-                  : 'none',
-                WebkitBackgroundClip: transcript ? 'text' : 'border-box',
-                backgroundClip: transcript ? 'text' : 'border-box',
-                WebkitTextFillColor: transcript ? 'transparent' : 'currentcolor',
-              }}
-            >
+            <div style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '40px',
+              fontWeight: '700',
+              color: transcript ? 'var(--cyan)' : 'var(--text-muted)',
+              letterSpacing: '-0.04em',
+              lineHeight: 1,
+              marginBottom: '4px',
+            }}>
               {transcript?.length || 0}
-              <span
-                style={{
-                  fontSize: '12px',
-                  fontFamily: 'var(--font-mono)',
-                  fontStyle: 'normal',
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
-                  color: 'var(--text-muted)',
-                  WebkitTextFillColor: 'var(--text-muted)',
-                  marginLeft: '10px',
-                }}
-              >
+              <span style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '11px',
+                fontWeight: '700',
+                color: 'var(--text-muted)',
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                marginLeft: '8px',
+              }}>
                 lines
               </span>
             </div>
-            <p style={{ color: 'var(--text-soft)', fontSize: '12.5px', lineHeight: 1.6, marginTop: '12px' }}>
+            <p style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: '12px',
+              color: 'var(--text-muted)',
+              lineHeight: 1.6,
+              marginTop: '10px',
+            }}>
               Song timing gives the story stronger beat and lyric awareness.
             </p>
           </div>

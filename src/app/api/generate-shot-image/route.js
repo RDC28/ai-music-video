@@ -263,6 +263,8 @@ function collectWardrobeItems(wardrobe = [], shotCharacters = [], shotLocations 
   if (!Array.isArray(wardrobe)) return [];
   const wantedCharacters = wantedSet(shotCharacters);
   const wantedLocations = wantedSet(shotLocations);
+  // If a shot has no named main characters, do not attach wardrobe references.
+  if (!wantedCharacters.size) return [];
 
   return wardrobe.flatMap((location, locationIndex) => {
     const locationName = location?.location_name || location?.name || `Location ${locationIndex + 1}`;
@@ -313,6 +315,121 @@ function dedupeReferenceImages(references = []) {
     .slice(0, MAX_REFERENCE_IMAGES);
 }
 
+function collectFocusedReferenceImages(matchedCharacters, matchedLocations, wardrobe = [], shotCharacters = [], shotLocations = []) {
+  const references = [];
+
+  const characterByName = new Map(
+    (Array.isArray(matchedCharacters) ? matchedCharacters : [])
+      .map(character => [normalizeLookupName(character?.name), character])
+      .filter(([name]) => Boolean(name))
+  );
+  const orderedCharacter = (Array.isArray(shotCharacters) ? shotCharacters : [])
+    .map(name => characterByName.get(normalizeLookupName(name)))
+    .find(Boolean);
+  const primaryCharacter = orderedCharacter || (Array.isArray(matchedCharacters) ? matchedCharacters[0] : null);
+  const hasNamedMainCharacter = Boolean(primaryCharacter);
+
+  // IMAGE 1: Character anchor (identity lock). If missing, fall back to best face panel.
+  if (primaryCharacter) {
+    if (primaryCharacter.anchor_image_url && /^https?:\/\//i.test(primaryCharacter.anchor_image_url)) {
+      references.push({
+        kind: "character",
+        name: primaryCharacter.name,
+        label: "Character anchor — identity lock",
+        url: primaryCharacter.anchor_image_url,
+        score: 0,
+      });
+    } else {
+      const images = Array.isArray(primaryCharacter?.images) ? primaryCharacter.images : [];
+      const facePriority = [
+        "face close-up front",
+        "face close-up",
+        "close-up",
+        "face front",
+        "portrait front",
+        "mid portrait",
+        "full body front",
+        "front",
+      ];
+      const bestFace = images
+        .map((image, index) => {
+          const ref = normalizeReferenceImage(image, index);
+          if (!ref) return null;
+          const lowerLabel = ref.label.toLowerCase();
+          const score = facePriority.findIndex((term) => lowerLabel.includes(term));
+          return {
+            ...ref,
+            kind: "character",
+            name: primaryCharacter.name,
+            score: score === -1 ? 99 : score,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.score - b.score)[0];
+
+      if (bestFace) references.push(bestFace);
+    }
+  }
+
+  // IMAGE 2: Wardrobe reference (single best outfit image).
+  const wardrobeItems = hasNamedMainCharacter
+    ? collectWardrobeItems(wardrobe, shotCharacters, shotLocations)
+    : [];
+  const bestWardrobe = wardrobeItems.find((item) => (
+    item.image_url &&
+    /^https?:\/\//i.test(item.image_url) &&
+    normalizeLookupName(item.character_name) === normalizeLookupName(primaryCharacter?.name)
+  )) || wardrobeItems.find((item) => item.image_url && /^https?:\/\//i.test(item.image_url));
+  if (bestWardrobe) {
+    references.push({
+      kind: "wardrobe",
+      name: `${bestWardrobe.character_name} @ ${bestWardrobe.location_name}`,
+      label: compact(bestWardrobe.outfit_name || "Outfit reference", 80),
+      url: bestWardrobe.image_url,
+      score: 1,
+    });
+  }
+
+  // IMAGE 3: Location reference (single best establishing/wide frame).
+  const primaryLocation = Array.isArray(matchedLocations) ? matchedLocations[0] : null;
+  if (primaryLocation) {
+    const images = Array.isArray(primaryLocation?.images) ? primaryLocation.images : [];
+    const locationPriority = [
+      "establishing",
+      "wide",
+      "wide shot",
+      "interior wide",
+      "exterior",
+      "ground level",
+      "atmosphere",
+    ];
+    const bestLocation = images
+      .map((image, index) => {
+        const ref = normalizeReferenceImage(image, index);
+        if (!ref) return null;
+        const lowerLabel = ref.label.toLowerCase();
+        const score = locationPriority.findIndex((term) => lowerLabel.includes(term));
+        return {
+          ...ref,
+          kind: "location",
+          name: primaryLocation.name,
+          score: score === -1 ? 99 : score,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.score - b.score)[0];
+    if (bestLocation) references.push(bestLocation);
+  }
+
+  const seen = new Set();
+  return references.filter((reference) => {
+    if (seen.has(reference.url)) return false;
+    seen.add(reference.url);
+    return true;
+  }).slice(0, 3);
+}
+
+// LEGACY - replaced by collectFocusedReferenceImages
 function collectShotReferenceImages(matchedCharacters, matchedLocations, wardrobe = [], shotCharacters = [], shotLocations = []) {
   // Wardrobe refs are reserved first so they are never crowded out by character/location refs
   const wardrobeRefs = getWardrobeReferenceImages(wardrobe, shotCharacters, shotLocations);
@@ -816,20 +933,187 @@ async function generateBestCandidate({ prompt, modelName, shotIndex, referenceIm
 
 const namesFrom = (items = []) => {
   if (!Array.isArray(items)) return [];
-  return items.map(item => item?.name).filter(Boolean);
+  return items
+    .map(item => compact(item?.name, 120))
+    .filter(Boolean);
 };
+
+function normalizeProvidedNames(values = []) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((value) => {
+      if (typeof value === "string") return compact(value, 120);
+      if (value && typeof value === "object") {
+        return compact(value.name || value.character_name || value.location_name, 120);
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
 
 const selectedByName = (items = [], names = []) => {
   if (!Array.isArray(items) || !Array.isArray(names)) return [];
-  const wanted = new Set(names.map(name => String(name).toLowerCase()));
-  return items.filter(item => wanted.has(String(item?.name || '').toLowerCase()));
+  const wanted = new Set(names.map(normalizeLookupName).filter(Boolean));
+  return items.filter(item => wanted.has(normalizeLookupName(item?.name)));
 };
+
+function inferShotCharactersFromText(shot, characters = []) {
+  const text = [
+    shot?.p,
+    shot?.image_prompt,
+    shot?.prompt,
+    shot?.source_scene,
+    shot?.concept,
+    shot?.lyrics,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (Array.isArray(characters) ? characters : [])
+    .filter(character => {
+      const name = normalizeLookupName(character?.name);
+      return name && text.includes(name);
+    })
+    .map(character => character.name);
+}
+
+function isExplicitEnsembleShot(shot) {
+  const text = [
+    shot?.p,
+    shot?.image_prompt,
+    shot?.prompt,
+    shot?.source_scene,
+    shot?.concept,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (shot?.ensemble === true || shot?.group_shot === true) return true;
+
+  return [
+    "all characters",
+    "entire group",
+    "full ensemble",
+    "everyone together",
+    "the whole group",
+    "all of them together",
+  ].some(phrase => text.includes(phrase));
+}
+
+function isLikelyEnvironmentOnlyShot(shot, inferredCharacters = []) {
+  if (Array.isArray(inferredCharacters) && inferredCharacters.length > 0) return false;
+
+  const text = [
+    shot?.n,
+    shot?.p,
+    shot?.image_prompt,
+    shot?.prompt,
+    shot?.source_scene,
+    shot?.concept,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const explicitNoLeadCues = [
+    "no character",
+    "no characters",
+    "without character",
+    "without characters",
+    "without main character",
+    "no lead character",
+    "empty frame",
+    "location only",
+    "set only",
+    "b-roll",
+  ];
+  if (explicitNoLeadCues.some(phrase => text.includes(phrase))) return true;
+
+  const environmentCues = [
+    "establishing shot",
+    "establishing",
+    "atmosphere shot",
+    "environment shot",
+    "wide environment",
+    "street atmosphere",
+    "location atmosphere",
+    "set atmosphere",
+  ];
+
+  return environmentCues.some(phrase => text.includes(phrase));
+}
+
+function extractBackgroundGroups(shot) {
+  const explicit = []
+    .concat(shot?.background_group ?? [])
+    .concat(shot?.background_groups ?? [])
+    .concat(shot?.extras ?? [])
+    .concat(shot?.supporting_cast ?? [])
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .filter(Boolean)
+    .map(value => String(value).trim());
+
+  const text = [
+    shot?.p,
+    shot?.image_prompt,
+    shot?.prompt,
+    shot?.source_scene,
+    shot?.concept,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const inferred = [];
+  const knownGroups = [
+    "friends",
+    "gang",
+    "crew",
+    "classmates",
+    "party crowd",
+    "dancers",
+    "villagers",
+    "bar patrons",
+    "club crowd",
+    "wedding guests",
+    "students",
+    "office staff",
+  ];
+
+  for (const group of knownGroups) {
+    if (text.includes(group)) inferred.push(group);
+  }
+
+  const seen = new Set();
+  return [...explicit, ...inferred].filter(group => {
+    const normalized = normalizeLookupName(group);
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
 
 function resolveShotAssets(shot, projectState) {
   const characters = projectState?.characters || [];
   const locations = projectState?.locations || [];
-  const shotCharacters = shot.characters?.length ? shot.characters : namesFrom(characters);
-  const shotLocations = shot.locations?.length ? shot.locations : namesFrom(locations);
+  const explicitShotCharacters = normalizeProvidedNames(shot?.characters);
+  const inferredCharacters = inferShotCharactersFromText(shot, characters);
+  let shotCharacters = [];
+
+  if (explicitShotCharacters.length > 0) {
+    shotCharacters = (!isExplicitEnsembleShot(shot) && isLikelyEnvironmentOnlyShot(shot, inferredCharacters))
+      ? inferredCharacters
+      : explicitShotCharacters;
+  } else if (isExplicitEnsembleShot(shot)) {
+    shotCharacters = namesFrom(characters);
+  } else {
+    shotCharacters = inferredCharacters;
+  }
+
+  const explicitShotLocations = normalizeProvidedNames(shot?.locations);
+  const shotLocations = explicitShotLocations.length ? explicitShotLocations : namesFrom(locations);
   const matchedCharacters = selectedByName(characters, shotCharacters);
   const matchedLocations = selectedByName(locations, shotLocations);
 
@@ -1037,6 +1321,49 @@ function buildLocationImageCrossRef(referenceImages, shotLocations) {
   return lines.join("\n");
 }
 
+function buildBackgroundGroupContext(shot, projectState) {
+  const activeGroups = extractBackgroundGroups(shot);
+  if (!activeGroups.length) return "No recurring background group required.";
+
+  const memory = projectState?.background_groups || {};
+  const memoryEntries = Object.entries(memory).map(([key, value]) => ({
+    key,
+    normalized: normalizeLookupName(key),
+    profile: value,
+  }));
+
+  const lines = activeGroups.map(group => {
+    const key = String(group).trim();
+    const normalized = normalizeLookupName(key);
+    const directProfile = memory[key] || memory[key.toLowerCase()];
+    const entryMatch = memoryEntries.find(entry => entry.normalized === normalized)?.profile;
+    const profile = directProfile || entryMatch || null;
+
+    if (!profile || typeof profile !== "object") {
+      return `- ${key}: recurring social group, keep casting and styling broadly consistent across scenes, but visually secondary to the leads.`;
+    }
+
+    return `- ${key}: ${profile.count_range || "small group"}, ${profile.gender_mix || "mixed gender"}, ${profile.age_range || "young adults"}, ${profile.style_summary || "cohesive everyday styling"}, ${profile.ethnicity_note || "consistent social-group appearance"}, ${profile.continuity_note || "recurs across scenes as the same social circle"}`;
+  });
+
+  return [
+    "Use background extras only if the shot naturally requires them.",
+    "",
+    "Active recurring background groups in this shot:",
+    ...lines,
+    "",
+    "Rules for background groups:",
+    "1. Background groups are NOT the main subject unless explicitly stated.",
+    "2. Keep them visually subordinate to named main characters.",
+    "3. Maintain approximate count, age vibe, styling, and social identity across shots.",
+    "4. Do NOT make background extras look like the named lead characters.",
+    "5. Do NOT copy faces from location references.",
+    "6. If a recurring group appears again, they should feel like the same social circle, but not require exact face-perfect identity lock.",
+    "7. Use natural variation within the same group identity, not random unrelated people.",
+    "8. If no active background group is specified, keep extras minimal or omit them.",
+  ].join("\n");
+}
+
 function buildPrompt({ shot, projectState, promptOverride, shotAssets = null, referenceImages = [] }) {
   const {
     shotCharacters,
@@ -1066,13 +1393,31 @@ function buildPrompt({ shot, projectState, promptOverride, shotAssets = null, re
     5600,
     'Photorealistic still frame matching the shot title and project context.'
   );
+  const hasAnchor = matchedCharacters.some((character) => (
+    character?.anchor_image_url && /^https?:\/\//i.test(character.anchor_image_url)
+  ));
+  const openingInstruction = hasAnchor
+    ? `You are editing and adapting a character anchor frame for a specific music video shot.
+You have 3-4 reference images attached (in order):
+- Image 1 is the CHARACTER ANCHOR: the definitive identity lock for this character.
+  PRESERVE EXACTLY: face shape, skin tone, eye colour, hair colour/style, nose, lips,
+  body proportions, and outfit details. These must be IDENTICAL to Image 1 in the output.
+- Image 2 (if present) is the WARDROBE reference: copy exact clothing details.
+- Image 3 (if present) is the LOCATION reference: use for environment, architecture,
+  atmosphere, and background only. NEVER copy faces from this image.
+- Image 4 (if present) is the PREVIOUS SHOT continuity reference: match colour grade
+  and lighting ONLY.
+
+You are NOT generating from scratch. You are placing this specific character (from
+Image 1) into the shot described below, while preserving their identity completely.`
+    : `Generate one raw 16:9 source frame for a later music video edit.
+This is not a poster, title card, collage, transition frame, or finished music-video effect.
+The image must be native widescreen 16:9 with no vertical, square, letterboxed, pillarboxed, split-screen, collage, or bordered framing.`;
   const safeCamera = rawShotText(shot.camera, 300, 'plain 16:9 source-footage framing');
   const safeMovement = rawShotText(shot.movement, 300, 'clear simple motion direction');
 
   return `
-Generate one raw 16:9 source frame for a later music video edit.
-This is not a poster, title card, collage, transition frame, or finished music-video effect.
-The image must be native widescreen 16:9 with no vertical, square, letterboxed, pillarboxed, split-screen, collage, or bordered framing.
+${openingInstruction}
 
 SHOT TITLE:
 ${shot.n}
@@ -1106,6 +1451,14 @@ Use only these characters when characters are visible:
 ${anonymousCharacterList}
 ${characterContext || 'No character visual reference text provided.'}
 ${referenceImages.length ? buildCharacterImageCrossRef(referenceImages, shotCharacters, charLabelMap) : ''}
+Only the named shot characters listed in this shot may be rendered as identifiable foreground or midground characters.
+Characters not listed for this shot must NOT appear as recognisable people.
+If the scene includes extras, they must be generic or belong only to the active background groups for this shot.
+Never import characters from other scenes just because reference images exist elsewhere in the project.
+If zero named characters are assigned to this shot, do not invent a lead character.
+
+BACKGROUND GROUP CONTINUITY:
+${buildBackgroundGroupContext(shot, projectState)}
 
 LOCATION CONTINUITY:
 Use only these named locations/sets:
@@ -1139,6 +1492,9 @@ Still-frame rules:
 10. Do not frame a close-up mouth singing a lyric; use performance posture, gesture, profile, silhouette, dance, reaction, or atmosphere instead.
 11. Keep the tone grounded, natural, and serious unless the user explicitly requested a different tone.
 12. Ignore video-only instructions such as clip duration, dialogue, sound design, bracketed action timing, camera motion over time, or "the video should last". Freeze the single most cinematic moment.
+13. Only render named main characters that are explicitly assigned to this shot. Do not include any other project characters unless this is an explicit ensemble shot.
+14. If background extras are needed, use only the declared recurring background groups for this shot or generic non-hero extras.
+15. Never turn background extras into lookalikes of the lead characters.
 `;
 }
 
@@ -1162,8 +1518,27 @@ export async function POST(req) {
     const selectedImagePrompt = selectImagePrompt(normalizedShot, promptOverride);
     const selectedModel = resolveImageModelOption(model || process.env.GOOGLE_IMAGE_MODEL || DEFAULT_IMAGE_MODEL);
     const shotAssets = resolveShotAssets(normalizedShot, projectState);
-    const referenceCandidates = collectShotReferenceImages(
-      shotAssets.matchedCharacters,
+    const safeMatchedCharacters = shotAssets.matchedCharacters.filter(character =>
+      shotAssets.shotCharacters.some(
+        shotName => normalizeLookupName(shotName) === normalizeLookupName(character.name)
+      )
+    );
+    const safeShotAssets = {
+      ...shotAssets,
+      matchedCharacters: safeMatchedCharacters,
+    };
+
+    console.log("Shot character resolution", {
+      shotIndex,
+      shotTitle: normalizedShot?.n,
+      explicitShotCharacters: normalizedShot?.characters || [],
+      resolvedShotCharacters: shotAssets.shotCharacters,
+      matchedCharacters: shotAssets.matchedCharacters.map(c => c.name),
+      backgroundGroups: extractBackgroundGroups(normalizedShot),
+    });
+
+    const referenceCandidates = collectFocusedReferenceImages(
+      safeMatchedCharacters,
       shotAssets.matchedLocations,
       projectState?.wardrobe,
       shotAssets.shotCharacters,
@@ -1190,13 +1565,80 @@ export async function POST(req) {
       shot: normalizedShot,
       projectState,
       promptOverride,
-      shotAssets,
+      shotAssets: safeShotAssets,
       referenceImages,
     });
-    const imageGeneration = selectedModel.provider === IMAGE_MODEL_PROVIDER_BYTEDANCE
+    let imageGeneration = selectedModel.provider === IMAGE_MODEL_PROVIDER_BYTEDANCE
       ? await generateByteDanceImage({ prompt, modelName: selectedModel.value, shotIndex })
       : await generateBestCandidate({ prompt, modelName: selectedModel.value, shotIndex, referenceImages });
     let generatedImage = imageGeneration.result;
+
+    if (selectedModel.provider !== IMAGE_MODEL_PROVIDER_BYTEDANCE) {
+      const hasAnchor = safeMatchedCharacters.some((character) => (
+        character?.anchor_image_url && /^https?:\/\//i.test(character.anchor_image_url)
+      ));
+      const charWardrobeRefs = referenceImages.filter((reference) => (
+        reference.kind === "character" || reference.kind === "wardrobe"
+      ));
+
+      if (hasAnchor && charWardrobeRefs.length) {
+        const qcResult = await qualityCheckImage(
+          generatedImage.imageBase64,
+          generatedImage.mimeType,
+          charWardrobeRefs
+        );
+
+        if (!qcResult.pass) {
+          const anchorRef = referenceImages.find((reference) => reference.kind === "character");
+          if (anchorRef) {
+            try {
+              const repairPrompt = `You are correcting a generated image that failed character identity QC.
+
+The FIRST attached image is the approved character anchor — the correct face, skin tone,
+hair, and outfit for this character.
+The SECOND attached image is the generated shot that needs correction.
+
+FIX ONLY: face shape, skin tone, hair colour/style, eye colour, and outfit details
+to exactly match Image 1 (the anchor).
+PRESERVE: all framing, composition, background, environment, lighting, colour grade,
+and camera angle from Image 2 (the generated shot).
+
+Output the corrected frame as a native 16:9 photorealistic image.
+Do not change anything except what is needed to fix character identity.`;
+
+              const repairGeneration = await generateGoogleImage({
+                prompt: repairPrompt,
+                modelName: selectedModel.value,
+                shotIndex,
+                referenceImages: [
+                  anchorRef,
+                  {
+                    kind: "generated",
+                    name: "Failed shot",
+                    label: "Generated shot to repair",
+                    mimeType: generatedImage.mimeType || "image/png",
+                    imageBase64: generatedImage.imageBase64,
+                  },
+                ],
+              });
+
+              const repairQcResult = await qualityCheckImage(
+                repairGeneration.result.imageBase64,
+                repairGeneration.result.mimeType,
+                charWardrobeRefs
+              );
+
+              if (repairQcResult.pass) {
+                imageGeneration = repairGeneration;
+                generatedImage = repairGeneration.result;
+              }
+            } catch (repairError) {
+              console.warn(`Shot ${shotIndex + 1} repair pass failed:`, serializeError(repairError));
+            }
+          }
+        }
+      }
+    }
 
     const extension = generatedImage.mimeType.includes("jpeg") || generatedImage.mimeType.includes("jpg") ? "jpg" : "png";
     const storagePath = `${projectId}/images/shot-${String(shotIndex + 1).padStart(3, "0")}-${Date.now()}.${extension}`;
@@ -1236,6 +1678,10 @@ export async function POST(req) {
         image_path: storagePath,
         image_prompt: compact(selectedImagePrompt, 5600),
         image_model: imageGeneration.model,
+        resolved_characters: safeShotAssets.shotCharacters,
+        resolved_locations: safeShotAssets.shotLocations,
+        matched_character_names: safeMatchedCharacters.map((character) => character.name),
+        background_groups: extractBackgroundGroups(normalizedShot),
         image_reference_count: referenceImages.length,
         image_reference_names: referenceImages.map(reference => `${reference.kind}:${reference.name}:${reference.label}`),
         image_generated_at: new Date().toISOString(),

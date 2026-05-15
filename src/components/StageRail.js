@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Home, Music2, BookOpen, Users, MapPin, Film,
   Layers, Image, Video, Scissors, Shirt,
-  CheckCircle2, ChevronLeft, ChevronRight,
+  Check, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
 const STEPS = [
@@ -23,15 +23,14 @@ const STEPS = [
 ];
 
 export default function StageRail({ activeScreen, onNavigate, userName, projectName }) {
-  const activeStep = useMemo(() => STEPS.find(s => s.id === activeScreen) || STEPS[0], [activeScreen]);
+  const activeStep  = useMemo(() => STEPS.find(s => s.id === activeScreen) || STEPS[0], [activeScreen]);
   const canGoBack    = activeScreen > 1;
   const canGoForward = activeScreen < STEPS.length;
 
   return (
     <>
-      {/* ── Left rail (grid col 1, all rows) ── */}
+      {/* ── Left rail ── */}
       <nav className="stage-rail" aria-label="Production steps">
-        {/* Logo + project name */}
         <div className="stage-rail-logo">
           <div className="stage-rail-logo-mark" aria-hidden="true">A</div>
           <span className="stage-rail-project" title={projectName}>
@@ -39,35 +38,39 @@ export default function StageRail({ activeScreen, onNavigate, userName, projectN
           </span>
         </div>
 
-        {/* Step list */}
         <div className="stage-rail-steps">
           {STEPS.map((step) => {
             const isActive    = activeScreen === step.id;
             const isCompleted = step.id < activeScreen;
-            const Icon = step.icon;
+            const Icon        = step.icon;
 
             return (
               <button
                 key={step.id}
                 type="button"
                 className={`stage-rail-step${isActive ? ' active' : ''}${isCompleted ? ' completed' : ''}`}
-                onClick={() => onNavigate && onNavigate(step.id)}
+                onClick={() => onNavigate?.(step.id)}
                 aria-current={isActive ? 'step' : undefined}
                 title={step.name}
               >
                 <div className="stage-rail-step-dot" aria-hidden="true">
-                  {isCompleted
-                    ? <CheckCircle2 size={12} color="var(--amber)" strokeWidth={2} />
-                    : isActive
-                      ? <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff', display: 'block' }} />
-                      : null
-                  }
+                  {isCompleted ? (
+                    <Check size={10} strokeWidth={2.5} color="var(--success)" />
+                  ) : isActive ? (
+                    <span style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: '50%',
+                      background: 'var(--cyan)',
+                      display: 'block',
+                      boxShadow: '0 0 6px var(--cyan-glow)',
+                    }} />
+                  ) : null}
                 </div>
-                {/* Number shows only when collapsed (via z-index trick replaced by opacity) */}
                 <span className="stage-rail-step-num" aria-hidden="true">
                   {String(step.id).padStart(2, '0')}
                 </span>
-                <Icon size={15} className="stage-rail-step-icon" aria-hidden="true" />
+                <Icon size={14} className="stage-rail-step-icon" aria-hidden="true" />
                 <span className="stage-rail-step-name">{step.name}</span>
               </button>
             );
@@ -75,7 +78,7 @@ export default function StageRail({ activeScreen, onNavigate, userName, projectN
         </div>
       </nav>
 
-      {/* ── Top strip (grid col 2, row 1) ── */}
+      {/* ── Top strip ── */}
       <div className="workflow-topstrip">
         <div className="topstrip-left">
           <div className="topstrip-project">{projectName || 'Untitled project'}</div>
@@ -95,33 +98,43 @@ export default function StageRail({ activeScreen, onNavigate, userName, projectN
           <button
             type="button"
             className="topbar-icon-btn"
-            onClick={() => canGoBack && onNavigate(activeScreen - 1)}
+            onClick={() => canGoBack && onNavigate?.(activeScreen - 1)}
             disabled={!canGoBack}
             aria-label="Previous step"
           >
-            <ChevronLeft size={15} />
+            <ChevronLeft size={14} />
           </button>
+          <span style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '10px',
+            color: 'var(--text-muted)',
+            letterSpacing: '0.05em',
+            minWidth: '36px',
+            textAlign: 'center',
+          }}>
+            {String(activeScreen).padStart(2, '0')}&thinsp;/&thinsp;{String(STEPS.length).padStart(2, '0')}
+          </span>
           <button
             type="button"
             className="topbar-icon-btn"
-            onClick={() => canGoForward && onNavigate(activeScreen + 1)}
+            onClick={() => canGoForward && onNavigate?.(activeScreen + 1)}
             disabled={!canGoForward}
             aria-label="Next step"
           >
-            <ChevronRight size={15} />
+            <ChevronRight size={14} />
           </button>
           <Link href="/dashboard" className="btn-outline-small">
-            Save &amp; Exit
+            Exit
           </Link>
         </div>
       </div>
 
-      {/* ── Mobile bottom strip ── */}
+      {/* ── Mobile strip ── */}
       <div className="stage-rail-mobile" role="navigation" aria-label="Step navigation">
         <button
           type="button"
           className="topbar-icon-btn"
-          onClick={() => canGoBack && onNavigate(activeScreen - 1)}
+          onClick={() => canGoBack && onNavigate?.(activeScreen - 1)}
           disabled={!canGoBack}
           aria-label="Previous step"
         >
@@ -136,7 +149,7 @@ export default function StageRail({ activeScreen, onNavigate, userName, projectN
         <button
           type="button"
           className="topbar-icon-btn"
-          onClick={() => canGoForward && onNavigate(activeScreen + 1)}
+          onClick={() => canGoForward && onNavigate?.(activeScreen + 1)}
           disabled={!canGoForward}
           aria-label="Next step"
         >

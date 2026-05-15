@@ -4,14 +4,17 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase';
+import { Zap, LogOut, CreditCard } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { dropdown } from '@/lib/motion';
 
 export default function DashboardNav() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [profile, setProfile] = useState(null);
-  const pathname = usePathname();
-  const router = useRouter();
-  const supabase = createClient();
-  const menuRef = useRef(null);
+  const [menuOpen, setMenuOpen]   = useState(false);
+  const [profile, setProfile]     = useState(null);
+  const pathname                  = usePathname();
+  const router                    = useRouter();
+  const supabase                  = createClient();
+  const menuRef                   = useRef(null);
 
   useEffect(() => {
     fetchProfile();
@@ -20,9 +23,7 @@ export default function DashboardNav() {
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setMenuOpen(false);
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -44,150 +45,229 @@ export default function DashboardNav() {
   const isActive = (path) => pathname === path;
   const navLinks = [
     { href: '/dashboard', label: 'Projects' },
-    { href: '/billing', label: 'Billing' },
-    { href: '/profile', label: 'Profile' },
+    { href: '/billing',   label: 'Billing' },
+    { href: '/profile',   label: 'Profile' },
   ];
   const initial = profile?.full_name?.charAt(0)?.toUpperCase() || '?';
 
   return (
     <nav style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      padding: '0 52px', height: '64px',
-      borderBottom: '1px solid rgba(255,255,255,0.06)',
-      background: 'linear-gradient(180deg, rgba(12,12,18,0.88), rgba(6,6,8,0.62))',
-      backdropFilter: 'blur(28px) saturate(1.4)',
-      WebkitBackdropFilter: 'blur(28px) saturate(1.4)',
-      boxShadow: '0 1px 0 rgba(255,255,255,0.04), 0 12px 40px rgba(0,0,0,0.5)',
-      position: 'sticky', top: 0, zIndex: 100,
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '0 32px',
+      height: '56px',
+      borderBottom: '1px solid var(--border)',
+      background: 'rgba(17,17,20,0.92)',
+      backdropFilter: 'blur(12px)',
+      position: 'sticky',
+      top: 0,
+      zIndex: 100,
     }}>
+
       {/* Logo */}
       <Link href="/dashboard" style={{
         textDecoration: 'none',
-        fontFamily: 'var(--font-display)', fontStyle: 'italic',
-        fontSize: '22px', fontWeight: 700, letterSpacing: '-0.03em',
-        background: 'linear-gradient(135deg, var(--dark) 30%, var(--violet))',
-        WebkitBackgroundClip: 'text', backgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
       }}>
-        Aura
+        <div style={{
+          width: '28px',
+          height: '28px',
+          borderRadius: '8px',
+          background: 'var(--surface-2)',
+          boxShadow: 'var(--neo-flat)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'var(--font-display)',
+          fontSize: '14px',
+          fontWeight: '700',
+          color: 'var(--cyan)',
+        }}>
+          A
+        </div>
+        <span style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: '15px',
+          fontWeight: '700',
+          color: 'var(--text)',
+          letterSpacing: '-0.02em',
+        }}>
+          Aura
+        </span>
       </Link>
 
       {/* Nav links */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
         {navLinks.map(link => (
           <Link key={link.href} href={link.href} style={{
-            fontFamily: 'var(--font-body)', fontSize: '12.5px', fontWeight: 600,
-            textDecoration: 'none', padding: '7px 16px', borderRadius: '10px',
-            color: isActive(link.href) ? 'var(--violet)' : 'var(--text-muted)',
-            background: isActive(link.href) ? 'rgba(124,58,237,0.12)' : 'transparent',
-            boxShadow: isActive(link.href) ? '0 0 0 1px rgba(124,58,237,0.24)' : 'none',
-            transition: 'color 0.18s, background 0.18s', letterSpacing: '-0.005em',
+            fontFamily: 'var(--font-body)',
+            fontSize: '13px',
+            fontWeight: '500',
+            textDecoration: 'none',
+            padding: '6px 14px',
+            borderRadius: '8px',
+            color: isActive(link.href) ? 'var(--cyan)' : 'var(--text-muted)',
+            background: isActive(link.href) ? 'var(--cyan-dim)' : 'transparent',
+            border: isActive(link.href) ? '1px solid var(--cyan-border)' : '1px solid transparent',
+            transition: 'color 140ms ease-out, background 140ms ease-out, border-color 140ms ease-out',
           }}>
             {link.label}
           </Link>
         ))}
       </div>
 
-      {/* Right: Credits + Avatar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }} ref={menuRef}>
-        {/* Credits badge — amber */}
+      {/* Right: credits + avatar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }} ref={menuRef}>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-          padding: '5px 12px', borderRadius: '10px',
-          background: 'rgba(245,158,11,0.1)',
-          border: '1px solid rgba(245,158,11,0.24)',
-          boxShadow: '0 0 20px rgba(245,158,11,0.06)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '5px 10px',
+          borderRadius: '8px',
+          background: 'var(--surface-2)',
+          boxShadow: 'var(--neo-inset)',
+          border: '1px solid var(--border)',
         }}>
+          <Zap size={11} color="var(--cyan)" />
           <span style={{
-            width: '5px', height: '5px', borderRadius: '50%',
-            background: 'var(--amber)', flexShrink: 0,
-            boxShadow: '0 0 8px rgba(245,158,11,0.8)',
-          }} />
-          <span style={{
-            fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 500,
-            color: 'var(--amber)', letterSpacing: '0.08em',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '10px',
+            fontWeight: '700',
+            color: 'var(--text-soft)',
+            letterSpacing: '0.06em',
           }}>
-            {profile?.credits ?? '—'}&nbsp;CREDITS
+            {profile?.credits ?? '—'}
           </span>
         </div>
 
-        {/* Avatar */}
+        {/* Avatar + dropdown */}
         <div style={{ position: 'relative' }}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             style={{
-              width: '36px', height: '36px', borderRadius: '50%',
-              background: 'linear-gradient(135deg, rgba(124,58,237,0.2), rgba(109,40,217,0.06))',
-              border: '1px solid rgba(124,58,237,0.32)',
-              color: 'var(--violet)',
-              fontFamily: 'var(--font-display)', fontStyle: 'italic',
-              fontSize: '15px', fontWeight: 700,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'transform 0.3s var(--ease-spring), box-shadow 0.3s',
-              boxShadow: '0 8px 22px rgba(124,58,237,0.2)',
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: 'var(--surface-2)',
+              boxShadow: menuOpen ? 'var(--neo-active)' : 'var(--neo-flat)',
+              border: '1px solid var(--border-mid)',
+              color: 'var(--cyan)',
+              fontFamily: 'var(--font-display)',
+              fontSize: '13px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'box-shadow 160ms ease-out',
             }}
-            onMouseOver={e => (e.currentTarget.style.transform = 'translateY(-1px) scale(1.04)')}
-            onMouseOut={e => (e.currentTarget.style.transform = 'translateY(0) scale(1)')}
           >
             {initial}
           </button>
 
-          {menuOpen && (
-            <div style={{
-              position: 'absolute', top: 'calc(100% + 10px)', right: 0,
-              background: 'rgba(12,12,18,0.97)',
-              border: '1px solid rgba(255,255,255,0.09)',
-              borderRadius: '14px', minWidth: '200px',
-              boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
-              padding: '6px',
-              animation: 'panelRise 280ms var(--ease-premium) both',
-            }}>
-              <div style={{ padding: '12px 14px 12px', borderBottom: '1px solid var(--border)', marginBottom: '4px' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: '16px', fontWeight: 500, color: 'var(--dark)', letterSpacing: '-0.02em' }}>
-                  {profile?.full_name || 'User'}
-                </div>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em', marginTop: '3px' }}>
-                  {profile?.credits ?? 0} CREDITS REMAINING
-                </div>
-              </div>
-              {navLinks.map(link => (
-                <Link key={link.href} href={link.href} onClick={() => setMenuOpen(false)} style={{
-                  display: 'block', padding: '9px 14px', borderRadius: '8px',
-                  textDecoration: 'none', fontSize: '13px', fontWeight: 500,
-                  color: isActive(link.href) ? 'var(--violet)' : 'var(--text-soft)',
-                  background: isActive(link.href) ? 'rgba(124,58,237,0.1)' : 'transparent',
-                  transition: 'background 0.14s, color 0.14s',
+          <AnimatePresence>
+            {menuOpen && (
+              <motion.div
+                variants={dropdown}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  right: 0,
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border-mid)',
+                  borderRadius: 'var(--radius-lg)',
+                  minWidth: '200px',
+                  boxShadow: 'var(--shadow-modal)',
+                  padding: '6px',
+                  transformOrigin: 'top right',
                 }}
-                  onMouseOver={e => { if (!isActive(link.href)) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                  onMouseOut={e => { if (!isActive(link.href)) e.currentTarget.style.background = 'transparent'; }}
-                >
-                  {link.label}
+              >
+                <div style={{
+                  padding: '10px 12px 10px',
+                  borderBottom: '1px solid var(--border)',
+                  marginBottom: '4px',
+                }}>
+                  <div style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: 'var(--text)',
+                    letterSpacing: '-0.02em',
+                  }}>
+                    {profile?.full_name || 'User'}
+                  </div>
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '10px',
+                    color: 'var(--text-muted)',
+                    letterSpacing: '0.06em',
+                    marginTop: '3px',
+                  }}>
+                    {profile?.credits ?? 0} CREDITS
+                  </div>
+                </div>
+
+                {navLinks.map(link => (
+                  <Link key={link.href} href={link.href} onClick={() => setMenuOpen(false)} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    textDecoration: 'none',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    color: isActive(link.href) ? 'var(--cyan)' : 'var(--text-soft)',
+                    background: isActive(link.href) ? 'var(--cyan-dim)' : 'transparent',
+                    transition: 'background 120ms ease-out, color 120ms ease-out',
+                  }}>
+                    {link.label}
+                  </Link>
+                ))}
+                <Link href="/payment" onClick={() => setMenuOpen(false)} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  textDecoration: 'none',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  color: 'var(--text-soft)',
+                  transition: 'background 120ms ease-out',
+                }}>
+                  <CreditCard size={13} />
+                  Payment
                 </Link>
-              ))}
-              <Link href="/payment" onClick={() => setMenuOpen(false)} style={{
-                display: 'block', padding: '9px 14px', borderRadius: '8px',
-                textDecoration: 'none', fontSize: '13px', fontWeight: 500,
-                color: 'var(--text-soft)', transition: 'background 0.14s',
-              }}
-                onMouseOver={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
-                onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                Payment Methods
-              </Link>
-              <div style={{ borderTop: '1px solid var(--border)', margin: '4px' }} />
-              <button onClick={handleLogout} style={{
-                display: 'block', width: '100%', padding: '9px 14px', borderRadius: '8px',
-                border: 'none', background: 'transparent', textAlign: 'left',
-                fontSize: '13px', fontWeight: 500, color: '#f87171',
-                cursor: 'pointer', transition: 'background 0.14s',
-              }}
-                onMouseOver={e => (e.currentTarget.style.background = 'rgba(248,113,113,0.08)')}
-                onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                Sign out
-              </button>
-            </div>
-          )}
+                <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+                <button onClick={handleLogout} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: 'transparent',
+                  textAlign: 'left',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  color: 'var(--error)',
+                  cursor: 'pointer',
+                  transition: 'background 120ms ease-out',
+                }}>
+                  <LogOut size={13} />
+                  Sign out
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </nav>

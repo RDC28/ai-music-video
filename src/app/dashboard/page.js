@@ -5,16 +5,28 @@ import DashboardNav from '@/components/DashboardNav';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase';
+import { motion, AnimatePresence } from 'framer-motion';
+import { modalOverlay, modalContent, listItemStagger, listItem } from '@/lib/motion';
+import { Plus, X, Film, Clock } from 'lucide-react';
+
+const PROJECT_COLORS = [
+  ['#0a1628', '#0f2240'],
+  ['#0d1a0d', '#162916'],
+  ['#1a0d28', '#28144a'],
+  ['#1a1a0a', '#2a2a10'],
+  ['#0d1a28', '#102840'],
+  ['#1a0d0d', '#2a1414'],
+];
 
 export default function DashboardScreen() {
-  const [projects, setProjects] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const [projects, setProjects]               = useState([]);
+  const [isLoading, setIsLoading]             = useState(true);
+  const [isCreating, setIsCreating]           = useState(false);
+  const [showModal, setShowModal]             = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState('');
-  const [userName, setUserName] = useState('');
-  const supabase = useMemo(() => createClient(), []);
-  const router = useRouter();
+  const [userName, setUserName]               = useState('');
+  const supabase                              = useMemo(() => createClient(), []);
+  const router                                = useRouter();
 
   const fetchProjects = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -30,70 +42,36 @@ export default function DashboardScreen() {
     setIsLoading(false);
   }, [supabase]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchProjects();
-  }, [fetchProjects]);
+  useEffect(() => { void fetchProjects(); }, [fetchProjects]);
 
   const handleDelete = async (e, projectId) => {
     e.preventDefault();
     e.stopPropagation();
-
-    const confirmed = window.confirm(
-      'Delete this project and its media files? This cannot be undone.'
-    );
-
-    if (confirmed) {
-      try {
-        const { data: files } = await supabase.storage
-          .from('assets')
-          .list(projectId);
-
-        if (files && files.length > 0) {
-          const filesToRemove = files.map((f) => `${projectId}/${f.name}`);
-          await supabase.storage.from('assets').remove(filesToRemove);
-        }
-
-        const { error } = await supabase
-          .from('projects')
-          .delete()
-          .eq('id', projectId);
-
-        if (error) throw error;
-
-        setProjects(projects.filter(p => p.id !== projectId));
-      } catch {
-        alert('Project could not be deleted. Please try again.');
+    if (!window.confirm('Delete this project and its media files? This cannot be undone.')) return;
+    try {
+      const { data: files } = await supabase.storage.from('assets').list(projectId);
+      if (files?.length > 0) {
+        await supabase.storage.from('assets').remove(files.map(f => `${projectId}/${f.name}`));
       }
+      const { error } = await supabase.from('projects').delete().eq('id', projectId);
+      if (error) throw error;
+      setProjects(prev => prev.filter(p => p.id !== projectId));
+    } catch {
+      alert('Project could not be deleted. Please try again.');
     }
   };
 
   const startNewProject = async (e) => {
     if (e) e.preventDefault();
-
-    if (!newProjectTitle.trim()) {
-      alert('Please enter a project title');
-      return;
-    }
-
+    if (!newProjectTitle.trim()) { alert('Please enter a project title'); return; }
     setIsCreating(true);
-
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      alert('Please sign in first.');
-      setIsCreating(false);
-      return;
-    }
-
+    if (!user) { alert('Please sign in first.'); setIsCreating(false); return; }
     const { data, error } = await supabase
       .from('projects')
-      .insert([{
-        user_id: user.id,
-        title: newProjectTitle.trim()
-      }])
+      .insert([{ user_id: user.id, title: newProjectTitle.trim() }])
       .select()
       .single();
-
     if (data) {
       localStorage.setItem('activeScreen', '1');
       router.push(`/create/${data.id}`);
@@ -105,385 +83,440 @@ export default function DashboardScreen() {
   };
 
   return (
-    <div className="dashboard-shell" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
       <DashboardNav />
 
-      <main
-        style={{
-          padding: '56px 56px 80px',
-          maxWidth: '1240px',
-          margin: '0 auto',
-          width: '100%',
-          boxSizing: 'border-box',
-          position: 'relative',
-        }}
-      >
-        {/* Hero header */}
-        <header
-          style={{
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'space-between',
-            gap: '24px',
-            marginBottom: '40px',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ maxWidth: '620px' }}>
-            <div
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '10.5px',
-                fontWeight: 500,
-                letterSpacing: '0.18em',
-                textTransform: 'uppercase',
-                color: 'var(--cyan)',
-                marginBottom: '14px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '10px',
-              }}
-            >
-              <span style={{ width: '20px', height: '1px', background: 'linear-gradient(90deg, transparent, var(--cyan))' }} />
-              {userName ? `Studio · ${userName}` : 'Studio'}
+      <main style={{ flex: 1, padding: '48px 40px 80px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+
+        {/* Asymmetric hero — title left, action right but offset down */}
+        <header style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          alignItems: 'start',
+          gap: '32px',
+          marginBottom: '48px',
+        }}>
+          <div>
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10px',
+              fontWeight: '700',
+              letterSpacing: '0.16em',
+              textTransform: 'uppercase',
+              color: 'var(--cyan)',
+              marginBottom: '16px',
+            }}>
+              ▪ Studio
             </div>
-            <h1 className="dashboard-greeting">
-              {userName ? <>Hello, <em>{userName}.</em></> : <em>Welcome.</em>}
+            <h1 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'clamp(36px, 5vw, 56px)',
+              fontWeight: '700',
+              color: 'var(--text)',
+              letterSpacing: '-0.03em',
+              lineHeight: 1.05,
+              marginBottom: '12px',
+            }}>
+              {userName ? <>Hello, <span style={{ color: 'var(--cyan)' }}>{userName}.</span></> : 'Your projects.'}
             </h1>
-            <p className="dashboard-sub">
-              Your projects live here. Open one to keep building, or start a fresh visual world from a song.
+            <p style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: '14px',
+              color: 'var(--text-muted)',
+              lineHeight: 1.65,
+              maxWidth: '460px',
+            }}>
+              Open a project to keep building, or start fresh from a new song.
             </p>
           </div>
 
-          <button
-            onClick={() => setShowModal(true)}
-            disabled={isCreating}
-            className="btn-primary"
-            style={{ fontSize: '13px', padding: '12px 26px' }}
-          >
-            {isCreating ? 'Creating…' : '＋  New project'}
-          </button>
-        </header>
-
-        {/* Section header */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '24px',
-            paddingBottom: '14px',
-            borderBottom: '1px solid var(--border)',
-          }}
-        >
-          <div
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '10.5px',
-              fontWeight: 500,
-              letterSpacing: '0.18em',
-              textTransform: 'uppercase',
-              color: 'var(--text-muted)',
-            }}
-          >
-            {isLoading
-              ? 'Loading library…'
-              : `${String(projects.length).padStart(2, '0')} ${projects.length === 1 ? 'project' : 'projects'} · in motion`}
-          </div>
-          <div
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontStyle: 'italic',
-              fontSize: '14px',
-              color: 'var(--text-soft)',
-              letterSpacing: '-0.015em',
-            }}
-          >
-            Library
-          </div>
-        </div>
-
-        {/* Project grid */}
-        {isLoading ? (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-              gap: '22px',
-            }}
-          >
-            {[1, 2, 3].map(i => (
-              <div
-                key={i}
-                style={{
-                  background: 'var(--card)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-xl)',
-                  overflow: 'hidden',
-                  height: '236px',
-                  opacity: 0.5,
-                  animation: 'panelRise 420ms var(--ease-premium) both',
-                  animationDelay: `${i * 60}ms`,
-                }}
-              />
-            ))}
-          </div>
-        ) : projects.length > 0 ? (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-              gap: '22px',
-            }}
-          >
-            {projects.map((project, idx) => (
-              <div
-                key={project.id}
-                style={{
-                  position: 'relative',
-                  animation: 'panelRise 480ms var(--ease-premium) both',
-                  animationDelay: `${idx * 50}ms`,
-                }}
-                onMouseOver={e => e.currentTarget.querySelector('[data-delete]').style.opacity = '1'}
-                onMouseOut={e => e.currentTarget.querySelector('[data-delete]').style.opacity = '0'}
-              >
-                <Link
-                  href={`/create/${project.id}`}
-                  onClick={() => localStorage.setItem('activeScreen', '1')}
-                  style={{ textDecoration: 'none', display: 'block' }}
-                >
-                  <div className="project-card-new">
-                    <div
-                      className={project.status === 'completed' ? 'project-card-thumb' : 'project-card-thumb'}
-                      style={
-                        project.status === 'completed'
-                          ? {
-                              backgroundImage:
-                                'radial-gradient(ellipse 80% 80% at 30% 30%, rgba(124,58,237,0.36), transparent 60%), radial-gradient(ellipse 60% 70% at 80% 70%, rgba(236,72,153,0.28), transparent 64%), linear-gradient(135deg, #0C0C18, #0A0A12)',
-                            }
-                          : undefined
-                      }
-                    >
-                      <div
-                        style={{
-                          position: 'absolute',
-                          left: '18px',
-                          top: '16px',
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: '9.5px',
-                          fontWeight: 500,
-                          letterSpacing: '0.18em',
-                          textTransform: 'uppercase',
-                          color: 'rgba(236,238,242,0.66)',
-                          background: 'rgba(8,10,14,0.5)',
-                          backdropFilter: 'blur(8px)',
-                          padding: '4px 10px',
-                          borderRadius: '999px',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          zIndex: 1,
-                        }}
-                      >
-                        {project.status === 'completed' ? '● Released' : '○ In flight'}
-                      </div>
-                    </div>
-                    <div style={{ padding: '20px 22px 22px', position: 'relative', zIndex: 1 }}>
-                      <div
-                        style={{
-                          fontFamily: 'var(--font-display)',
-                          fontStyle: 'italic',
-                          fontSize: '20px',
-                          fontWeight: 500,
-                          color: 'var(--dark)',
-                          marginBottom: '8px',
-                          letterSpacing: '-0.022em',
-                          lineHeight: 1.15,
-                        }}
-                      >
-                        {project.title}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: '11px',
-                          color: 'var(--text-muted)',
-                          fontFamily: 'var(--font-mono)',
-                          letterSpacing: '0.06em',
-                        }}
-                      >
-                        Updated {new Date(project.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-
-                <button
-                  data-delete
-                  onClick={(e) => handleDelete(e, project.id)}
-                  style={{
-                    position: 'absolute',
-                    top: '14px',
-                    right: '14px',
-                    background: 'rgba(255, 70, 70, 0.86)',
-                    color: 'white',
-                    border: '1px solid rgba(255,255,255,0.16)',
-                    borderRadius: '50%',
-                    width: '30px',
-                    height: '30px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    zIndex: 2,
-                    fontSize: '15px',
-                    opacity: '0',
-                    transition: 'opacity 0.18s, transform 0.3s var(--ease-spring)',
-                    backdropFilter: 'blur(8px)',
-                    boxShadow: '0 8px 22px rgba(255,70,70,0.32)',
-                  }}
-                  onMouseOver={e => (e.currentTarget.style.transform = 'scale(1.08)')}
-                  onMouseOut={e => (e.currentTarget.style.transform = 'scale(1)')}
-                  title="Delete project"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div
-            style={{
-              background:
-                'linear-gradient(160deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012)), var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-2xl)',
-              padding: '88px 48px',
-              textAlign: 'center',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '22px',
-              boxShadow: 'var(--shadow-card)',
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              aria-hidden
-              style={{
-                position: 'absolute',
-                width: '420px',
-                height: '420px',
-                top: '-80px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: 'radial-gradient(circle, rgba(124,58,237,0.14), transparent 64%)',
-                filter: 'blur(40px)',
-                pointerEvents: 'none',
-              }}
-            />
-            <div
-              style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'linear-gradient(135deg, rgba(124,58,237,0.16), rgba(109,40,217,0.04))',
-                border: '1px solid rgba(124,58,237,0.28)',
-                boxShadow: '0 16px 40px rgba(124,58,237,0.18)',
-                position: 'relative',
-                zIndex: 1,
-              }}
-            >
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--violet)' }}>
-                <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-              </svg>
-            </div>
-            <div style={{ position: 'relative', zIndex: 1 }}>
-              <div
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  fontStyle: 'italic',
-                  fontSize: '28px',
-                  fontWeight: 500,
-                  color: 'var(--dark)',
-                  marginBottom: '10px',
-                  letterSpacing: '-0.025em',
-                }}
-              >
-                Nothing here yet.
-              </div>
-              <div
-                style={{
-                  fontSize: '13.5px',
-                  color: 'var(--text-muted)',
-                  maxWidth: '380px',
-                  margin: '0 auto',
-                  lineHeight: 1.65,
-                }}
-              >
-                Bring a song, an idea, or a half-formed image. The studio takes it from there.
-              </div>
-            </div>
+          {/* New project button — offset lower for asymmetry */}
+          <div style={{ paddingTop: '48px' }}>
             <button
               onClick={() => setShowModal(true)}
               disabled={isCreating}
-              className="btn-primary"
-              style={{ fontSize: '13px', position: 'relative', zIndex: 1 }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                background: 'var(--surface-2)',
+                border: '1px solid var(--cyan-border)',
+                borderRadius: 'var(--radius)',
+                boxShadow: 'var(--neo-raised)',
+                color: 'var(--cyan)',
+                fontFamily: 'var(--font-body)',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'box-shadow 160ms ease-out, border-color 160ms ease-out',
+              }}
             >
-              {isCreating ? 'Creating…' : 'Create your first video'}
+              <Plus size={14} />
+              New project
+            </button>
+          </div>
+        </header>
+
+        {/* Section label */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '20px',
+          paddingBottom: '12px',
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <span style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '10px',
+            fontWeight: '700',
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'var(--text-muted)',
+          }}>
+            {isLoading
+              ? 'Loading…'
+              : `${String(projects.length).padStart(2, '0')} ${projects.length === 1 ? 'project' : 'projects'}`}
+          </span>
+          <span style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '10px',
+            color: 'var(--text-muted)',
+            letterSpacing: '0.08em',
+          }}>
+            Library
+          </span>
+        </div>
+
+        {/* Skeleton loaders */}
+        {isLoading && (
+          <div style={{ columns: 3, columnGap: '18px' }}>
+            {[180, 220, 160, 200, 180].map((h, i) => (
+              <div key={i} style={{
+                height: `${h}px`,
+                background: 'var(--surface-2)',
+                boxShadow: 'var(--neo-flat)',
+                borderRadius: 'var(--radius-lg)',
+                marginBottom: '18px',
+                breakInside: 'avoid',
+                opacity: 0.5,
+                animation: `pulse 1.8s ease-in-out ${i * 120}ms infinite`,
+              }} />
+            ))}
+          </div>
+        )}
+
+        {/* Project masonry grid */}
+        {!isLoading && projects.length > 0 && (
+          <motion.div
+            variants={listItemStagger}
+            initial="hidden"
+            animate="visible"
+            style={{ columns: 3, columnGap: '18px' }}
+          >
+            {projects.map((project, idx) => {
+              const [bg1, bg2] = PROJECT_COLORS[idx % PROJECT_COLORS.length];
+              return (
+                <motion.div
+                  key={project.id}
+                  variants={listItem}
+                  style={{ breakInside: 'avoid', marginBottom: '18px', position: 'relative' }}
+                  onMouseEnter={e => {
+                    const btn = e.currentTarget.querySelector('[data-delete]');
+                    if (btn) btn.style.opacity = '1';
+                  }}
+                  onMouseLeave={e => {
+                    const btn = e.currentTarget.querySelector('[data-delete]');
+                    if (btn) btn.style.opacity = '0';
+                  }}
+                >
+                  <Link
+                    href={`/create/${project.id}`}
+                    onClick={() => localStorage.setItem('activeScreen', '1')}
+                    style={{ textDecoration: 'none', display: 'block' }}
+                  >
+                    <div style={{
+                      background: 'var(--surface-2)',
+                      boxShadow: 'var(--neo-raised)',
+                      borderRadius: 'var(--radius-lg)',
+                      overflow: 'hidden',
+                      border: '1px solid var(--border)',
+                      transition: 'box-shadow 200ms ease-out, border-color 200ms ease-out',
+                    }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.boxShadow = 'var(--neo-active)';
+                        e.currentTarget.style.borderColor = 'var(--cyan-border)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.boxShadow = 'var(--neo-raised)';
+                        e.currentTarget.style.borderColor = 'var(--border)';
+                      }}
+                    >
+                      {/* Thumbnail */}
+                      <div style={{
+                        height: '120px',
+                        background: `linear-gradient(135deg, ${bg1}, ${bg2})`,
+                        position: 'relative',
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundImage: 'radial-gradient(circle, rgba(103,232,249,0.06) 1px, transparent 1px)',
+                          backgroundSize: '20px 20px',
+                        }} />
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '10px',
+                          left: '12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '9px',
+                          fontWeight: '700',
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          color: project.status === 'completed' ? 'var(--success)' : 'var(--text-muted)',
+                        }}>
+                          <span style={{
+                            width: '5px', height: '5px', borderRadius: '50%',
+                            background: project.status === 'completed' ? 'var(--success)' : 'var(--border-mid)',
+                          }} />
+                          {project.status === 'completed' ? 'Complete' : 'In progress'}
+                        </div>
+                        <Film size={20} color="rgba(103,232,249,0.12)" style={{
+                          position: 'absolute', top: '12px', right: '12px',
+                        }} />
+                      </div>
+
+                      {/* Info */}
+                      <div style={{ padding: '16px 18px 18px' }}>
+                        <div style={{
+                          fontFamily: 'var(--font-display)',
+                          fontSize: '16px',
+                          fontWeight: '700',
+                          color: 'var(--text)',
+                          letterSpacing: '-0.02em',
+                          lineHeight: 1.2,
+                          marginBottom: '8px',
+                        }}>
+                          {project.title}
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '10px',
+                          color: 'var(--text-muted)',
+                          letterSpacing: '0.04em',
+                        }}>
+                          <Clock size={10} />
+                          {new Date(project.updated_at).toLocaleDateString(undefined, {
+                            month: 'short', day: 'numeric', year: 'numeric',
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+
+                  {/* Delete button */}
+                  <button
+                    data-delete=""
+                    onClick={(e) => handleDelete(e, project.id)}
+                    style={{
+                      position: 'absolute',
+                      top: '10px',
+                      right: '10px',
+                      width: '26px',
+                      height: '26px',
+                      borderRadius: '50%',
+                      background: 'rgba(248,113,113,0.9)',
+                      border: 'none',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: '0',
+                      transition: 'opacity 160ms ease-out',
+                      zIndex: 2,
+                    }}
+                    title="Delete project"
+                  >
+                    <X size={12} />
+                  </button>
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        )}
+
+        {/* Empty state */}
+        {!isLoading && projects.length === 0 && (
+          <div style={{
+            background: 'var(--surface-2)',
+            boxShadow: 'var(--neo-raised)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-xl)',
+            padding: '80px 40px',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '20px',
+          }}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '14px',
+              background: 'var(--surface)',
+              boxShadow: 'var(--neo-raised)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Film size={22} color="var(--cyan)" />
+            </div>
+            <div>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '24px',
+                fontWeight: '700',
+                color: 'var(--text)',
+                letterSpacing: '-0.025em',
+                marginBottom: '8px',
+              }}>
+                Nothing here yet.
+              </div>
+              <p style={{
+                fontSize: '13px',
+                color: 'var(--text-muted)',
+                lineHeight: 1.6,
+                maxWidth: '340px',
+              }}>
+                Bring a song and an idea. The studio takes it from there.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 20px',
+                background: 'var(--surface)',
+                border: '1px solid var(--cyan-border)',
+                borderRadius: 'var(--radius)',
+                boxShadow: 'var(--neo-raised)',
+                color: 'var(--cyan)',
+                fontFamily: 'var(--font-body)',
+                fontSize: '13px',
+                fontWeight: '600',
+                cursor: 'pointer',
+              }}
+            >
+              <Plus size={14} />
+              Create your first video
             </button>
           </div>
         )}
       </main>
 
-      {/* New Project Modal */}
-      {showModal && (
-        <div className="auth-overlay" onClick={() => setShowModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
-            <button className="auth-close" onClick={() => setShowModal(false)}>×</button>
-
-            <div
+      {/* New project modal */}
+      <AnimatePresence>
+        {showModal && (
+          <motion.div
+            key="modal-overlay"
+            variants={modalOverlay}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            onClick={() => setShowModal(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(8,8,10,0.7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 200,
+              backdropFilter: 'blur(4px)',
+            }}
+          >
+            <motion.div
+              variants={modalContent}
+              onClick={e => e.stopPropagation()}
               style={{
+                background: 'var(--surface-2)',
+                boxShadow: 'var(--shadow-modal)',
+                border: '1px solid var(--border-mid)',
+                borderRadius: 'var(--radius-xl)',
+                padding: '32px',
+                width: '100%',
+                maxWidth: '420px',
+                position: 'relative',
+              }}
+            >
+              <button
+                onClick={() => setShowModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: '16px',
+                  right: '16px',
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  boxShadow: 'var(--neo-flat)',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <X size={13} />
+              </button>
+
+              <div style={{
                 fontFamily: 'var(--font-mono)',
-                fontSize: '10.5px',
-                letterSpacing: '0.18em',
+                fontSize: '10px',
+                fontWeight: '700',
+                letterSpacing: '0.14em',
                 textTransform: 'uppercase',
                 color: 'var(--cyan)',
                 marginBottom: '12px',
-              }}
-            >
-              ── New world
-            </div>
-            <div
-              style={{
+              }}>
+                ▪ New project
+              </div>
+              <div style={{
                 fontFamily: 'var(--font-display)',
-                fontStyle: 'italic',
-                fontSize: '28px',
-                fontWeight: 500,
-                color: 'var(--dark)',
-                marginBottom: '24px',
+                fontSize: '26px',
+                fontWeight: '700',
+                color: 'var(--text)',
                 letterSpacing: '-0.025em',
-                lineHeight: 1.05,
-              }}
-            >
-              Name the project.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '10.5px',
-                    fontWeight: 500,
-                    color: 'var(--text-muted)',
-                    letterSpacing: '0.16em',
-                    textTransform: 'uppercase',
-                    display: 'block',
-                    marginBottom: '8px',
-                  }}
-                >
-                  Project Title
+                lineHeight: 1.1,
+                marginBottom: '28px',
+              }}>
+                Name the project.
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <label style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  color: 'var(--text-muted)',
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  display: 'block',
+                  marginBottom: '6px',
+                }}>
+                  Title
                 </label>
                 <input
                   type="text"
@@ -491,47 +524,52 @@ export default function DashboardScreen() {
                   placeholder="e.g. After Hours Visual"
                   value={newProjectTitle}
                   onChange={(e) => setNewProjectTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && startNewProject()}
                   style={{
                     width: '100%',
-                    padding: '14px 18px',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--border-mid)',
+                    padding: '13px 16px',
+                    background: 'var(--bg-deep)',
+                    boxShadow: 'var(--neo-inset)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
                     fontSize: '15px',
-                    outline: 'none',
-                    background: 'rgba(255,255,255,0.04)',
-                    color: 'var(--dark)',
                     fontFamily: 'var(--font-display)',
-                    fontStyle: 'italic',
-                    fontWeight: 400,
+                    fontWeight: '600',
+                    color: 'var(--text)',
                     letterSpacing: '-0.015em',
-                    boxSizing: 'border-box',
-                    transition: 'border-color 0.18s, box-shadow 0.18s, background 0.18s',
+                    outline: 'none',
+                    transition: 'border-color 160ms ease-out',
                   }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = 'rgba(124,58,237,0.5)';
-                    e.target.style.boxShadow = '0 0 0 4px rgba(124,58,237,0.08)';
-                    e.target.style.background = 'rgba(255,255,255,0.058)';
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = 'var(--border-mid)';
-                    e.target.style.boxShadow = 'none';
-                    e.target.style.background = 'rgba(255,255,255,0.04)';
-                  }}
-                  onKeyDown={(e) => e.key === 'Enter' && startNewProject()}
+                  onFocus={e => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
                 />
+                <button
+                  onClick={startNewProject}
+                  disabled={isCreating || !newProjectTitle.trim()}
+                  style={{
+                    padding: '13px',
+                    width: '100%',
+                    background: 'var(--surface)',
+                    border: '1px solid var(--cyan-border)',
+                    borderRadius: 'var(--radius)',
+                    boxShadow: 'var(--neo-raised)',
+                    color: 'var(--cyan)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: isCreating || !newProjectTitle.trim() ? 'not-allowed' : 'pointer',
+                    opacity: isCreating || !newProjectTitle.trim() ? 0.5 : 1,
+                    transition: 'opacity 160ms ease-out',
+                    marginTop: '4px',
+                  }}
+                >
+                  {isCreating ? 'Creating…' : 'Create project'}
+                </button>
               </div>
-              <button
-                className="btn-primary"
-                onClick={startNewProject}
-                disabled={isCreating || !newProjectTitle.trim()}
-                style={{ padding: '14px', width: '100%', justifyContent: 'center' }}
-              >
-                {isCreating ? 'Creating project…' : 'Create project'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

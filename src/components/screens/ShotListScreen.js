@@ -15,10 +15,11 @@ import { getPlannedVideoDuration, getProjectAudioDuration, getShotTimingLabel, n
 const inputStyle = {
   width: '100%',
   padding: '10px 12px',
-  border: '1px solid var(--border-mid)',
-  borderRadius: '8px',
-  background: 'var(--surface)',
-  color: 'var(--dark)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius)',
+  background: 'var(--bg-deep)',
+  boxShadow: 'var(--neo-inset)',
+  color: 'var(--text)',
   fontSize: '13px',
   fontFamily: 'var(--font-body)',
   outline: 'none',
@@ -27,14 +28,29 @@ const inputStyle = {
 };
 
 const labelStyle = {
-  fontSize: '10.5px',
-  fontWeight: 500,
+  fontSize: '10px',
+  fontWeight: 700,
   color: 'var(--text-muted)',
-  letterSpacing: '0.16em',
+  letterSpacing: '0.12em',
   textTransform: 'uppercase',
   display: 'block',
-  marginBottom: '8px',
+  marginBottom: '6px',
   fontFamily: 'var(--font-mono)',
+};
+
+const iconBtnStyle = {
+  background: 'var(--surface-2)',
+  boxShadow: 'var(--neo-flat)',
+  border: '1px solid var(--border)',
+  borderRadius: '7px',
+  width: '28px',
+  height: '28px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: 'var(--text-muted)',
+  padding: 0,
 };
 
 const splitTags = (value) => value
@@ -159,36 +175,72 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
   };
 
   return (
-    <div className="screen active" id="s8" style={{ flexDirection: 'row', alignItems: 'flex-start', height: '100%', overflow: 'hidden' }}>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', height: '100%' }}>
+    <div
+      className="screen active"
+      id="s8"
+      style={{
+        flexDirection: 'row',
+        height: '100%',
+        overflow: 'hidden',
+        background: 'var(--bg)',
+      }}
+    >
+      <style>{`@keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+
+      {/* LEFT PANEL */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', minWidth: 0 }}>
+
+        {/* Header */}
         <div style={{
-          padding: '18px 28px',
+          padding: '20px 28px',
           borderBottom: '1px solid var(--border)',
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'space-between',
           gap: '18px',
           flexShrink: 0,
+          background: 'rgba(17,17,20,0.95)',
         }}>
           <div>
-            <div className="kicker kicker--orange" style={{ marginBottom: '10px' }}>Shots · Sequence</div>
-            <h1 className="editorial-title editorial-h2" style={{ marginBottom: '8px' }}>
-              Arrange the <span className="text-grad">cuts.</span>
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10px',
+              color: 'var(--cyan)',
+              letterSpacing: '0.1em',
+              marginBottom: '8px',
+            }}>
+              ▪ Shots · Sequence
+            </div>
+            <h1 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '34px',
+              fontWeight: 700,
+              letterSpacing: '-0.03em',
+              color: 'var(--text)',
+              margin: 0,
+              lineHeight: 1.1,
+              marginBottom: shots.length > 0 ? '8px' : 0,
+            }}>
+              Arrange the cuts.
             </h1>
-            <p style={{ fontSize: '13px', color: 'var(--text-soft)', lineHeight: 1.6 }}>
-              {shots.length > 0
-                ? `${shots.length} approved shots ready to reorder, edit, and send to image generation.`
-                : 'No approved shots yet. Generate or import a shot list first.'}
-            </p>
+            {shots.length > 0 && (
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+                {`${shots.length} approved shots ready to reorder, edit, and send to image generation.`}
+              </p>
+            )}
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, flexWrap: 'wrap', paddingTop: '4px' }}>
             <button className="btn-outline" onClick={() => onNavigate(7)} style={{ fontSize: '12px' }}>
               ← Shot Plan
             </button>
-            <button className="btn-outline" onClick={handleAddShot} style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              className="btn-outline"
+              onClick={handleAddShot}
+              style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
               <Plus size={14} />
-              Add shot
+              + Add shot
             </button>
             <button
               className="btn-orange"
@@ -202,6 +254,7 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
           </div>
         </div>
 
+        {/* Coverage notes */}
         {projectData?.shot_list_meta?.coverage_notes && (
           <div style={{
             padding: '10px 28px',
@@ -215,23 +268,25 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
           </div>
         )}
 
-        <div id="shotListItems" style={{ flex: 1, overflowY: 'auto' }}>
+        {/* Shots list */}
+        <div id="shotListItems" style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {shots.length > 0 ? (
             shots.map((shot, index) => (
               <div
                 key={`${shot.n}-${index}`}
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '52px 96px minmax(0, 1fr) auto',
-                  gap: '16px',
-                  alignItems: 'start',
-                  padding: '16px 28px',
+                  padding: '12px 28px',
                   borderBottom: '1px solid var(--border)',
-                  background: editingIndex === index ? 'rgba(124,58,237,0.04)' : 'transparent',
-                  borderLeft: `3px solid ${editingIndex === index ? 'var(--teal)' : 'transparent'}`,
+                  display: 'grid',
+                  gridTemplateColumns: '44px 88px 1fr auto',
+                  gap: '14px',
+                  alignItems: 'start',
+                  background: editingIndex === index ? 'var(--cyan-dim)' : 'transparent',
+                  borderLeft: `3px solid ${editingIndex === index ? 'var(--cyan)' : 'transparent'}`,
                   transition: 'background 0.2s',
                 }}
               >
+                {/* Col 1: Shot number badge */}
                 <div style={{
                   width: '38px',
                   height: '38px',
@@ -239,69 +294,62 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  background: editingIndex === index
-                    ? 'linear-gradient(135deg, rgba(124,58,237,0.22), rgba(124,58,237,0.06))'
-                    : 'rgba(255,255,255,0.034)',
-                  border: `1px solid ${editingIndex === index ? 'rgba(124,58,237,0.4)' : 'var(--border)'}`,
-                  color: editingIndex === index ? 'var(--teal)' : 'var(--text-soft)',
+                  background: 'var(--surface-2)',
+                  boxShadow: editingIndex === index ? 'var(--neo-active)' : 'var(--neo-flat)',
+                  border: editingIndex === index ? '1px solid var(--cyan-border)' : '1px solid var(--border)',
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '11.5px',
-                  fontWeight: 500,
+                  fontSize: '11px',
+                  color: editingIndex === index ? 'var(--cyan)' : 'var(--text-muted)',
                   letterSpacing: '0.04em',
-                  boxShadow: editingIndex === index ? '0 0 0 1px rgba(124,58,237,0.2), 0 8px 22px rgba(124,58,237,0.18)' : 'none',
+                  flexShrink: 0,
                 }}>
                   {String(index + 1).padStart(2, '0')}
                 </div>
 
-                <div
-                  style={{
-                    color: 'var(--teal)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '10.5px',
-                    fontWeight: 500,
-                    paddingTop: '8px',
-                    letterSpacing: '0.08em',
-                  }}
-                >
-                  {getShotTimingLabel(shot)}
+                {/* Col 2: Timing */}
+                <div style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '10px',
+                  color: 'var(--cyan)',
+                  paddingTop: '8px',
+                  letterSpacing: '0.06em',
+                }}>
+                  {getShotTimingLabel(shot, audioDuration)}
                 </div>
 
+                {/* Col 3: Content */}
                 <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontStyle: 'italic',
-                      fontSize: '17px',
-                      fontWeight: 500,
-                      color: editingIndex === index ? 'var(--teal)' : 'var(--dark)',
-                      marginBottom: '6px',
-                      letterSpacing: '-0.022em',
-                      lineHeight: 1.15,
-                    }}
-                  >
+                  <div style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: '16px',
+                    fontWeight: 700,
+                    color: editingIndex === index ? 'var(--cyan)' : 'var(--text)',
+                    marginBottom: '4px',
+                    letterSpacing: '-0.02em',
+                    lineHeight: 1.2,
+                  }}>
                     {shot.n}
                   </div>
-                  <div
-                    style={{
-                      fontSize: '13px',
-                      color: 'var(--text-soft)',
-                      lineHeight: 1.55,
-                      overflow: 'hidden',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                    }}
-                  >
+                  <div style={{
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '12px',
+                    color: 'var(--text-muted)',
+                    lineHeight: 1.55,
+                    overflow: 'hidden',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    marginBottom: '6px',
+                  }}>
                     {shot.p || 'No prompt supplied yet.'}
                   </div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
-                    {[...(shot.characters || []), ...(shot.locations || []), shot.shot_size, shot.movement]
+                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                    {[shot.shot_size, shot.movement, (shot.characters || [])[0], (shot.locations || [])[0]]
                       .filter(Boolean)
-                      .slice(0, 6)
-                      .map(tag => (
+                      .map((tag) => (
                         <span
                           key={tag}
-                          className="tag-badge tag-outline"
+                          className="tag-badge"
                           style={{ fontSize: '9.5px' }}
                         >
                           {tag}
@@ -310,33 +358,86 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                  <button className="btn-outline" onClick={() => handleMove(index, -1)} disabled={index === 0} title="Move up" style={{ padding: '7px 8px', opacity: index === 0 ? 0.35 : 1 }}>
-                    <ArrowUp size={14} />
-                  </button>
-                  <button className="btn-outline" onClick={() => handleMove(index, 1)} disabled={index === shots.length - 1} title="Move down" style={{ padding: '7px 8px', opacity: index === shots.length - 1 ? 0.35 : 1 }}>
-                    <ArrowDown size={14} />
-                  </button>
-                  <button className="btn-outline" onClick={() => handleDuplicate(index)} title="Duplicate" style={{ padding: '7px 8px' }}>
-                    <Copy size={14} />
+                {/* Col 4: Actions */}
+                <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
+                  <button
+                    style={{ ...iconBtnStyle, opacity: index === 0 ? 0.25 : 1 }}
+                    onClick={() => handleMove(index, -1)}
+                    disabled={index === 0}
+                    title="Move up"
+                  >
+                    <ArrowUp size={13} />
                   </button>
                   <button
-                    className="btn-outline"
-                    style={{ fontSize: '11px', padding: '7px 12px', opacity: editingIndex === index ? 0.45 : 1 }}
-                    onClick={() => startEditing(index)}
+                    style={{ ...iconBtnStyle, opacity: index === shots.length - 1 ? 0.25 : 1 }}
+                    onClick={() => handleMove(index, 1)}
+                    disabled={index === shots.length - 1}
+                    title="Move down"
                   >
-                    {editingIndex === index ? 'Editing' : 'Edit'}
+                    <ArrowDown size={13} />
                   </button>
-                  <button className="btn-outline" onClick={() => handleDelete(index)} title="Delete" style={{ padding: '7px 8px', color: '#ff6b6b' }}>
-                    <Trash2 size={14} />
+                  <button
+                    style={iconBtnStyle}
+                    onClick={() => handleDuplicate(index)}
+                    title="Duplicate"
+                  >
+                    <Copy size={13} />
+                  </button>
+                  <button
+                    onClick={() => startEditing(index)}
+                    style={{
+                      background: 'var(--surface-2)',
+                      boxShadow: editingIndex === index ? 'var(--neo-inset)' : 'var(--neo-flat)',
+                      border: editingIndex === index ? '1px solid var(--cyan-border)' : '1px solid var(--border)',
+                      color: editingIndex === index ? 'var(--cyan)' : 'var(--text-muted)',
+                      fontSize: '11px',
+                      padding: '6px 12px',
+                      borderRadius: 'var(--radius)',
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-body)',
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    style={{ ...iconBtnStyle, color: 'var(--error)' }}
+                    onClick={() => handleDelete(index)}
+                    title="Delete"
+                  >
+                    <Trash2 size={13} />
                   </button>
                 </div>
               </div>
             ))
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '80px 40px', gap: '12px' }}>
-              <SlidersHorizontal size={26} color="var(--text-muted)" />
-              <div style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 1,
+              padding: '80px 40px',
+              gap: '16px',
+            }}>
+              <div style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '14px',
+                boxShadow: 'var(--neo-raised)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'var(--surface-2)',
+              }}>
+                <SlidersHorizontal size={22} color="var(--cyan)" />
+              </div>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '18px',
+                fontWeight: 700,
+                color: 'var(--text)',
+                textAlign: 'center',
+              }}>
                 No approved shots yet.
               </div>
               <button className="btn-teal" onClick={() => onNavigate(7)} style={{ fontSize: '12px' }}>
@@ -347,44 +448,73 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
         </div>
       </div>
 
+      {/* RIGHT PANEL — Edit sidebar */}
       {hasActiveEdit && (
         <div style={{
           position: 'sticky',
           top: 0,
-          width: '430px',
+          width: '420px',
           height: '100%',
-          background: 'var(--card)',
+          background: 'var(--surface-2)',
+          boxShadow: '-4px 0 16px rgba(0,0,0,0.3)',
           borderLeft: '1px solid var(--border-mid)',
           padding: '24px',
           display: 'flex',
           flexDirection: 'column',
-          animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-          overflowY: 'auto',
           flexShrink: 0,
+          overflowY: 'auto',
+          animation: 'slideInRight 0.22s cubic-bezier(0.2, 0, 0, 1)',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <div>
-              <div style={{ ...labelStyle, marginBottom: '6px' }}>── Editing · Shot {String(editingIndex + 1).padStart(2, '0')}</div>
-              <div className="editorial-title editorial-h3">
-                Shot details.
-              </div>
+          {/* Sidebar header */}
+          <div style={{ position: 'relative', marginBottom: '0' }}>
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10px',
+              color: 'var(--cyan)',
+              letterSpacing: '0.1em',
+              marginBottom: '6px',
+            }}>
+              ▪ Editing · Shot {String(editingIndex + 1).padStart(2, '0')}
             </div>
+            <h3 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '18px',
+              fontWeight: 700,
+              color: 'var(--text)',
+              margin: 0,
+            }}>
+              Shot details.
+            </h3>
             <button
               onClick={closeEditing}
               style={{
-                background: 'transparent',
-                border: 'none',
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                background: 'var(--surface-2)',
+                boxShadow: 'var(--neo-flat)',
+                border: '1px solid var(--border)',
                 color: 'var(--text-muted)',
-                fontSize: '22px',
+                fontSize: '14px',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 lineHeight: 1,
-                padding: '2px 6px',
-                borderRadius: '4px',
+                padding: 0,
               }}
-            >x</button>
+            >
+              ×
+            </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
+          {/* Form */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, marginTop: '16px' }}>
+
+            {/* Shot Title */}
             <div>
               <label style={labelStyle}>Shot Title</label>
               <input
@@ -392,9 +522,12 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                 value={editDraft.n || ''}
                 onChange={(e) => setEditDraft(prev => ({ ...prev, n: e.target.value }))}
                 style={inputStyle}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />
             </div>
 
+            {/* Start / End / Duration */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
               <div>
                 <label style={labelStyle}>Start</label>
@@ -404,6 +537,8 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   value={editDraft.start ?? ''}
                   onChange={(e) => setEditDraft(prev => ({ ...prev, start: e.target.value }))}
                   style={inputStyle}
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
                 />
               </div>
               <div>
@@ -414,6 +549,8 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   value={editDraft.end ?? ''}
                   onChange={(e) => setEditDraft(prev => ({ ...prev, end: e.target.value }))}
                   style={inputStyle}
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
                 />
               </div>
               <div>
@@ -424,13 +561,16 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   value={editDraft.duration ?? ''}
                   onChange={(e) => setEditDraft(prev => ({ ...prev, duration: e.target.value }))}
                   style={inputStyle}
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
                 />
-                <div style={{ marginTop: '6px', fontSize: '10px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                  Timeline duration can be any value up to 8s. Source clip length: {getPlannedVideoDuration(editDraft, 6)}s.
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Timeline duration up to 8s. Clip: {getPlannedVideoDuration(editDraft, 6)}s.
                 </div>
               </div>
             </div>
 
+            {/* Characters */}
             <div>
               <label style={labelStyle}>Characters</label>
               <input
@@ -439,9 +579,12 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                 placeholder="THE ARTIST, THE MUSE"
                 onChange={(e) => setEditDraft(prev => ({ ...prev, charactersText: e.target.value }))}
                 style={inputStyle}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />
             </div>
 
+            {/* Locations */}
             <div>
               <label style={labelStyle}>Locations</label>
               <input
@@ -450,9 +593,12 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                 placeholder="Winter Desolation"
                 onChange={(e) => setEditDraft(prev => ({ ...prev, locationsText: e.target.value }))}
                 style={inputStyle}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />
             </div>
 
+            {/* Shot Size + Movement */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div>
                 <label style={labelStyle}>Shot Size</label>
@@ -461,6 +607,8 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   value={editDraft.shot_size || ''}
                   onChange={(e) => setEditDraft(prev => ({ ...prev, shot_size: e.target.value }))}
                   style={inputStyle}
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
                 />
               </div>
               <div>
@@ -470,10 +618,13 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   value={editDraft.movement || ''}
                   onChange={(e) => setEditDraft(prev => ({ ...prev, movement: e.target.value }))}
                   style={inputStyle}
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
                 />
               </div>
             </div>
 
+            {/* Camera */}
             <div>
               <label style={labelStyle}>Camera</label>
               <input
@@ -481,44 +632,56 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                 value={editDraft.camera || ''}
                 onChange={(e) => setEditDraft(prev => ({ ...prev, camera: e.target.value }))}
                 style={inputStyle}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />
             </div>
 
+            {/* Vocal Cue */}
             <div>
-              <label style={labelStyle}>Vocal / Lyric Cue</label>
+              <label style={labelStyle}>Vocal Cue</label>
               <input
                 type="text"
                 value={editDraft.lyrics || ''}
                 onChange={(e) => setEditDraft(prev => ({ ...prev, lyrics: e.target.value }))}
                 style={inputStyle}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={labelStyle}>Master Shot Brief</label>
-                <textarea
-                  value={editDraft.p || ''}
-                  onChange={(e) => setEditDraft(prev => ({ ...prev, p: e.target.value }))}
-                  style={{ ...inputStyle, minHeight: '120px', resize: 'vertical', lineHeight: 1.5 }}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>Still Image Prompt</label>
-                <textarea
-                  value={editDraft.image_prompt || ''}
-                  onChange={(e) => setEditDraft(prev => ({ ...prev, image_prompt: e.target.value }))}
-                  style={{ ...inputStyle, minHeight: '130px', resize: 'vertical', lineHeight: 1.5 }}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>Video Prompt</label>
-                <textarea
-                  value={editDraft.video_prompt || ''}
-                  onChange={(e) => setEditDraft(prev => ({ ...prev, video_prompt: e.target.value }))}
-                  style={{ ...inputStyle, minHeight: '150px', resize: 'vertical', lineHeight: 1.5 }}
-                />
-              </div>
+            {/* Textareas */}
+            <div>
+              <label style={labelStyle}>Master Shot Brief</label>
+              <textarea
+                value={editDraft.p || ''}
+                onChange={(e) => setEditDraft(prev => ({ ...prev, p: e.target.value }))}
+                style={{ ...inputStyle, minHeight: '110px', resize: 'vertical', lineHeight: 1.5 }}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Still Image Prompt</label>
+              <textarea
+                value={editDraft.image_prompt || ''}
+                onChange={(e) => setEditDraft(prev => ({ ...prev, image_prompt: e.target.value }))}
+                style={{ ...inputStyle, minHeight: '120px', resize: 'vertical', lineHeight: 1.5 }}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Video Prompt</label>
+              <textarea
+                value={editDraft.video_prompt || ''}
+                onChange={(e) => setEditDraft(prev => ({ ...prev, video_prompt: e.target.value }))}
+                style={{ ...inputStyle, minHeight: '140px', resize: 'vertical', lineHeight: 1.5 }}
+                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+              />
             </div>
 
             <button

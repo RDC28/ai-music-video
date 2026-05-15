@@ -556,7 +556,7 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
       {/* Viewport */}
       <div
         ref={containerRef}
-        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: '#0c0c0c', borderRadius: '12px', border: '1px solid #1a1a1a', cursor: cropMode ? 'crosshair' : drag?.type === 'pan' ? 'grabbing' : 'grab' }}
+        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: '#0c0c0c', borderRadius: '12px', border: '1px solid var(--border-mid)', cursor: cropMode ? 'crosshair' : drag?.type === 'pan' ? 'grabbing' : 'grab' }}
         onMouseDown={onMouseDown}
         onWheel={onWheel}
       >
@@ -1215,7 +1215,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
     padding: '10px 13px',
     border: '1px solid var(--border-mid)',
     borderRadius: '8px',
-    background: '#0f0f0f',
+    background: 'var(--bg-deep)',
     color: '#fff',
     fontSize: '13px',
     fontFamily: 'var(--font-body)',
@@ -1225,10 +1225,10 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
   };
 
   return (
-    <div className="screen active" id="s5" style={{ height: '100%', overflow: 'hidden', background: '#080808' }}>
+    <div className="screen active" id="s5" style={{ height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
       <style>{`
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-        .skeleton-shimmer { background:linear-gradient(90deg,#111 25%,#1a1a1a 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
+        .skeleton-shimmer { background:linear-gradient(90deg,var(--bg-deep) 25%,var(--surface-2) 50%,var(--bg-deep) 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
         .img-card {
           --board-card-scale: 1;
           transition: transform 0.16s ease, filter 0.16s ease;
@@ -1236,13 +1236,13 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         .img-card:hover {
           --board-card-scale: 1.06;
           z-index: 20;
-          filter: brightness(1.04);
+          filter: brightness(1.1);
         }
       `}</style>
 
       <div className="studio-shell" style={{ display: 'flex', height: '100%' }}>
         {/* Sidebar */}
-        <div className="studio-sidebar" style={{ width: '280px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
+        <div className="studio-sidebar" style={{ width: '280px', flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--bg-deep)', boxShadow: '4px 0 16px rgba(0,0,0,0.4)' }}>
           <div style={{ padding: '26px' }}>
             <div className="kicker kicker--orange" style={{ marginBottom: '12px' }}>Location · Studio</div>
             <h2 className="editorial-title editorial-h2" style={{ margin: 0, marginBottom: '10px' }}>
@@ -1255,58 +1255,24 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
 
           <div style={{ padding: '0 26px 26px', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {/* Category Toggle */}
-            <div
-              style={{
-                display: 'flex',
-                background: 'rgba(255,255,255,0.025)',
-                borderRadius: '999px',
-                padding: '4px',
-                border: '1px solid rgba(255,255,255,0.06)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
-              }}
-            >
-              <button
-                onClick={() => { setActiveCategory('project'); setActiveTab(0); }}
-                style={{
-                  flex: 1,
-                  padding: '9px',
-                  border: 'none',
-                  borderRadius: '999px',
-                  background: activeCategory === 'project'
-                    ? 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(124,58,237,0.06))'
-                    : 'transparent',
-                  color: activeCategory === 'project' ? 'var(--teal)' : 'var(--text-muted)',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-body)',
-                  letterSpacing: '-0.005em',
-                  boxShadow: activeCategory === 'project' ? '0 0 0 1px rgba(124,58,237,0.22), inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
-                }}
-              >
-                Project
-              </button>
-              <button
-                onClick={() => { setActiveCategory('history'); setActiveTab(0); }}
-                style={{
-                  flex: 1,
-                  padding: '9px',
-                  border: 'none',
-                  borderRadius: '999px',
-                  background: activeCategory === 'history'
-                    ? 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(124,58,237,0.04))'
-                    : 'transparent',
-                  color: activeCategory === 'history' ? 'var(--orange)' : 'var(--text-muted)',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-body)',
-                  letterSpacing: '-0.005em',
-                  boxShadow: activeCategory === 'history' ? '0 0 0 1px rgba(124,58,237,0.28), inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
-                }}
-              >
-                History
-              </button>
+            <div style={{ display: 'flex', background: 'var(--bg)', boxShadow: 'var(--neo-inset)', borderRadius: '10px', padding: '4px', border: '1px solid var(--border)' }}>
+              {['project', 'history'].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => { setActiveCategory(cat); setActiveTab(0); }}
+                  style={{
+                    flex: 1, padding: '8px', borderRadius: '7px',
+                    border: activeCategory === cat ? '1px solid var(--cyan-border)' : '1px solid transparent',
+                    background: activeCategory === cat ? 'var(--surface-2)' : 'transparent',
+                    boxShadow: activeCategory === cat ? 'var(--neo-flat)' : 'none',
+                    color: activeCategory === cat ? 'var(--cyan)' : 'var(--text-muted)',
+                    fontWeight: 600, fontSize: '11px', cursor: 'pointer', fontFamily: 'var(--font-body)',
+                    transition: 'background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out',
+                  }}
+                >
+                  {cat === 'project' ? 'Project' : 'History'}
+                </button>
+              ))}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1351,9 +1317,9 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         </div>
 
         {/* Content Area */}
-        <div className="studio-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <div className="studio-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)' }}>
           {/* Header row with tabs */}
-          <div style={{ height: '64px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', padding: '0 24px', background: '#0d0d0d' }}>
+          <div style={{ height: '64px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 24px', background: 'rgba(17,17,20,0.95)', backdropFilter: 'blur(12px)' }}>
             <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingRight: '20px', scrollbarWidth: 'none' }}>
               {displayedLocations.map((loc, i) => (
                 <button
@@ -1459,7 +1425,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
 
           {/* Image collage */}
           <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'hidden', padding: '8px 24px 18px', boxSizing: 'border-box' }}>
-            <div className="studio-board" ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="studio-board" ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: 'var(--bg-deep)', boxShadow: 'var(--neo-inset)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {activeLoc?.images?.length > 0 ? (() => {
                 const locIdx = activeCategory === 'project' ? activeTab : -1;
                 const collageItems = activeLoc.images.map((img, i) => {
@@ -1586,12 +1552,12 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                   </div>
                 );
               })() : (
-              <div style={{ width: `${Math.min(PINBOARD_WIDTH, collageSize.width - 24)}px`, aspectRatio: `${PINBOARD_WIDTH} / ${PINBOARD_HEIGHT}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.06)', borderRadius: '8px', background: '#0a0a0a' }}>
-                <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <div style={{ width: `${Math.min(PINBOARD_WIDTH, collageSize.width - 24)}px`, aspectRatio: `${PINBOARD_WIDTH} / ${PINBOARD_HEIGHT}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1.5px dashed var(--border-mid)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-deep)' }}>
+                <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'var(--surface-2)', boxShadow: 'var(--neo-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                 </div>
-                <div style={{ color: '#fff', fontSize: '15px', fontWeight: 600, marginBottom: '4px' }}>No reference views yet</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Upload a location sheet or create a reference set</div>
+                <div style={{ color: 'var(--text)', fontSize: '15px', fontWeight: '700', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', marginBottom: '6px' }}>No reference views yet</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-body)' }}>Upload a location sheet or create a reference set</div>
               </div>
               )}
             </div>
@@ -1602,7 +1568,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       {/* Sheet Crop Choice Modal */}
       {showSheetCropModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
-          <div style={{ width: '560px', background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: '24px', padding: '32px', textAlign: 'center' }}>
+          <div style={{ width: '560px', background: 'var(--surface-2)', border: '1px solid var(--border-mid)', borderRadius: 'var(--radius-xl)', padding: '32px', textAlign: 'center' }}>
             <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: '0 0 12px' }}>Choose Crop Method</h3>
             <p style={{ color: isProcessingSheet ? 'var(--teal)' : '#666', fontSize: '13px', margin: '0 0 24px' }}>
               {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Automatically detect and crop each view from your sheet.'}
@@ -1638,7 +1604,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       {/* Create Modal */}
       {showCreateModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
-          <div style={{ width: '500px', background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: '24px', padding: '32px' }}>
+          <div style={{ width: '500px', background: 'var(--surface-2)', border: '1px solid var(--border-mid)', borderRadius: 'var(--radius-xl)', padding: '32px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: 0 }}>Create Location</h3>
               <button onClick={() => setShowCreateModal(false)} style={{ background: 'transparent', border: 'none', color: '#444', fontSize: '20px', cursor: 'pointer' }}>×</button>
@@ -1658,7 +1624,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                 <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '10.5px', fontWeight: 500, marginBottom: '10px', letterSpacing: '0.16em', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>REFERENCE IMAGE (OPTIONAL)</label>
                 <input type="file" ref={refFileInputRef} onChange={handleRefImageSelect} style={{ display: 'none' }} accept="image/*" />
                 {createRefImage ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: 'var(--bg-deep)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px' }}>
                     <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: '#050505', borderRadius: '6px', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ color: '#bbb', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
@@ -1701,7 +1667,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       {/* Edit Modal */}
       {showEditModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
-          <div style={{ width: '460px', background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: '24px', padding: '32px' }}>
+          <div style={{ width: '460px', background: 'var(--surface-2)', border: '1px solid var(--border-mid)', borderRadius: 'var(--radius-xl)', padding: '32px' }}>
             <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 600, margin: '0 0 24px' }}>Edit Location</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div>

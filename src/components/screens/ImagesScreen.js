@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check, ImagePlus, Loader2, RotateCcw, Wand2 } from 'lucide-react';
+import { AlertTriangle, Check, ImagePlus, Loader2, RotateCcw, Wand2, X } from 'lucide-react';
 import { drawClubScene } from '@/utils/drawClubScene';
 import { DEFAULT_IMAGE_MODEL, IMAGE_GENERATION_MODELS, resolveImageModelOption } from '@/utils/generationModels';
 import { normalizeShotList } from '@/utils/shotList';
+import { motion, AnimatePresence } from 'framer-motion';
+import { sidePanel } from '@/lib/motion';
 
 const MAX_CLIENT_RETRIES = 2;
 const CLIENT_REQUEST_TIMEOUT_MS = 130000;
@@ -263,6 +265,63 @@ function compactShotForRequest(shot) {
   };
 }
 
+function normalizeSceneName(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function inferSceneCharacterTagsFromText(shot, projectCharacters = []) {
+  const text = [
+    shot?.n,
+    shot?.p,
+    shot?.image_prompt,
+    shot?.prompt,
+    shot?.source_scene,
+    shot?.concept,
+    shot?.lyrics,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const tags = [];
+  const seen = new Set();
+
+  (Array.isArray(projectCharacters) ? projectCharacters : []).forEach((character) => {
+    const rawName = typeof character === 'string'
+      ? character
+      : (character?.name || character?.character_name || '');
+    const normalized = normalizeSceneName(rawName);
+    if (!normalized || seen.has(normalized)) return;
+    if (!text.includes(normalized)) return;
+    seen.add(normalized);
+    tags.push(String(rawName).replace(/\s+/g, ' ').trim());
+  });
+
+  return tags;
+}
+
+function resolveSceneCharacterTags(shot, projectCharacters = []) {
+  const candidates = []
+    .concat(Array.isArray(shot?.resolved_characters) ? shot.resolved_characters : [])
+    .concat(Array.isArray(shot?.matched_character_names) ? shot.matched_character_names : []);
+
+  const seen = new Set();
+  const labels = [];
+
+  candidates.forEach((candidate) => {
+    const value = typeof candidate === 'string'
+      ? candidate
+      : (candidate?.name || candidate?.character_name || '');
+    const normalized = normalizeSceneName(value);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    labels.push(String(value).replace(/\s+/g, ' ').trim());
+  });
+
+  if (labels.length) return labels;
+  return inferSceneCharacterTagsFromText(shot, projectCharacters);
+}
+
 export default function ImagesScreen({ onNavigate, isActive, projectId, projectData, onDataUpdate }) {
   const canvasRefs = useRef([]);
   const modalCanvasRef = useRef(null);
@@ -276,6 +335,9 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   const [generatingIndex, setGeneratingIndex] = useState(null);
   const [generationError, setGenerationError] = useState('');
   const [queueSummary, setQueueSummary] = useState('');
+  const projectCharacterPool = Array.isArray(projectData)
+    ? []
+    : (Array.isArray(projectData?.characters) ? projectData.characters : []);
 
   const selectedShot = editModalIndex !== null ? shots[editModalIndex] : null;
 
@@ -414,222 +476,371 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
     onNavigate(10);
   };
 
-  const inputStyle = {
-    width: '100%',
-    padding: '10px 14px',
-    border: '1px solid var(--border-mid)',
-    borderRadius: '8px',
-    background: 'var(--surface)',
-    color: 'var(--dark)',
-    fontSize: '13px',
-    fontFamily: 'var(--font-body)',
-    outline: 'none',
-    transition: 'border-color 0.15s',
-    boxSizing: 'border-box',
-    resize: 'none',
-  };
-
   const generatedCount = shots.filter(shot => shot.image_url).length;
   const remainingCount = shots.length - generatedCount;
   const failedCount = shots.filter(shot => !shot.image_url && shot.image_error).length;
 
+  const modelSelectStyle = {
+    background: 'var(--surface-2)',
+    boxShadow: 'var(--neo-inset)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    color: 'var(--text)',
+    padding: '8px 12px',
+    fontSize: '12px',
+    width: '190px',
+    outline: 'none',
+  };
+
   return (
-    <div className="screen active" id="s9" style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    <div
+      className="screen active"
+      id="s9"
+      style={{
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        background: 'var(--bg)',
+      }}
+    >
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
+
+      {/* LEFT PANEL */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
+
+        {/* Header */}
         <div style={{
           padding: '20px 28px',
           borderBottom: '1px solid var(--border)',
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'space-between',
           flexShrink: 0,
           gap: '16px',
+          background: 'rgba(17,17,20,0.95)',
         }}>
+          {/* Left block */}
           <div>
-            <div className="kicker" style={{ marginBottom: '10px' }}>Frames · Render</div>
-            <h1 className="editorial-title editorial-h2" style={{ marginBottom: '8px' }}>
-              Paint each <span className="text-grad">frame.</span>
-            </h1>
-            <p
-              style={{
-                fontSize: '12.5px',
-                color: 'var(--text-soft)',
-                fontFamily: shots.length ? 'var(--font-mono)' : 'var(--font-body)',
-                letterSpacing: shots.length ? '0.08em' : '-0.005em',
-                textTransform: shots.length ? 'uppercase' : 'none',
-              }}
-            >
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10px',
+              color: 'var(--cyan)',
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              marginBottom: '6px',
+            }}>
+              ▪ Frames · Render
+            </div>
+            <h2 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '30px',
+              fontWeight: 700,
+              letterSpacing: '-0.03em',
+              color: 'var(--text)',
+              margin: 0,
+              marginBottom: '8px',
+              lineHeight: 1.1,
+            }}>
+              Paint each frame.
+            </h2>
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10px',
+              color: 'var(--text-muted)',
+              letterSpacing: '0.06em',
+              marginBottom: queueSummary || generationError ? '4px' : 0,
+            }}>
               {shots.length
-                ? `${String(generatedCount).padStart(2,'0')} / ${String(shots.length).padStart(2,'0')} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
-                : 'Review and create a visual frame for each shot in your list.'}
-            </p>
+                ? `${generatedCount}/${shots.length} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
+                : '0/0 ready · 0 remaining'}
+            </div>
             {queueSummary && (
-              <p style={{ fontSize: '11px', color: 'rgba(234,234,234,0.58)', marginTop: '5px' }}>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0' }}>
                 {queueSummary}
               </p>
             )}
             {generationError && (
-              <p style={{ fontSize: '12px', color: '#ff8a8a', marginTop: '5px' }}>
+              <p style={{ fontSize: '12px', color: 'var(--error)', margin: '4px 0 0' }}>
                 {generationError}
               </p>
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+          {/* Right block */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-end', flexShrink: 0 }}>
             <select
               value={modelDraft}
               onChange={(event) => setModelDraft(event.target.value)}
-              style={{ ...inputStyle, width: '190px', height: '38px', padding: '8px 10px', flexShrink: 0 }}
+              style={modelSelectStyle}
               title="Image model"
             >
               {IMAGE_GENERATION_MODELS.map(option => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
-            <button
-              className="btn-teal"
-              onClick={handleGenerateRemaining}
-              disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}
-              style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
-            >
-              {isGeneratingAll ? (
-                <>
-                  <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                  Generating {generatingIndex !== null ? `${generatingIndex + 1}/${shots.length}` : 'Images'}
-                </>
-              ) : (
-                <>
-                  <Wand2 size={14} />
-                  {remainingCount === shots.length ? 'Generate Frames' : `Generate Remaining (${remainingCount})`}
-                </>
-              )}
-            </button>
-            <button
-              className="btn-outline"
-              onClick={handleGenerateAll}
-              disabled={!shots.length || isGeneratingAll || generatingIndex !== null}
-              style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
-              title="Regenerate every shot, including completed images"
-            >
-              <RotateCcw size={14} />
-              Regenerate All
-            </button>
-            <button
-              className="btn-teal"
-              onClick={handleApproveAll}
-              disabled={isApproving}
-              style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
-            >
-              {isApproving ? 'Saving...' : 'Approve All'}
-              {!isApproving && <Check size={14} />}
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                className="btn-teal"
+                onClick={handleGenerateRemaining}
+                disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}
+                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
+              >
+                {isGeneratingAll ? (
+                  <>
+                    <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                    Generating {generatingIndex !== null ? `${generatingIndex + 1}/${shots.length}` : 'Images'}
+                  </>
+                ) : (
+                  <>
+                    <Wand2 size={14} />
+                    {remainingCount === shots.length ? 'Generate Frames' : `Generate Remaining (${remainingCount})`}
+                  </>
+                )}
+              </button>
+              <button
+                className="btn-outline"
+                onClick={handleGenerateAll}
+                disabled={!shots.length || isGeneratingAll || generatingIndex !== null}
+                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
+                title="Regenerate every shot, including completed images"
+              >
+                <RotateCcw size={14} />
+                Regenerate All
+              </button>
+              <button
+                className="btn-teal"
+                onClick={handleApproveAll}
+                disabled={isApproving}
+                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
+              >
+                {isApproving ? 'Saving...' : 'Approve All'}
+                {!isApproving && <Check size={14} />}
+              </button>
+            </div>
           </div>
         </div>
 
+        {/* Shot list */}
         <div id="imgList" style={{ flex: 1, overflowY: 'auto' }}>
-          {shots.length > 0 ? shots.map((shot, i) => (
-            <div
-              key={`${shot.n}-${i}`}
-              style={{
+          {shots.length > 0 ? shots.map((shot, i) => {
+            const sceneCharacterTags = resolveSceneCharacterTags(shot, projectCharacterPool);
+            return (
+              <div
+                key={`${shot.n}-${i}`}
+                style={{
+                  padding: '14px 28px',
+                  borderBottom: '1px solid var(--border)',
+                  display: 'flex',
+                  gap: '16px',
+                  alignItems: 'flex-start',
+                  background: editModalIndex === i ? 'var(--cyan-dim)' : 'transparent',
+                  borderLeft: `3px solid ${editModalIndex === i ? 'var(--cyan)' : 'transparent'}`,
+                  transition: 'all 0.2s',
+                }}
+              >
+                {/* Left column */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '10px',
+                    color: 'var(--text-muted)',
+                    letterSpacing: '0.08em',
+                    marginBottom: '4px',
+                  }}>
+                    {String(i + 1).padStart(2, '0')}
+                  </div>
+                  <div style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: '16px',
+                    fontWeight: 700,
+                    color: editModalIndex === i ? 'var(--cyan)' : 'var(--text)',
+                    letterSpacing: '-0.01em',
+                    marginBottom: '4px',
+                    lineHeight: 1.2,
+                  }}>
+                    {shot.n || shot.title || `Shot ${i + 1}`}
+                  </div>
+                  <div style={{
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '12px',
+                    color: 'var(--text-muted)',
+                    lineHeight: 1.5,
+                    marginBottom: '8px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {(shot.p || shot.prompt || 'No prompt available').substring(0, 150)}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                    {sceneCharacterTags.length ? sceneCharacterTags.map((tag) => (
+                      <span
+                        key={`${shot.n || i}-${tag}`}
+                        style={{
+                          background: 'var(--surface-2)',
+                          boxShadow: 'var(--neo-flat)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '999px',
+                          padding: '3px 8px',
+                          fontSize: '9px',
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--cyan)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                        }}
+                      >
+                        {tag}
+                      </span>
+                    )) : (
+                      <span
+                        style={{
+                          background: 'var(--surface-2)',
+                          boxShadow: 'var(--neo-flat)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '999px',
+                          padding: '3px 8px',
+                          fontSize: '9px',
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--text-muted)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                        }}
+                      >
+                        No named characters
+                      </span>
+                    )}
+                  </div>
+                  {!shot.image_url && shot.image_error && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      marginTop: '7px',
+                      color: 'var(--error)',
+                      fontSize: '11px',
+                    }}>
+                      <AlertTriangle size={13} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {shot.image_error.message}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right column — image preview */}
+                <div style={{ flexShrink: 0 }}>
+                  <div style={{
+                    borderRadius: 'var(--radius)',
+                    overflow: 'hidden',
+                    border: '1px solid var(--border)',
+                    width: '220px',
+                    height: '128px',
+                    background: 'var(--surface-2)',
+                    boxShadow: 'var(--neo-flat)',
+                    position: 'relative',
+                  }}>
+                    {shot.image_url ? (
+                      <img
+                        src={shot.image_url}
+                        alt={shot.n || `Shot ${i + 1}`}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : (
+                      <canvas
+                        ref={(el) => (canvasRefs.current[i] = el)}
+                        width={220}
+                        height={128}
+                        style={{ display: 'block' }}
+                      />
+                    )}
+                    {generatingIndex === i && (
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        color: 'var(--cyan)',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                      }}>
+                        <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                        Generating...
+                      </div>
+                    )}
+                    {!shot.image_url && shot.image_error && generatingIndex !== i && (
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'rgba(0,0,0,0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        color: 'var(--error)',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                      }}>
+                        Try again
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    className="btn-outline"
+                    style={{
+                      fontSize: '11px',
+                      padding: '6px 12px',
+                      marginTop: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      opacity: editModalIndex === i ? 0.5 : 1,
+                      cursor: editModalIndex === i ? 'default' : 'pointer',
+                      width: '100%',
+                      justifyContent: 'center',
+                    }}
+                    onClick={() => openEditor(i)}
+                  >
+                    {editModalIndex === i ? 'Editing...' : shot.image_url ? 'Edit & Regenerate' : shot.image_error ? 'Try Again' : 'Edit & Generate'}
+                  </button>
+                </div>
+              </div>
+            );
+          }) : (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '80px 40px',
+              gap: '16px',
+            }}>
+              <div style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: 'var(--radius-lg)',
+                background: 'var(--surface-2)',
+                boxShadow: 'var(--neo-raised)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '16px',
-                padding: '16px 28px',
-                borderBottom: '1px solid var(--border)',
-                background: editModalIndex === i ? 'rgba(124,58,237,0.04)' : 'transparent',
-                borderLeft: `3px solid ${editModalIndex === i ? 'var(--teal)' : 'transparent'}`,
-                transition: 'all 0.2s',
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'baseline',
-                    gap: '12px',
-                    marginBottom: '6px',
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '11px',
-                      color: 'var(--text-muted)',
-                      letterSpacing: '0.1em',
-                    }}
-                  >
-                    {String(i + 1).padStart(2, '0')}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontStyle: 'italic',
-                      fontSize: '17px',
-                      fontWeight: 500,
-                      color: editModalIndex === i ? 'var(--teal)' : 'var(--dark)',
-                      letterSpacing: '-0.022em',
-                      lineHeight: 1.15,
-                    }}
-                  >
-                    {shot.n || shot.title || `Shot ${i + 1}`}
-                  </span>
-                </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  &quot;{(shot.p || shot.prompt || 'No prompt available').substring(0, 150)}...&quot;
-                </div>
-                {!shot.image_url && shot.image_error && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '7px', color: '#ff8a8a', fontSize: '11px' }}>
-                    <AlertTriangle size={13} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      Needs another try: {shot.image_error.message}
-                    </span>
-                  </div>
-                )}
+                justifyContent: 'center',
+              }}>
+                <ImagePlus size={22} color="var(--cyan)" />
               </div>
-
-              <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', flexShrink: 0, width: '240px', height: '140px', background: 'var(--surface)', position: 'relative' }}>
-                {shot.image_url ? (
-                  <img src={shot.image_url} alt={shot.n || `Shot ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                ) : (
-                  <canvas
-                    ref={(el) => (canvasRefs.current[i] = el)}
-                    width={240}
-                    height={140}
-                    style={{ display: 'block' }}
-                  />
-                )}
-                {generatingIndex === i && (
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.56)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--orange)', fontSize: '11px', fontWeight: 700 }}>
-                    Generating...
-                  </div>
-                )}
-                {!shot.image_url && shot.image_error && generatingIndex !== i && (
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff8a8a', fontSize: '11px', fontWeight: 700 }}>
-                    Try again
-                  </div>
-                )}
-              </div>
-
-              <button
-                className="btn-outline"
-                style={{
-                  fontSize: '11px',
-                  padding: '6px 14px',
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                  opacity: editModalIndex === i ? 0.4 : 1,
-                  cursor: editModalIndex === i ? 'default' : 'pointer',
-                }}
-                onClick={() => openEditor(i)}
-              >
-                {editModalIndex === i ? 'Editing...' : shot.image_url ? 'Edit & Regenerate' : shot.image_error ? 'Try Again' : 'Edit & Generate'}
-              </button>
-            </div>
-          )) : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 40px', gap: '12px' }}>
-              <ImagePlus size={28} color="var(--text-muted)" />
-              <div style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center' }}>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '18px',
+                fontWeight: 700,
+                color: 'var(--text)',
+                letterSpacing: '-0.02em',
+                textAlign: 'center',
+              }}>
                 No shots generated yet.
               </div>
               <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '12px' }}>
@@ -640,147 +851,303 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
         </div>
       </div>
 
-      {editModalIndex !== null && selectedShot && (
-        <div style={{
-          position: 'sticky',
-          top: 0,
-          width: '440px',
-          height: '100%',
-          background: 'var(--card)',
-          borderLeft: '1px solid var(--border-mid)',
-          padding: '28px',
-          display: 'flex',
-          flexDirection: 'column',
-          animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-          overflowY: 'auto',
-          flexShrink: 0,
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: 'var(--dark)' }}>
-              Edit Frame
-            </div>
-            <button
-              onClick={() => setEditModalIndex(null)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-muted)',
-                fontSize: '20px',
-                cursor: 'pointer',
-                lineHeight: 1,
-                padding: '2px 6px',
-                borderRadius: '4px',
-              }}
-            >x</button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+      {/* RIGHT PANEL — Edit modal */}
+      <AnimatePresence>
+        {editModalIndex !== null && selectedShot && (
+          <motion.div
+            key="edit-panel"
+            variants={sidePanel}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            style={{
+              position: 'sticky',
+              top: 0,
+              width: '440px',
+              height: '100%',
+              background: 'var(--surface-2)',
+              boxShadow: '-4px 0 20px rgba(0,0,0,0.4)',
+              borderLeft: '1px solid var(--border-mid)',
+              padding: '24px',
+              display: 'flex',
+              flexDirection: 'column',
+              flexShrink: 0,
+              overflowY: 'auto',
+            }}
+          >
+            {/* Panel header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div>
-                <div style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>
-                  Current
+                <div style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '10px',
+                  color: 'var(--cyan)',
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  marginBottom: '4px',
+                }}>
+                  ▪ Edit Frame
                 </div>
-                <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)', aspectRatio: '16/9', background: 'var(--surface)' }}>
-                  {selectedShot.image_url ? (
-                    <img src={selectedShot.image_url} alt={selectedShot.n || 'Current shot'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  ) : (
-                    <canvas ref={modalCanvasRef} width={560} height={315} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  )}
-                </div>
+                <h3 style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  color: 'var(--text)',
+                  margin: 0,
+                  letterSpacing: '-0.02em',
+                }}>
+                  Frame.
+                </h3>
               </div>
-              <div>
-                <div style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>
-                  Frame Status
-                </div>
-                <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(124,58,237,0.25)', aspectRatio: '16/9', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(124,58,237,0.04)' }}>
-                  <span style={{ fontSize: '10px', color: 'var(--teal)', fontWeight: 600 }}>
-                    {generatingIndex === editModalIndex
-                      ? 'Generating now...'
-                      : selectedShot.image_url
-                        ? 'Generated'
-                        : selectedShot.image_error
-                          ? 'Ready to try again'
-                          : 'Not created yet'}
-                  </span>
-                </div>
-                {!selectedShot.image_url && selectedShot.image_error && (
-                  <div style={{ marginTop: '8px', color: '#ff8a8a', fontSize: '11px', lineHeight: 1.45 }}>
-                    {selectedShot.image_error.message}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ height: '1px', background: 'var(--border)' }} />
-
-            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>
-              Replace With
-            </div>
-
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--dark)', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
-                1. Upload Your Own
-              </div>
-              <div style={{
-                border: '1px dashed var(--border-mid)',
-                borderRadius: '8px',
-                background: 'var(--surface)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '20px',
-                cursor: 'default',
-                opacity: 0.55,
-              }}>
-                <ImagePlus size={20} color="var(--text-muted)" />
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Browse Files</span>
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--dark)', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>
-                2. Generate from Prompt
-              </div>
-              <textarea
-                value={promptDraft}
-                onChange={(e) => setPromptDraft(e.target.value)}
-                style={{ ...inputStyle, minHeight: '108px', lineHeight: 1.45 }}
-                onFocus={(e) => e.target.style.borderColor = 'var(--teal)'}
-                onBlur={(e) => e.target.style.borderColor = 'var(--border-mid)'}
-              />
-              <select
-                value={modelDraft}
-                onChange={(event) => setModelDraft(event.target.value)}
-                style={{ ...inputStyle, height: '38px', padding: '8px 10px', marginTop: '8px' }}
-                title="Image model"
-              >
-                {IMAGE_GENERATION_MODELS.map(option => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
               <button
-                className="btn-orange"
-                onClick={handleGenerateOne}
-                disabled={generatingIndex !== null || !promptDraft.trim()}
-                style={{ width: '100%', fontSize: '12px', padding: '10px', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                onClick={() => setEditModalIndex(null)}
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  background: 'var(--surface)',
+                  boxShadow: 'var(--neo-flat)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
               >
-                {generatingIndex === editModalIndex ? (
-                  <>
-                    <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 size={14} />
-                    {selectedShot.image_error && !selectedShot.image_url ? 'Try Again' : 'Generate New'}
-                  </>
-                )}
+                <X size={13} />
               </button>
             </div>
-          </div>
-        </div>
-      )}
+
+            {/* Panel content */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+              {/* Two-column grid: Current image + Frame Status */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '10px',
+                    color: 'var(--text-muted)',
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    marginBottom: '8px',
+                  }}>
+                    Current
+                  </div>
+                  <div style={{
+                    background: 'var(--bg-deep)',
+                    boxShadow: 'var(--neo-inset)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    aspectRatio: '16/9',
+                    overflow: 'hidden',
+                  }}>
+                    {selectedShot.image_url ? (
+                      <img
+                        src={selectedShot.image_url}
+                        alt={selectedShot.n || 'Current shot'}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : (
+                      <canvas
+                        ref={modalCanvasRef}
+                        width={560}
+                        height={315}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '10px',
+                    color: 'var(--text-muted)',
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    marginBottom: '8px',
+                  }}>
+                    Frame Status
+                  </div>
+                  <div style={{
+                    background: 'var(--bg-deep)',
+                    boxShadow: 'var(--neo-inset)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    aspectRatio: '16/9',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: generatingIndex === editModalIndex
+                        ? 'var(--cyan)'
+                        : selectedShot.image_url
+                          ? 'var(--cyan)'
+                          : selectedShot.image_error
+                            ? 'var(--error)'
+                            : 'var(--text-muted)',
+                      textAlign: 'center',
+                      padding: '0 8px',
+                    }}>
+                      {generatingIndex === editModalIndex
+                        ? 'Generating now...'
+                        : selectedShot.image_url
+                          ? 'Generated'
+                          : selectedShot.image_error
+                            ? 'Ready to try again'
+                            : 'Not created yet'}
+                    </span>
+                    {!selectedShot.image_url && selectedShot.image_error && (
+                      <span style={{
+                        fontSize: '10px',
+                        color: 'var(--error)',
+                        lineHeight: 1.4,
+                        textAlign: 'center',
+                        padding: '0 8px',
+                      }}>
+                        {selectedShot.image_error.message}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div style={{ height: '1px', background: 'var(--border)' }} />
+
+              {/* Replace With heading */}
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '13px',
+                fontWeight: 700,
+                letterSpacing: '-0.01em',
+                color: 'var(--text)',
+              }}>
+                Replace With
+              </div>
+
+              {/* Section 1: Upload */}
+              <div>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'var(--text)',
+                  marginBottom: '8px',
+                }}>
+                  1. Upload Your Own
+                </div>
+                <div style={{
+                  background: 'var(--bg-deep)',
+                  boxShadow: 'var(--neo-inset)',
+                  border: '1.5px dashed var(--border-mid)',
+                  borderRadius: 'var(--radius)',
+                  padding: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px',
+                  opacity: 0.55,
+                }}>
+                  <ImagePlus size={20} color="var(--text-muted)" />
+                  <span style={{
+                    fontSize: '12px',
+                    color: 'var(--text-muted)',
+                  }}>
+                    Browse Files
+                  </span>
+                </div>
+              </div>
+
+              {/* Section 2: Generate from Prompt */}
+              <div>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'var(--text)',
+                  marginBottom: '8px',
+                }}>
+                  2. Generate from Prompt
+                </div>
+                <textarea
+                  value={promptDraft}
+                  onChange={(e) => setPromptDraft(e.target.value)}
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+                  style={{
+                    background: 'var(--bg-deep)',
+                    boxShadow: 'var(--neo-inset)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    padding: '12px',
+                    color: 'var(--text)',
+                    fontFamily: 'var(--font-body)',
+                    fontSize: '13px',
+                    resize: 'vertical',
+                    minHeight: '108px',
+                    width: '100%',
+                    lineHeight: 1.45,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    transition: 'border-color 0.15s',
+                  }}
+                />
+                <select
+                  value={modelDraft}
+                  onChange={(event) => setModelDraft(event.target.value)}
+                  style={{
+                    ...modelSelectStyle,
+                    width: '100%',
+                    marginTop: '8px',
+                    boxSizing: 'border-box',
+                  }}
+                  title="Image model"
+                >
+                  {IMAGE_GENERATION_MODELS.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <button
+                  className="btn-orange"
+                  onClick={handleGenerateOne}
+                  disabled={generatingIndex !== null || !promptDraft.trim()}
+                  style={{
+                    width: '100%',
+                    fontSize: '12px',
+                    padding: '10px',
+                    marginTop: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '7px',
+                  }}
+                >
+                  {generatingIndex === editModalIndex ? (
+                    <>
+                      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 size={14} />
+                      {selectedShot.image_error && !selectedShot.image_url ? 'Try Again' : 'Generate New'}
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
