@@ -128,6 +128,7 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
   const fileInputRef = useRef(null);
   const [activeLocationIndex, setActiveLocationIndex] = useState(0);
   const [uploadTarget, setUploadTarget] = useState(null);
+  const [draggingTarget, setDraggingTarget] = useState(null);
   const [wardrobe, setWardrobe] = useState(() => (
     normalizeWardrobe(projectData?.wardrobe, projectData?.locations || [], projectData?.characters || [])
   ));
@@ -215,6 +216,34 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
   const handleUploadClick = (locIndex, charIndex) => {
     setUploadTarget({ locIndex, charIndex });
     fileInputRef.current?.click();
+  };
+
+  const handleWardrobeDrop = async (e, locIndex, charIndex) => {
+    e.preventDefault();
+    setDraggingTarget(null);
+    if (isUploading) return;
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !projectId) return;
+
+    setUploadTarget({ locIndex, charIndex });
+    setIsUploading(true);
+    setStatus('');
+    try {
+      const extension = file.type?.includes('png') ? 'png' : 'jpg';
+      const path = `${projectId}/wardrobe/${Date.now()}-${safeFileName(file.name || `outfit.${extension}`)}`;
+      const { error } = await supabase.storage.from('assets').upload(path, file, {
+        contentType: file.type || (extension === 'png' ? 'image/png' : 'image/jpeg'),
+        upsert: true,
+      });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(path);
+      updateOutfit(locIndex, charIndex, { image_url: publicUrl, image_path: path });
+    } catch (err) {
+      console.error('Wardrobe drop upload failed:', err);
+      setStatus('Upload failed. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleUploadImage = async (event) => {
@@ -797,11 +826,15 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                     <button
                       type="button"
                       onClick={() => handleUploadClick(activeLocationIndex, charIndex)}
+                      onDragOver={(e) => { e.preventDefault(); if (!isUploading) setDraggingTarget({ locIndex: activeLocationIndex, charIndex }); }}
+                      onDragEnter={(e) => { e.preventDefault(); if (!isUploading) setDraggingTarget({ locIndex: activeLocationIndex, charIndex }); }}
+                      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDraggingTarget(null); }}
+                      onDrop={(e) => handleWardrobeDrop(e, activeLocationIndex, charIndex)}
                       disabled={isUploading}
                       style={{
-                        background: 'var(--bg-deep)',
+                        background: draggingTarget?.locIndex === activeLocationIndex && draggingTarget?.charIndex === charIndex ? 'rgba(0,210,200,0.04)' : 'var(--bg-deep)',
                         boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
-                        border: '1.5px dashed var(--border-mid)',
+                        border: draggingTarget?.locIndex === activeLocationIndex && draggingTarget?.charIndex === charIndex ? '1.5px dashed var(--cyan-border)' : '1.5px dashed var(--border-mid)',
                         borderRadius: 'var(--radius)',
                         minHeight: '120px',
                         cursor: isUploading ? 'wait' : 'pointer',
@@ -811,16 +844,18 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                         flexDirection: 'column',
                         gap: '8px',
                         color: 'var(--text-muted)',
-                        transition: 'border-color 160ms ease-out',
+                        transition: 'border-color 160ms ease-out, background 160ms ease-out',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+                      onMouseEnter={e => { if (!draggingTarget) e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
+                      onMouseLeave={e => { if (!draggingTarget) e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
                     >
                       {isUploading && uploadTarget?.locIndex === activeLocationIndex && uploadTarget?.charIndex === charIndex
                         ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: 'var(--cyan)' }} />
                         : <ImagePlus size={20} style={{ color: 'var(--cyan)' }} />
                       }
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Upload outfit image</span>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                        {draggingTarget?.locIndex === activeLocationIndex && draggingTarget?.charIndex === charIndex ? 'Drop to upload' : 'Upload outfit image'}
+                      </span>
                     </button>
                   )}
 

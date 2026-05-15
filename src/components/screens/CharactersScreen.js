@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { FileText, Loader2, Upload, Wand2 } from 'lucide-react';
+import { FileText, Loader2, Upload } from 'lucide-react';
 import { createClient } from '@/utils/supabase';
 import ProgressBar from '../ProgressBar';
 
@@ -19,55 +19,29 @@ const MODAL_BTN = {
   letterSpacing: '0.03em',
 };
 
-const PANEL_LABELS = [
-  'Mid Portrait', 'Full Body Front', 'Full Body Left', 'Full Body Right', 'Full Body Back',
-  'Face Close-up Front', 'Face Close-up Back', 'Face 3/4 Left', 'Face 3/4 Right',
-];
-
-const CHARACTER_REFERENCE_VIEWS = [
-  {
-    label: 'MID PORTRAIT',
-    prompt: 'Mid portrait, waist-up, front-facing neutral expression, exact face identity, exact hair, exact wardrobe and accessories, clean white studio background.',
-  },
-  {
-    label: 'FULL BODY FRONT',
-    prompt: 'Full body front view, standing upright, complete head-to-toe outfit visible, exact face identity, exact body proportions, exact wardrobe, clean white studio background.',
-  },
-  {
-    label: 'FULL BODY LEFT',
-    prompt: 'Full body left profile view, standing upright, complete figure visible, exact silhouette, exact wardrobe and accessories, clean white studio background.',
-  },
-  {
-    label: 'FULL BODY RIGHT',
-    prompt: 'Full body right profile view, standing upright, complete figure visible, exact silhouette, exact wardrobe and accessories, clean white studio background.',
-  },
-  {
-    label: 'FULL BODY BACK',
-    prompt: 'Full body back view, standing upright, complete figure visible from behind, exact hairstyle, exact wardrobe back details, clean white studio background.',
-  },
-  {
-    label: 'FACE CLOSE-UP FRONT',
-    prompt: 'Face close-up front portrait, head and shoulders, exact facial structure, eyes, nose, lips, skin tone, hairline, neutral expression, clean white studio background.',
-  },
-  {
-    label: 'FACE CLOSE-UP BACK',
-    prompt: 'Back-of-head close-up, head and upper shoulders from behind, exact hairstyle and collar details, clean white studio background.',
-  },
-  {
-    label: 'FACE 3/4 LEFT',
-    prompt: 'Three-quarter left face portrait, head and shoulders, exact facial identity and hair, neutral expression, clean white studio background.',
-  },
-  {
-    label: 'FACE 3/4 RIGHT',
-    prompt: 'Three-quarter right face portrait, head and shoulders, exact facial identity and hair, neutral expression, clean white studio background.',
-  },
-];
-
 const CHARACTER_STEPS = [
-  'Locking character identity',
-  ...CHARACTER_REFERENCE_VIEWS.map(view => `Creating ${view.label.toLowerCase()}`),
+  'Designing full character sheet',
   'Saving to library',
 ];
+
+const CHARACTER_SHEET_LAYOUT_SPEC = {
+  canvas: 'single 21:9 horizontal sheet',
+  background: 'plain warm beige or soft neutral studio backdrop',
+  panel_count: 9,
+  panel_structure: [
+    'large mid portrait panel on far left',
+    'full-body front standing',
+    'full-body left profile standing',
+    'full-body right profile standing',
+    'full-body back standing',
+    'top-right close-up front portrait',
+    'top-right close-up back head portrait',
+    'bottom-right close-up left three-quarter/profile portrait',
+    'bottom-right close-up right three-quarter/profile portrait',
+  ],
+  spacing: 'clean white/beige dividers or visible spacing between panels',
+  framing_rules: 'Do not crop face or costume details. Full-body panels must show full figure head-to-toe. Close-up panels must include head and upper chest/shoulder area.',
+};
 
 const PINBOARD_WIDTH = 2016;
 const PINBOARD_HEIGHT = 700;
@@ -80,19 +54,13 @@ const buildSheetPrompt = (desc, hasRef) => {
   const charClause = hasRef
     ? 'of the character shown in the reference image'
     : `of this character: ${desc}`;
-  return `Professional character design reference sheet. A single wide 21:9 horizontal canvas with 9 clearly separated panels on a warm beige or soft neutral studio backdrop.
+  return `Professional character design reference sheet.
 
-Panel layout:
-- Far left: one large mid-body portrait panel (waist and above)
-- Center column: four full-body standing panels — front view, left profile, right profile, back view — each showing the complete figure head-to-toe
-- Top right: close-up front portrait (head and upper chest/shoulders)
-- Middle right: close-up back-of-head portrait (head and upper shoulders from behind)
-- Bottom right left: close-up left three-quarter portrait (head and upper chest)
-- Bottom right right: close-up right three-quarter portrait (head and upper chest)
+"layout_spec": ${JSON.stringify(CHARACTER_SHEET_LAYOUT_SPEC, null, 2)}
 
 Character ${charClause}.
 
-Do not crop any face or costume details. Maintain perfectly consistent character appearance across all 9 panels. Clean visible spacing between panels. Studio lighting throughout. Professional concept art quality.`;
+Output exactly one complete 21:9 horizontal image containing the whole sheet. Maintain perfectly consistent character appearance across all 9 panels: same face, body proportions, hair, skin tone, wardrobe, accessories, and age. No text labels, watermarks, extra people, or cropped panels. Studio lighting throughout. Professional concept art quality.`;
 };
 
 function compactScriptText(value, maxLength = 700) {
@@ -134,20 +102,6 @@ function buildScriptCharacterDescription(character = {}, projectState = {}) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function _renderedRect(img, containerW, containerH) {
-  const natAR = img.naturalWidth / img.naturalHeight;
-  const cAR = containerW / containerH;
-  let rendW, rendH, offX, offY;
-  if (natAR > cAR) {
-    rendW = containerW; rendH = containerW / natAR;
-    offX = 0; offY = (containerH - rendH) / 2;
-  } else {
-    rendH = containerH; rendW = containerH * natAR;
-    offX = (containerW - rendW) / 2; offY = 0;
-  }
-  return { offX, offY, rendW, rendH };
-}
 
 function getImageRatio(ratio) {
   if (!Number.isFinite(ratio) || ratio <= 0) return DEFAULT_COLLAGE_RATIO;
@@ -327,49 +281,20 @@ function buildPinboardLayout(items) {
   return tryBuildPinboard(items, 0.58) || [];
 }
 
-// ─── ZoomCropModal ────────────────────────────────────────────────────────────
+// ─── ImagePreviewModal ───────────────────────────────────────────────────────
 
-function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox, showLabelInput, recropUrl, recropBox }) {
+function ImagePreviewModal({ imageUrl, label, onClose, onDelete }) {
   const containerRef = useRef(null);
   const imgRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [drag, setDrag] = useState(null);
-  const [cropBox, setCropBox] = useState(null);
-  const [cropMode, setCropMode] = useState(!!initialBox);
-  const [applying, setApplying] = useState(false);
-  const [editorImageUrl, setEditorImageUrl] = useState(imageUrl);
-  const [editorInitialBox, setEditorInitialBox] = useState(initialBox || null);
-  const [showEditorLabel, setShowEditorLabel] = useState(!!showLabelInput);
-  const [labelInput, setLabelInput] = useState(label || '');
 
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, []);
-
-  useEffect(() => {
-    if (!editorInitialBox) return;
-    const img = imgRef.current;
-    if (!img) return;
-
-    const apply = () => {
-      const cRect = containerRef.current?.getBoundingClientRect();
-      if (!cRect || !img.naturalWidth) return;
-      const { offX, offY, rendW, rendH } = _renderedRect(img, cRect.width, cRect.height);
-      const [ymin, xmin, ymax, xmax] = editorInitialBox;
-      setCropBox({
-        x: offX + (xmin / 1000) * rendW,
-        y: offY + (ymin / 1000) * rendH,
-        w: ((xmax - xmin) / 1000) * rendW,
-        h: ((ymax - ymin) / 1000) * rendH,
-      });
-    };
-
-    if (img.complete && img.naturalWidth) apply();
-    else img.addEventListener('load', apply, { once: true });
-  }, [editorInitialBox, editorImageUrl]);
 
   const onWheel = (e) => {
     e.preventDefault();
@@ -379,92 +304,15 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
 
   const onMouseDown = (e) => {
     e.preventDefault();
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    if (cropMode) {
-      setDrag({ type: 'crop', startX: x, startY: y });
-      setCropBox({ x, y, w: 0, h: 0 });
-    } else {
-      setDrag({ type: 'pan', startX: e.clientX - pan.x, startY: e.clientY - pan.y });
-    }
+    setDrag({ startX: e.clientX - pan.x, startY: e.clientY - pan.y });
   };
 
   const onMouseMove = (e) => {
     if (!drag) return;
-    if (drag.type === 'pan') {
-      setPan({ x: e.clientX - drag.startX, y: e.clientY - drag.startY });
-    } else {
-      const rect = containerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      setCropBox({
-        x: Math.min(x, drag.startX), y: Math.min(y, drag.startY),
-        w: Math.abs(x - drag.startX), h: Math.abs(y - drag.startY),
-      });
-    }
+    setPan({ x: e.clientX - drag.startX, y: e.clientY - drag.startY });
   };
 
   const onMouseUp = () => setDrag(null);
-
-  const applyCrop = () => {
-    if (!cropBox || cropBox.w < 4 || cropBox.h < 4 || !imgRef.current) return;
-    setApplying(true);
-    const img = imgRef.current;
-    const cRect = containerRef.current.getBoundingClientRect();
-    const cw = cRect.width;
-    const ch = cRect.height;
-    const { offX, offY, rendW, rendH } = _renderedRect(img, cw, ch);
-
-    const toImg = (px, py) => ({
-      x: (cw / 2 + (px - cw / 2 - pan.x) / zoom - offX) / rendW * img.naturalWidth,
-      y: (ch / 2 + (py - ch / 2 - pan.y) / zoom - offY) / rendH * img.naturalHeight,
-    });
-
-    const tl = toImg(cropBox.x, cropBox.y);
-    const br = toImg(cropBox.x + cropBox.w, cropBox.y + cropBox.h);
-
-    const natX = Math.max(0, tl.x);
-    const natY = Math.max(0, tl.y);
-    const natW = Math.min(img.naturalWidth - natX, br.x - tl.x);
-    const natH = Math.min(img.naturalHeight - natY, br.y - tl.y);
-    if (natW < 1 || natH < 1) { setApplying(false); return; }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(natW);
-    canvas.height = Math.round(natH);
-    const tmp = new Image();
-    tmp.crossOrigin = 'anonymous';
-    tmp.onload = () => {
-      canvas.getContext('2d').drawImage(tmp, Math.round(natX), Math.round(natY), Math.round(natW), Math.round(natH), 0, 0, Math.round(natW), Math.round(natH));
-      canvas.toBlob(blob => {
-        onApply(blob, labelInput.trim() || label, { width: canvas.width, height: canvas.height });
-        setApplying(false);
-      }, 'image/jpeg', 0.95);
-    };
-    tmp.src = editorImageUrl;
-  };
-
-  const canApply = cropBox && cropBox.w > 4 && cropBox.h > 4;
-  const viewingRecropSource = recropUrl && editorImageUrl === recropUrl;
-  const openRecropSource = () => {
-    setEditorImageUrl(recropUrl);
-    setEditorInitialBox(recropBox || null);
-    setShowEditorLabel(true);
-    setCropMode(true);
-    setCropBox(null);
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  };
-  const openCurrentImage = () => {
-    setEditorImageUrl(imageUrl);
-    setEditorInitialBox(null);
-    setShowEditorLabel(false);
-    setCropMode(false);
-    setCropBox(null);
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  };
 
   return (
     <div
@@ -475,33 +323,6 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
       <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
         <span style={{ color: '#444', fontSize: '10px', fontWeight: 700, letterSpacing: '0.12em', marginRight: '4px' }}>{label?.toUpperCase()}</span>
         <span style={{ color: '#333', fontSize: '11px', marginRight: '4px' }}>Scroll to zoom · Drag to pan</span>
-        <div style={{ width: '1px', height: '18px', background: '#222' }} />
-        {recropUrl && (
-          viewingRecropSource ? (
-            <button onClick={openCurrentImage} style={MODAL_BTN}>View Image</button>
-          ) : (
-            <button onClick={openRecropSource} style={{ ...MODAL_BTN, background: 'var(--teal)', color: '#000', border: '1px solid var(--teal)' }}>
-              Re-crop
-            </button>
-          )
-        )}
-        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={cropMode ? { ...MODAL_BTN, background: '#7C3AED', color: '#000', border: '1px solid #7C3AED' } : MODAL_BTN}>
-          {cropMode ? 'Draw New Selection' : 'Crop Mode'}
-        </button>
-        {canApply && showEditorLabel && (
-          <input
-            value={labelInput}
-            onChange={e => setLabelInput(e.target.value)}
-            placeholder="Label (e.g. BACK VIEW)"
-            onClick={e => e.stopPropagation()}
-            style={{ ...MODAL_BTN, width: '160px', outline: 'none', caretColor: '#fff', background: 'rgba(255,255,255,0.04)', color: '#fff' }}
-          />
-        )}
-        {canApply && (
-          <button onClick={applyCrop} disabled={applying} style={{ ...MODAL_BTN, background: 'var(--orange)', color: '#000', border: 'none' }}>
-            {applying ? 'Saving...' : 'Save Crop'}
-          </button>
-        )}
         <div style={{ width: '1px', height: '18px', background: '#222' }} />
         {onDelete && (
           <button onClick={onDelete} style={{ ...MODAL_BTN, color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>
@@ -514,21 +335,16 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
       {/* Viewport */}
       <div
         ref={containerRef}
-        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: '#0c0c0c', borderRadius: '12px', border: '1px solid #1a1a1a', cursor: cropMode ? 'crosshair' : drag?.type === 'pan' ? 'grabbing' : 'grab' }}
+        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: '#0c0c0c', borderRadius: '12px', border: '1px solid #1a1a1a', cursor: drag ? 'grabbing' : 'grab' }}
         onMouseDown={onMouseDown}
         onWheel={onWheel}
       >
         <img
-          ref={imgRef} src={editorImageUrl} alt={label} draggable={false}
+          ref={imgRef} src={imageUrl} alt={label} draggable={false}
           style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'center center', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
         />
-        {cropBox && cropBox.w > 0 && (
-          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '1px solid #7C3AED', background: 'rgba(124,58,237,0.08)', pointerEvents: 'none', boxSizing: 'border-box' }} />
-        )}
         <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: '#2a2a2a', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
-          {cropMode
-            ? 'Drag to select the panel · Draw a new box to change selection'
-            : 'Scroll to zoom · Drag to pan · Enable Crop Mode to select area'}
+          Scroll to zoom · Drag to pan
         </div>
       </div>
     </div>
@@ -548,16 +364,15 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [isProcessingSheet, setIsProcessingSheet] = useState(false);
+  const [isDraggingSheet, setIsDraggingSheet] = useState(false);
+  const [isDraggingRef, setIsDraggingRef] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingChar, setGeneratingChar] = useState(null);
-  const [zoomCropTarget, setZoomCropTarget] = useState(null);
+  const [previewTarget, setPreviewTarget] = useState(null);
   const [activeCategory, setActiveCategory] = useState('project');
   const [renamingPanel, setRenamingPanel] = useState(null);
 
-  const [pendingSheetFile, setPendingSheetFile] = useState(null);
   const [sheetReplaceTarget, setSheetReplaceTarget] = useState(null);
-  const [showSheetCropModal, setShowSheetCropModal] = useState(false);
-  const [sheetPreviewUrl, setSheetPreviewUrl] = useState(null);
   const [sheetProcessStatus, setSheetProcessStatus] = useState('');
   const [charProgressStep, setCharProgressStep] = useState(-1);
   const [imgRatios, setImgRatios] = useState({});
@@ -729,7 +544,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
     return publicUrl;
   };
 
-  const callNBPro = async (payload) => {
+  const callCharacterGenerator = async (payload) => {
     const res = await fetch('/api/generate-character-pose', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     return res.json();
   };
@@ -790,15 +605,6 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
     setActiveTab(updatedChars.length - 1);
   };
 
-  const pushSlot = (i, url, label) => {
-    setGeneratingChar(prev => {
-      if (!prev) return prev;
-      const images = [...prev.images];
-      images[i] = { url, label };
-      return { ...prev, images };
-    });
-  };
-
   const handleRefImageSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -817,43 +623,36 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = '';
-    const previewUrl = URL.createObjectURL(file);
-    setSheetPreviewUrl(previewUrl);
-    setSheetProcessStatus('');
-    setPendingSheetFile(file);
-    setShowSheetCropModal(true);
+    void processSheetFile(file);
   };
 
-  const handleCloseSheetCropModal = () => {
-    if (isProcessingSheet) return;
-    if (sheetPreviewUrl) URL.revokeObjectURL(sheetPreviewUrl);
-    setSheetPreviewUrl(null);
-    setSheetProcessStatus('');
-    setPendingSheetFile(null);
+  const handleSheetDrop = (e) => {
+    e.preventDefault();
+    setIsDraggingSheet(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
     setSheetReplaceTarget(null);
-    setShowSheetCropModal(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    void processSheetFile(file);
+  };
+
+  const handleRefDrop = (e) => {
+    e.preventDefault();
+    setIsDraggingRef(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    handleRefImageSelect({ target: { files: [file], value: '' } });
   };
 
   const processSheetFile = async (file) => {
     if (!file) return;
     setIsProcessingSheet(true);
-    setSheetProcessStatus('Uploading sheet...');
+    setSheetProcessStatus('Uploading full sheet...');
 
     try {
       const sheetPath = `${projectId}/sheets/${Date.now()}-${file.name}`;
       const { error: upErr } = await supabase.storage.from('assets').upload(sheetPath, file);
       if (upErr) throw upErr;
       const { data: { publicUrl: sheetUrl } } = supabase.storage.from('assets').getPublicUrl(sheetPath);
-
-      setSheetProcessStatus('Detecting pose panels...');
-      const { poses, error: splitErr } = await fetch('/api/split-character-sheet', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl: sheetUrl }),
-      }).then(r => r.json());
-      if (splitErr) throw new Error(splitErr);
-      if (!poses?.length) throw new Error('No character poses were detected in this sheet.');
-
       const replaceIndex = Number.isInteger(sheetReplaceTarget?.index) && sheetReplaceTarget.index >= 0 && sheetReplaceTarget.index < projectCharacters.length
         ? sheetReplaceTarget.index
         : null;
@@ -864,74 +663,27 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
       const charDescription = existingChar
         ? (sheetReplaceTarget?.description ?? existingChar.description ?? 'Uploaded from character sheet')
         : 'Uploaded from character sheet';
+      const sheetImage = { url: sheetUrl, label: 'CHARACTER SHEET' };
+
       setGeneratingChar({
         ...(existingChar || {}),
         id: existingChar?.id || 'generating',
         name: charName,
         description: charDescription,
-        images: poses.map(p => ({ label: p.label || 'Section', url: null })),
+        images: [sheetImage],
         isGeneratingReference: true,
         replaceIndex,
       });
       setActiveTab(replaceIndex !== null ? replaceIndex : projectCharacters.length);
       setActiveCategory('project');
-      setSheetProcessStatus(`Detected ${poses.length} poses. Refining crops...`);
-      setShowSheetCropModal(false);
-
-      const img = await new Promise((res, rej) => {
-        const el = new Image(); el.crossOrigin = 'anonymous';
-        el.onload = () => res(el); el.onerror = rej; el.src = sheetUrl;
-      });
-
-      const finalImages = new Array(poses.length).fill(null);
-
-      await Promise.all(poses.map(async (pose, i) => {
-        setSheetProcessStatus(`Refining pose ${i + 1} of ${poses.length}...`);
-        const label = pose.label || `Section ${i + 1}`;
-        const [ymin, xmin, ymax, xmax] = pose.box_2d;
-        const sx = Math.max(0, (xmin / 1000) * img.width);
-        const sy = Math.max(0, (ymin / 1000) * img.height);
-        const sw = Math.min((xmax / 1000) * img.width, img.width) - sx;
-        const sh = Math.min((ymax / 1000) * img.height, img.height) - sy;
-
-        if (sw <= 0 || sh <= 0) return;
-
-        const cv = document.createElement('canvas');
-        cv.width = sw; cv.height = sh;
-        cv.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-        const cropB64 = cv.toDataURL('image/jpeg', 0.95).split(',')[1];
-
-        let finalB64 = cropB64, finalMime = 'image/jpeg';
-        try {
-          const nb = await callNBPro({ base64: cropB64, mimeType: 'image/jpeg', label });
-          if (nb.success && nb.base64) {
-            finalB64 = nb.base64;
-            finalMime = 'image/png';
-          }
-        } catch (e) {
-          console.warn("NB Pro refinement failed for pose, using raw crop", e);
-        }
-
-        const blob = base64ToBlob(finalB64, finalMime);
-        const ext = finalMime.split('/')[1] || 'png';
-        const url = await uploadBlob(blob, finalMime, `${projectId}/generated/${Date.now()}-section-${i}.${ext}`);
-
-        const imageData = { url, label, box_2d: pose.box_2d, width: Math.round(sw), height: Math.round(sh) };
-        finalImages[i] = imageData;
-        setGeneratingChar(prev => {
-          if (!prev) return prev;
-          const newImgs = [...prev.images];
-          newImgs[i] = imageData;
-          return { ...prev, images: newImgs };
-        });
-      }));
+      setSheetProcessStatus('Saving character sheet...');
 
       const newChar = {
         ...(existingChar || {}),
         id: existingChar?.id || Date.now(),
         name: charName,
         description: charDescription,
-        images: finalImages.filter(Boolean),
+        images: [sheetImage],
         source: 'upload',
         sheetUrl,
       };
@@ -956,12 +708,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
     } finally {
       setIsProcessingSheet(false);
       setGeneratingChar(null);
-      if (sheetPreviewUrl) URL.revokeObjectURL(sheetPreviewUrl);
-      setSheetPreviewUrl(null);
       setSheetProcessStatus('');
-      setPendingSheetFile(null);
       setSheetReplaceTarget(null);
-      setShowSheetCropModal(false);
     }
   };
 
@@ -984,70 +732,32 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         id: existingChar?.id || tempId,
         name: charName,
         description: desc,
-        images: CHARACTER_REFERENCE_VIEWS.map(view => ({ label: view.label, url: null })),
+        images: [{ label: 'CHARACTER SHEET', url: null }],
         isGeneratingReference: true,
         replaceIndex: isReplacing ? replaceIndex : null,
       });
       setActiveTab(isReplacing ? replaceIndex : projectCharacters.length);
       setActiveCategory('project');
 
-      const finalImages = [];
-      const hasUserReference = Boolean(refImage?.base64);
-      let referenceBase64 = refImage?.base64 || null;
-      let referenceMimeType = refImage?.mimeType || 'image/png';
+      const payload = {
+        characterDescription: desc,
+        sheetPrompt: buildSheetPrompt(desc, Boolean(refImage?.base64)),
+        label: 'CHARACTER SHEET',
+      };
 
-      for (let i = 0; i < CHARACTER_REFERENCE_VIEWS.length; i++) {
-        setCharProgressStep(i + 1);
-        const view = CHARACTER_REFERENCE_VIEWS[i];
-        try {
-          const payload = {
-            characterDescription: desc,
-            angleDescription: view.prompt,
-            label: view.label
-          };
-
-          if (referenceBase64) {
-            payload.base64 = referenceBase64;
-            payload.mimeType = referenceMimeType;
-          }
-
-          const resp = await fetch('/api/generate-character-pose', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-
-          const { imageBase64, error } = await resp.json();
-          if (error) throw new Error(error);
-
-          if (!hasUserReference && !referenceBase64) {
-            referenceBase64 = imageBase64;
-            referenceMimeType = 'image/png';
-          }
-
-          const blob = base64ToBlob(imageBase64, 'image/png');
-          const url = await uploadBlob(blob, 'image/png', `${projectId}/generated/${Date.now()}-${view.label.replace(/\s+/g, '_')}.png`);
-
-          const imageData = { url, label: view.label };
-          finalImages[i] = imageData;
-
-          setGeneratingChar(prev => {
-            if (!prev) return prev;
-            const newImgs = [...prev.images];
-            newImgs[i] = imageData;
-            return { ...prev, images: newImgs };
-          });
-
-        } catch (e) {
-          console.error(`Failed ${view.label}:`, e);
-        }
+      if (refImage?.base64) {
+        payload.base64 = refImage.base64;
+        payload.mimeType = refImage.mimeType || 'image/png';
       }
 
-      const savedImages = finalImages.filter(Boolean);
-      if (savedImages.length < 7) {
-        throw new Error(`Only ${savedImages.length} character references were generated.`);
-      }
+      const { imageBase64, error } = await callCharacterGenerator(payload);
+      if (error) throw new Error(error);
+      if (!imageBase64) throw new Error('Character sheet generation returned no image.');
 
+      const blob = base64ToBlob(imageBase64, 'image/png');
+      const url = await uploadBlob(blob, 'image/png', `${projectId}/generated/${Date.now()}-character-sheet.png`);
+      const sheetImage = { url, label: 'CHARACTER SHEET' };
+      setGeneratingChar(prev => prev ? { ...prev, images: [sheetImage] } : prev);
       setCharProgressStep(CHARACTER_STEPS.length - 1);
       const newChar = {
         ...(existingChar || {}),
@@ -1055,8 +765,9 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         name: charName,
         description: desc,
         visual_prompt: existingChar?.visual_prompt || desc,
-        images: savedImages,
+        images: [sheetImage],
         source: 'ai',
+        sheetUrl: url,
       };
       const updatedChars = [...projectCharacters];
       if (isReplacing) {
@@ -1126,33 +837,24 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
 
   const handleEditSave = async () => {
     if (!editName.trim()) return alert('Name cannot be empty');
-    const updatedChars = [...projectCharacters];
-    updatedChars[activeTab] = { ...projectCharacters[activeTab], name: editName.trim().toUpperCase(), description: editDesc.trim() };
-    await onDataUpdate({ characters: updatedChars });
-    setShowEditModal(false);
-  };
-
-  const handleApplyCrop = async (blob, newLabel, cropMeta = null) => {
-    if (!zoomCropTarget) return;
-    const { charIdx, imgIdx } = zoomCropTarget;
     try {
-      const url = await uploadBlob(blob, 'image/jpeg', `${projectId}/crops/${Date.now()}-crop.jpg`);
-      const char = projectCharacters[charIdx];
-      const images = [...char.images];
-      const sizeMeta = cropMeta?.width && cropMeta?.height
-        ? { width: cropMeta.width, height: cropMeta.height }
-        : {};
-      if (imgIdx === null) {
-        images.push({ url, label: newLabel || 'CUSTOM CROP', ...sizeMeta });
+      if (activeCategory === 'global') {
+        const { error } = await supabase
+          .from('characters_library')
+          .update({ name: editName.trim().toUpperCase(), description: editDesc.trim() })
+          .eq('id', activeChar.id);
+        if (error) throw error;
+        await refreshGlobalLibrary();
       } else {
-        const existing = images[imgIdx];
-        images[imgIdx] = { url, label: newLabel || (typeof existing === 'string' ? `Section ${imgIdx + 1}` : existing.label), ...sizeMeta };
+        const updatedChars = [...projectCharacters];
+        updatedChars[activeTab] = { ...projectCharacters[activeTab], name: editName.trim().toUpperCase(), description: editDesc.trim() };
+        await onDataUpdate({ characters: updatedChars });
       }
-      const updatedChars = [...projectCharacters];
-      updatedChars[charIdx] = { ...char, images };
-      await onDataUpdate({ characters: updatedChars });
-      setZoomCropTarget(null);
-    } catch { alert('Crop could not be saved. Please try again.'); }
+      setShowEditModal(false);
+    } catch (error) {
+      console.error('Character rename failed:', error);
+      alert('Character could not be renamed. Please try again.');
+    }
   };
 
   const handleDelete = async () => {
@@ -1236,8 +938,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '12.5px', lineHeight: 1.6 }}>
               {busy && generatingChar
-                ? `Creating ${generatingChar.images.filter(x => x.url).length}/${generatingChar.images.length} references…`
-                : busy ? 'Finding poses…' : 'Upload a sheet or create a reference set.'}
+                ? `Saving ${generatingChar.images.filter(x => x.url).length}/${generatingChar.images.length} sheet…`
+                : busy ? 'Processing sheet…' : 'Upload a full sheet or create one.'}
             </p>
           </div>
 
@@ -1282,15 +984,19 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
             <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
             <button
               className="btn-orange"
-              style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', outline: isDraggingSheet ? '2px dashed var(--cyan-border)' : 'none', outlineOffset: '2px', transition: 'outline 120ms ease-out' }}
               onClick={() => {
                 setSheetReplaceTarget(null);
                 fileInputRef.current.click();
               }}
+              onDragOver={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
+              onDragEnter={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingSheet(false); }}
+              onDrop={handleSheetDrop}
               disabled={busy}
             >
               <Upload size={14} />
-              {isProcessingSheet ? 'Reading sheet...' : 'Upload Reference Sheet'}
+              {isDraggingSheet ? 'Drop to upload' : isProcessingSheet ? 'Reading sheet...' : 'Upload Full Sheet'}
             </button>
             <button
               onClick={() => setShowCreateModal(true)}
@@ -1298,7 +1004,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
               className="btn-outline"
               style={{ width: '100%', padding: '12px', justifyContent: 'center' }}
             >
-              Create character
+              Create new
             </button>
             <button
               onClick={handleGenerateFromScript}
@@ -1437,6 +1143,13 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                     Add to project
                   </button>
                   <button
+                    onClick={() => { setEditName(activeChar.name); setEditDesc(activeChar.description || ''); setShowEditModal(true); }}
+                    className="btn-outline"
+                    style={{ padding: '8px 14px', fontSize: '11.5px', whiteSpace: 'nowrap' }}
+                  >
+                    Rename
+                  </button>
+                  <button
                     onClick={handleDelete}
                     className="btn-outline"
                     style={{ padding: '8px 14px', fontSize: '11.5px', color: '#ff7a7a', borderColor: 'rgba(239,68,68,0.2)' }}
@@ -1458,15 +1171,6 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                         Identity anchor ready ✓
                       </div>
                     </div>
-                  )}
-                  {activeChar.sheetUrl && (
-                    <button
-                      onClick={() => setZoomCropTarget({ charIdx: activeTab, imgIdx: null, url: activeChar.sheetUrl, label: '', showLabelInput: true })}
-                      className="btn-outline"
-                      style={{ padding: '8px 14px', fontSize: '11.5px', whiteSpace: 'nowrap' }}
-                    >
-                      Add from sheet
-                    </button>
                   )}
                   <button
                     onClick={() => { setEditName(activeChar.name); setEditDesc(activeChar.description || ''); setShowEditModal(true); }}
@@ -1554,13 +1258,11 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                           onClick={e => {
                             e.stopPropagation();
                             if (item.loading || charIdx < 0) return;
-                            setZoomCropTarget({
+                            setPreviewTarget({
                               charIdx,
                               imgIdx: item.index,
                               url: item.src,
                               label: item.label,
-                              recropUrl: activeChar?.sheetUrl || null,
-                              recropBox: item.raw && typeof item.raw === 'object' ? item.raw.box_2d : null,
                             });
                           }}
                           style={{
@@ -1633,8 +1335,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                   <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'var(--surface-2)', boxShadow: 'var(--neo-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
                   </div>
-                  <div style={{ color: 'var(--text)', fontSize: '15px', fontWeight: '700', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', marginBottom: '6px' }}>No reference images yet</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-body)' }}>Upload a character sheet or create a reference set</div>
+                  <div style={{ color: 'var(--text)', fontSize: '15px', fontWeight: '700', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', marginBottom: '6px' }}>No character sheet yet</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-body)' }}>Upload a full character sheet or create one</div>
                 </div>
               )}
             </div>
@@ -1647,12 +1349,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         <div className="auth-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="auth-modal" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowCreateModal(false)}>×</button>
-            <div className="kicker" style={{ marginBottom: '10px' }}>── New Character</div>
+            <div className="kicker" style={{ marginBottom: '10px' }}>── Create New</div>
             <div className="editorial-title editorial-h2" style={{ marginBottom: '10px' }}>
               Sketch the <span className="text-grad">cast.</span>
             </div>
             <div style={{ color: 'var(--text-soft)', fontSize: '13px', marginBottom: '24px', lineHeight: 1.6 }}>
-              Generate a full reference sheet and keep each pose organized for later shots.
+              Generate one full 21:9 character sheet for later shots.
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -1677,35 +1379,25 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                     <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: '#050505', borderRadius: '6px', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ color: '#bbb', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
-                      <div style={{ color: '#333', fontSize: '10px', marginTop: '2px' }}>All angles will match this character</div>
+                      <div style={{ color: '#777', fontSize: '10px', marginTop: '2px' }}>The sheet will match this character</div>
                     </div>
                     <button onClick={() => setCreateRefImage(null)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: '5px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>Remove</button>
                   </div>
                 ) : (
-                  <button onClick={() => refFileInputRef.current.click()}
-                    style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'transparent', border: '1px dashed rgba(255,255,255,0.08)', color: '#444', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
-                    Upload Reference Image
+                  <button
+                    onClick={() => refFileInputRef.current.click()}
+                    onDragOver={(e) => { e.preventDefault(); setIsDraggingRef(true); }}
+                    onDragEnter={(e) => { e.preventDefault(); setIsDraggingRef(true); }}
+                    onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingRef(false); }}
+                    onDrop={handleRefDrop}
+                    style={{ width: '100%', padding: '10px', borderRadius: '8px', background: isDraggingRef ? 'rgba(0,210,200,0.06)' : 'rgba(255,255,255,0.04)', border: isDraggingRef ? '1px dashed var(--cyan-border)' : '1px dashed rgba(255,255,255,0.22)', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'border-color 120ms ease-out, background 120ms ease-out' }}>
+                    {isDraggingRef ? 'Drop image here' : 'Upload Reference Image'}
                   </button>
                 )}
               </div>
 
-              {/* Panel labels */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                {PANEL_LABELS.map(label => (
-                  <span key={label} style={{ fontSize: '9px', padding: '2px 8px', borderRadius: '3px', background: 'rgba(124,58,237,0.06)', color: 'var(--teal)', border: '1px solid rgba(124,58,237,0.1)', fontFamily: 'var(--font-display)', fontWeight: 600 }}>{label}</span>
-                ))}
-              </div>
-
               <button className="btn-orange" style={{ width: '100%', padding: '13px', fontSize: '12px' }} onClick={handleGenerateAngles}>
-                Create Reference Sheet
-              </button>
-              <button
-                className="btn-outline"
-                style={{ width: '100%', padding: '13px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
-                onClick={handleGenerateFromScript}
-              >
-                <Wand2 size={14} />
-                Generate from Script
+                Create new
               </button>
             </div>
           </div>
@@ -1717,7 +1409,9 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         <div className="auth-overlay" onClick={() => setShowEditModal(false)}>
           <div className="auth-modal" style={{ maxWidth: '440px', background: '#0e0e0e' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowEditModal(false)}>×</button>
-            <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, marginBottom: '20px', letterSpacing: '-0.01em' }}>Edit Character</div>
+            <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, marginBottom: '20px', letterSpacing: '-0.01em' }}>
+              {activeCategory === 'global' ? 'Rename Character' : 'Edit Character'}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>NAME</label>
@@ -1727,92 +1421,49 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
                 <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} style={{ ...inputStyle, minHeight: '72px', resize: 'none' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px' }}>
-                <label style={{ fontSize: '10px', fontWeight: 700, color: '#2a2a2a', letterSpacing: '0.1em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>REPLACE IMAGES</label>
-                <button onClick={() => {
-                  setSheetReplaceTarget({
-                    index: activeTab,
-                    name: (editName || activeChar.name || '').trim().toUpperCase(),
-                    description: editDesc.trim(),
-                  });
-                  setShowEditModal(false);
-                  fileInputRef.current.click();
-                }}
-                  style={{ width: '100%', padding: '10px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.07)', color: '#444', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
-                  Upload New Character Sheet
-                </button>
-              </div>
+              {activeCategory === 'project' && (
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px' }}>
+                  <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.1em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>REPLACE SHEET</label>
+                  <button onClick={() => {
+                    setSheetReplaceTarget({
+                      index: activeTab,
+                      name: (editName || activeChar.name || '').trim().toUpperCase(),
+                      description: editDesc.trim(),
+                    });
+                    setShowEditModal(false);
+                    fileInputRef.current.click();
+                  }}
+                    style={{ width: '100%', padding: '10px', borderRadius: '7px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)', color: 'var(--text-soft)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
+                    Upload New Character Sheet
+                  </button>
+                </div>
+              )}
               <button className="btn-teal" style={{ width: '100%', padding: '13px', fontSize: '12px' }} onClick={handleEditSave}>
-                Save Changes
+                {activeCategory === 'global' ? 'Rename' : 'Save Changes'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Zoom / Crop Modal ── */}
-      {zoomCropTarget && (
-        <ZoomCropModal
-          imageUrl={zoomCropTarget.url}
-          label={zoomCropTarget.label}
-          onClose={() => setZoomCropTarget(null)}
-          onApply={handleApplyCrop}
+      {/* ── Image Preview Modal ── */}
+      {previewTarget && (
+        <ImagePreviewModal
+          imageUrl={previewTarget.url}
+          label={previewTarget.label}
+          onClose={() => setPreviewTarget(null)}
           onDelete={() => {
-            handleDeleteImage(zoomCropTarget.charIdx, zoomCropTarget.imgIdx);
-            setZoomCropTarget(null);
+            handleDeleteImage(previewTarget.charIdx, previewTarget.imgIdx);
+            setPreviewTarget(null);
           }}
-          initialBox={zoomCropTarget.initialBox || null}
-          showLabelInput={zoomCropTarget.showLabelInput || false}
-          recropUrl={zoomCropTarget.recropUrl || null}
-          recropBox={zoomCropTarget.recropBox || null}
         />
-      )}
-
-      {/* ── Sheet Crop Choice Modal ── */}
-      {showSheetCropModal && sheetPreviewUrl && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={handleCloseSheetCropModal}>
-          <div style={{ background: '#0c0c0c', width: '100%', maxWidth: '500px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }} onClick={e => e.stopPropagation()}>
-            <button
-              onClick={handleCloseSheetCropModal}
-              disabled={isProcessingSheet}
-              style={{ position: 'absolute', top: '14px', right: '14px', background: 'none', border: 'none', color: '#444', fontSize: '18px', cursor: isProcessingSheet ? 'not-allowed' : 'pointer', zIndex: 10, opacity: isProcessingSheet ? 0.35 : 1 }}
-            >✕</button>
-            <div style={{ padding: '28px' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--teal)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>Crop Selection</div>
-              <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 700, marginBottom: '6px', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>Choose Crop Method</h3>
-              <p style={{ color: isProcessingSheet ? 'var(--teal)' : '#444', fontSize: '12px', marginBottom: '20px', lineHeight: 1.6 }}>
-                {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Automatically detect and refine character poses from your sheet.'}
-              </p>
-
-              <div style={{ width: '100%', height: '260px', background: '#080808', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
-                <img src={sheetPreviewUrl} style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="Preview" />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button
-                  onClick={() => processSheetFile(pendingSheetFile)}
-                  disabled={isProcessingSheet}
-                  style={{ ...MODAL_BTN, background: 'var(--teal)', color: '#000', border: 'none', padding: '16px', borderRadius: '9px', fontSize: '13px', fontWeight: 700, fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: isProcessingSheet ? 'wait' : 'pointer', opacity: isProcessingSheet ? 0.82 : 1 }}
-                >
-                  {isProcessingSheet && <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />}
-                  {isProcessingSheet ? 'Detecting Poses...' : 'Auto-detect Poses'}
-                </button>
-                <div>
-                  <button disabled={isProcessingSheet} onClick={handleCloseSheetCropModal} style={{ ...MODAL_BTN, width: '100%', padding: '16px', borderRadius: '9px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isProcessingSheet ? 0.45 : 1, cursor: isProcessingSheet ? 'not-allowed' : 'pointer' }}>
-                    Cancel Upload
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       {busy && (
         <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--teal)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Loader2 size={24} style={{ color: 'var(--teal)', animation: 'spin 1s linear infinite' }} />
           <div>
-            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating references...'}</div>
+            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating character sheet...'}</div>
             <div style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { FileText, Loader2, Wand2 } from 'lucide-react';
+import { FileText, Loader2 } from 'lucide-react';
 import { createClient } from '@/utils/supabase';
 import ProgressBar from '../ProgressBar';
 
@@ -590,6 +590,8 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [isProcessingSheet, setIsProcessingSheet] = useState(false);
+  const [isDraggingSheet, setIsDraggingSheet] = useState(false);
+  const [isDraggingRef, setIsDraggingRef] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLockingStyle, setIsLockingStyle] = useState(false);
   const [generatingLoc, setGeneratingLoc] = useState(null);
@@ -792,6 +794,23 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
     setSheetProcessStatus('');
     setPendingSheetFile(file);
     setShowSheetCropModal(true);
+  };
+
+  const handleSheetDrop = (e) => {
+    e.preventDefault();
+    setIsDraggingSheet(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file || busy) return;
+    setSheetReplaceTarget(null);
+    handleSheetUpload({ target: { files: [file], value: '' } });
+  };
+
+  const handleRefDrop = (e) => {
+    e.preventDefault();
+    setIsDraggingRef(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    handleRefImageSelect({ target: { files: [file], value: '' } });
   };
 
   const handleCloseSheetCropModal = () => {
@@ -1090,10 +1109,24 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
 
   const handleEditSave = async () => {
     if (!editName.trim()) return alert('Name cannot be empty');
-    const updatedLocs = [...projectLocations];
-    updatedLocs[activeTab] = { ...projectLocations[activeTab], name: editName.trim().toUpperCase(), description: editDesc.trim() };
-    await onDataUpdate({ locations: updatedLocs });
-    setShowEditModal(false);
+    try {
+      if (activeCategory === 'history') {
+        const { error } = await supabase
+          .from('locations_library')
+          .update({ name: editName.trim().toUpperCase(), description: editDesc.trim() })
+          .eq('id', activeLoc.id);
+        if (error) throw error;
+        await refreshGlobalLibrary();
+      } else {
+        const updatedLocs = [...projectLocations];
+        updatedLocs[activeTab] = { ...projectLocations[activeTab], name: editName.trim().toUpperCase(), description: editDesc.trim() };
+        await onDataUpdate({ locations: updatedLocs });
+      }
+      setShowEditModal(false);
+    } catch (error) {
+      console.error('Location rename failed:', error);
+      alert('Location could not be renamed. Please try again.');
+    }
   };
 
   const lockStyleBibleIfNeeded = async () => {
@@ -1276,16 +1309,22 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <button onClick={() => {
-                setSheetReplaceTarget(null);
-                fileInputRef.current?.click();
-              }} disabled={busy} className="btn-orange" style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center' }}>
-                Upload reference sheet
+              <button
+                onClick={() => { setSheetReplaceTarget(null); fileInputRef.current?.click(); }}
+                onDragOver={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
+                onDragEnter={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingSheet(false); }}
+                onDrop={handleSheetDrop}
+                disabled={busy}
+                className="btn-orange"
+                style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center', outline: isDraggingSheet ? '2px dashed var(--cyan-border)' : 'none', outlineOffset: '2px', transition: 'outline 120ms ease-out' }}
+              >
+                {isDraggingSheet ? 'Drop to upload' : 'Upload reference sheet'}
               </button>
               <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
 
               <button onClick={() => { setShowCreateModal(true); setCreateRefImage(null); }} disabled={busy} className="btn-outline" style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center' }}>
-                Create location
+                Create new
               </button>
               <button
                 onClick={handleGenerateFromScript}
@@ -1406,8 +1445,9 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
               </div>
 
               {!isGeneratingActive && activeLoc && activeCategory === 'history' && (
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <button onClick={handleAddHistoryToProject} className="btn-teal" style={{ fontSize: '11px', padding: '8px 14px' }}>Add to project</button>
+                  <button onClick={() => { setEditName(activeLoc.name); setEditDesc(activeLoc.description || ''); setShowEditModal(true); }} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px' }}>Rename</button>
                   <button onClick={handleDelete} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px', color: '#ef4444', border: '1px solid rgba(239,68,68,0.15)' }}>Delete from history</button>
                 </div>
               )}
@@ -1606,7 +1646,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
           <div style={{ width: '500px', background: 'var(--surface-2)', border: '1px solid var(--border-mid)', borderRadius: 'var(--radius-xl)', padding: '32px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: 0 }}>Create Location</h3>
+              <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: 0 }}>Create New</h3>
               <button onClick={() => setShowCreateModal(false)} style={{ background: 'transparent', border: 'none', color: '#444', fontSize: '20px', cursor: 'pointer' }}>×</button>
             </div>
 
@@ -1628,13 +1668,19 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                     <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: '#050505', borderRadius: '6px', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ color: '#bbb', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
-                      <div style={{ color: '#333', fontSize: '10px', marginTop: '2px' }}>Consistency will match this scene</div>
+                      <div style={{ color: '#777', fontSize: '10px', marginTop: '2px' }}>Consistency will match this scene</div>
                     </div>
                     <button onClick={() => setCreateRefImage(null)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '16px', cursor: 'pointer' }}>×</button>
                   </div>
                 ) : (
-                  <button onClick={() => refFileInputRef.current?.click()} style={{ width: '100%', padding: '12px', background: '#111', border: '1px dashed #222', borderRadius: '8px', color: '#555', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
-                    Upload Reference View
+                  <button
+                    onClick={() => refFileInputRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); setIsDraggingRef(true); }}
+                    onDragEnter={(e) => { e.preventDefault(); setIsDraggingRef(true); }}
+                    onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingRef(false); }}
+                    onDrop={handleRefDrop}
+                    style={{ width: '100%', padding: '12px', background: isDraggingRef ? 'rgba(0,210,200,0.06)' : 'rgba(255,255,255,0.04)', border: isDraggingRef ? '1px dashed var(--cyan-border)' : '1px dashed rgba(255,255,255,0.22)', borderRadius: '8px', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'border-color 120ms ease-out, background 120ms ease-out' }}>
+                    {isDraggingRef ? 'Drop image here' : 'Upload Reference View'}
                   </button>
                 )}
               </div>
@@ -1649,15 +1695,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
               </div>
 
               <button onClick={handleGenerateAngles} className="btn-orange" style={{ padding: '16px', fontWeight: 700, marginTop: '10px' }}>
-                Create Location Set
-              </button>
-              <button
-                onClick={handleGenerateFromScript}
-                className="btn-outline"
-                style={{ padding: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
-              >
-                <Wand2 size={14} />
-                Generate from Script
+                Create new
               </button>
             </div>
           </div>
@@ -1668,7 +1706,9 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       {showEditModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
           <div style={{ width: '460px', background: 'var(--surface-2)', border: '1px solid var(--border-mid)', borderRadius: 'var(--radius-xl)', padding: '32px' }}>
-            <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 600, margin: '0 0 24px' }}>Edit Location</h3>
+            <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 600, margin: '0 0 24px' }}>
+              {activeCategory === 'history' ? 'Rename Location' : 'Edit Location'}
+            </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               <div>
                 <label style={{ display: 'block', color: '#888', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>LOCATION NAME</label>
@@ -1678,19 +1718,21 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                 <label style={{ display: 'block', color: '#888', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>DESCRIPTION</label>
                 <textarea style={{ ...inputStyle, height: '100px', resize: 'none' }} value={editDesc} onChange={e => setEditDesc(e.target.value)} />
               </div>
-              <button onClick={() => {
-                setSheetReplaceTarget({
-                  index: activeTab,
-                  name: (editName || activeLoc?.name || '').trim().toUpperCase(),
-                  description: editDesc.trim(),
-                });
-                setShowEditModal(false);
-                fileInputRef.current?.click();
-              }} style={{ padding: '12px', background: '#111', border: '1px solid #222', borderRadius: '8px', color: '#bbb', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
-                Upload New Location Sheet
-              </button>
+              {activeCategory === 'project' && (
+                <button onClick={() => {
+                  setSheetReplaceTarget({
+                    index: activeTab,
+                    name: (editName || activeLoc?.name || '').trim().toUpperCase(),
+                    description: editDesc.trim(),
+                  });
+                  setShowEditModal(false);
+                  fileInputRef.current?.click();
+                }} style={{ padding: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: '8px', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                  Upload New Location Sheet
+                </button>
+              )}
               <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
-                <button onClick={handleEditSave} className="btn-orange" style={{ flex: 1, padding: '14px', fontWeight: 700 }}>Save Changes</button>
+                <button onClick={handleEditSave} className="btn-orange" style={{ flex: 1, padding: '14px', fontWeight: 700 }}>{activeCategory === 'history' ? 'Rename' : 'Save Changes'}</button>
                 <button onClick={() => setShowEditModal(false)} className="btn-outline" style={{ flex: 1, padding: '14px' }}>Cancel</button>
               </div>
             </div>

@@ -958,13 +958,11 @@ const selectedByName = (items = [], names = []) => {
 };
 
 function inferShotCharactersFromText(shot, characters = []) {
+  // Only infer from visual fields — narrative/context fields (p, source_scene, concept, lyrics)
+  // frequently name characters who appear in surrounding context but not in the actual frame.
   const text = [
-    shot?.p,
     shot?.image_prompt,
     shot?.prompt,
-    shot?.source_scene,
-    shot?.concept,
-    shot?.lyrics,
   ]
     .filter(Boolean)
     .join(" ")

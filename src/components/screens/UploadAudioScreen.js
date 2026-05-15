@@ -10,6 +10,7 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
   const [isPlaying, setIsPlaying]       = useState(false);
   const [currentTime, setCurrentTime]   = useState(0);
   const [duration, setDuration]         = useState(0);
+  const [isDragging, setIsDragging]     = useState(false);
   const fileInputRef                    = useRef(null);
   const audioRef                        = useRef(null);
   const supabase                        = createClient();
@@ -128,6 +129,16 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (isUploading) return;
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const syntheticEvent = { target: { files: [file], value: '' } };
+    handleFileChange(syntheticEvent);
   };
 
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -351,6 +362,10 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
             <div
               onClick={() => !isUploading && fileInputRef.current?.click()}
               onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !isUploading) { e.preventDefault(); fileInputRef.current?.click(); } }}
+              onDragOver={(e) => { e.preventDefault(); if (!isUploading) setIsDragging(true); }}
+              onDragEnter={(e) => { e.preventDefault(); if (!isUploading) setIsDragging(true); }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false); }}
+              onDrop={handleDrop}
               role="button"
               tabIndex={0}
               style={{
@@ -361,17 +376,17 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
                 justifyContent: 'center',
                 gap: '20px',
                 padding: '48px',
-                background: 'var(--bg-deep)',
+                background: isDragging ? 'rgba(0,210,200,0.04)' : 'var(--bg-deep)',
                 boxShadow: 'var(--neo-inset)',
                 borderRadius: 'var(--radius-xl)',
                 margin: '16px',
                 cursor: isUploading ? 'wait' : 'pointer',
-                border: '1.5px dashed var(--border-mid)',
-                transition: 'border-color 160ms ease-out',
+                border: isDragging ? '1.5px dashed var(--cyan-border)' : '1.5px dashed var(--border-mid)',
+                transition: 'border-color 160ms ease-out, background 160ms ease-out',
                 textAlign: 'center',
               }}
-              onMouseEnter={e => { if (!isUploading) e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+              onMouseEnter={e => { if (!isUploading && !isDragging) e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
+              onMouseLeave={e => { if (!isDragging) e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
             >
               <div style={{
                 width: '64px',

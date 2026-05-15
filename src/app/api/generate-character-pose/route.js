@@ -46,8 +46,47 @@ export async function POST(req) {
       mimeType, 
       label, 
       characterDescription, 
-      angleDescription 
+      angleDescription,
+      sheetPrompt,
     } = await req.json();
+
+    if (characterDescription && sheetPrompt) {
+      console.log(`NB Pro generating full character sheet: ${label || "CHARACTER SHEET"}`);
+
+      const prompt = `
+        FICTIONAL CHARACTER — FULL REFERENCE SHEET.
+        This character is entirely fictional. The character name is a production label only.
+        Do NOT associate the character name with any real-world person, celebrity, athlete, politician, or public figure.
+        Do NOT look up the name or infer appearance from cultural associations. Appearance is defined by the supplied description${base64 ? " and attached reference image" : ""}.
+
+        TASK:
+        Generate exactly ONE complete character design sheet image.
+
+        CHARACTER DETAILS:
+        ${characterDescription}
+
+        SHEET PROMPT:
+        ${sheetPrompt}
+
+        RULES:
+        1. Output a single 21:9 horizontal character sheet, not separate images.
+        2. Preserve the exact same character identity, wardrobe, body proportions, hair, skin tone, accessories, and age across every panel.
+        3. Do not crop faces, heads, feet, or costume details.
+        4. No text labels, watermarks, extra people, extra sheets, or detached panels.
+      `;
+
+      const parts = [{ text: prompt }];
+      if (base64) {
+        parts.push({ inlineData: { mimeType: mimeType || "image/png", data: base64 } });
+      }
+
+      const { generatedB64, model } = await generateImage(
+        [{ role: "user", parts }],
+        `Character full sheet (${label || "sheet"})`
+      );
+
+      return NextResponse.json({ success: true, imageBase64: generatedB64, image_model: model });
+    }
 
     // 1. REFERENCE-LOCKED GENERATION (Sequential Flow)
     if (base64 && characterDescription && angleDescription) {

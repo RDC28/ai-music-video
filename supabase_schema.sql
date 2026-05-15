@@ -86,6 +86,8 @@ DROP POLICY IF EXISTS "Users can read own characters" ON characters_library;
 CREATE POLICY "Users can read own characters" ON characters_library FOR SELECT USING (auth.uid() = user_id);
 DROP POLICY IF EXISTS "Users can insert own characters" ON characters_library;
 CREATE POLICY "Users can insert own characters" ON characters_library FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own characters" ON characters_library;
+CREATE POLICY "Users can update own characters" ON characters_library FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 DROP POLICY IF EXISTS "Users can delete own characters" ON characters_library;
 CREATE POLICY "Users can delete own characters" ON characters_library FOR DELETE USING (auth.uid() = user_id);
 
@@ -161,5 +163,7 @@ DROP POLICY IF EXISTS "Users can read own locations" ON locations_library;
 CREATE POLICY "Users can read own locations" ON locations_library FOR SELECT USING (auth.uid() = user_id);
 DROP POLICY IF EXISTS "Users can insert own locations" ON locations_library;
 CREATE POLICY "Users can insert own locations" ON locations_library FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own locations" ON locations_library;
+CREATE POLICY "Users can update own locations" ON locations_library FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 DROP POLICY IF EXISTS "Users can delete own locations" ON locations_library;
 CREATE POLICY "Users can delete own locations" ON locations_library FOR DELETE USING (auth.uid() = user_id);

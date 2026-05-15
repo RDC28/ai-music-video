@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/utils/supabase-admin";
 
@@ -6,12 +6,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const genAI = process.env.GOOGLE_AI_API_KEY
-  ? new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY })
+  ? new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
   : null;
 
 const REFERENCE_IMAGE_TIMEOUT_MS = 25000;
 const REFERENCE_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
-const ANCHOR_MODEL_FALLBACK = "imagen-3.0-generate-002";
+const ANCHOR_MODEL_FALLBACK = "gemini-2.0-flash-preview-image-generation";
 const TIER_1_TERMS = ["face close-up", "close-up", "portrait"];
 const TIER_2_TERMS = ["full body front", "front"];
 const TIER_3_TERMS = ["outfit", "wardrobe"];
@@ -309,16 +309,14 @@ export async function POST(req) {
         })),
       ];
 
-      const result = await genAI.models.generateContent({
-        model: anchorModelName,
+      const activeModel = genAI.getGenerativeModel({ model: anchorModelName });
+      const result = await activeModel.generateContent({
         contents: [{ role: "user", parts }],
-        config: {
-          responseModalities: ["IMAGE"],
-          imageConfig: { aspectRatio: "16:9", imageSize: "1K" },
-        },
+        generationConfig: { responseModalities: ["IMAGE"] },
       });
+      const response = await result.response;
 
-      const generated = parseGeneratedImage(result);
+      const generated = parseGeneratedImage(response);
       const extension = generated.mimeType.includes("jpeg") || generated.mimeType.includes("jpg") ? "jpg" : "png";
       const storagePath = `${projectId}/anchors/${toSafeSlug(character.name)}-anchor-${Date.now()}.${extension}`;
       const buffer = Buffer.from(generated.imageBase64, "base64");

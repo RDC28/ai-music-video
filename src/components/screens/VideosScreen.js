@@ -350,6 +350,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [generatingIndex, setGeneratingIndex] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDraggingVideo, setIsDraggingVideo] = useState(false);
   const [generationError, setGenerationError] = useState('');
   const [queueSummary, setQueueSummary] = useState('');
 
@@ -529,6 +530,15 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
       .map(({ index }) => index);
 
     await runGenerationQueue(remainingIndices, { label: 'Generate remaining' });
+  };
+
+  const handleVideoDrop = (e) => {
+    e.preventDefault();
+    setIsDraggingVideo(false);
+    if (isUploading || generatingIndex !== null) return;
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    handleUploadOwn({ target: { files: [file], value: '' } });
   };
 
   const handleUploadOwn = async (event) => {
@@ -1156,11 +1166,15 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); if (!isUploading && generatingIndex === null) setIsDraggingVideo(true); }}
+                onDragEnter={(e) => { e.preventDefault(); if (!isUploading && generatingIndex === null) setIsDraggingVideo(true); }}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingVideo(false); }}
+                onDrop={handleVideoDrop}
                 disabled={isUploading || generatingIndex !== null}
                 style={{
-                  background: 'var(--bg-deep)',
+                  background: isDraggingVideo ? 'rgba(0,210,200,0.04)' : 'var(--bg-deep)',
                   boxShadow: 'var(--neo-inset)',
-                  border: '1.5px dashed var(--border-mid)',
+                  border: isDraggingVideo ? '1.5px dashed var(--cyan-border)' : '1.5px dashed var(--border-mid)',
                   borderRadius: 'var(--radius)',
                   padding: '18px',
                   display: 'flex',
@@ -1172,6 +1186,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                   opacity: isUploading || generatingIndex !== null ? 0.55 : 1,
                   color: 'var(--text-soft)',
                   boxSizing: 'border-box',
+                  transition: 'border-color 160ms ease-out, background 160ms ease-out',
                 }}
               >
                 {isUploading
