@@ -5,6 +5,7 @@ import {
   TEXT_MODEL_FALLBACKS,
 } from "@/utils/googleModelFallbacks";
 import { getProjectAudioDuration, normalizeShotList } from "@/utils/shotList";
+import { CAMERA_STYLE_EXAMPLES } from "@/utils/cameraStyles";
 
 const genAI = process.env.GOOGLE_AI_API_KEY
   ? new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
@@ -236,15 +237,21 @@ Every shot is edited over the original song audio later. Treat lyrics as timing/
 
 Prompt depth standard:
 - Every shot must include three distinct prompt fields: "p" for the master shot brief, "image_prompt" for the still frame, and "video_prompt" for the moving clip.
-- "p" is the shared production brief. Keep it useful for humans reviewing the shot list, but do not rely on it as the final image or video prompt.
-- "image_prompt" must describe one frozen 16:9 cinematic frame only. Include subject placement, pose, facial expression, wardrobe, location, foreground/midground/background, lighting, lens/framing, textures, and the exact visual moment to capture. Do not include dialogue, sound design, clip duration, bracketed action timing, camera moves over time, or instructions like "the video should last".
-- "video_prompt" must describe the full 4-8 second source clip. Include action timing, subtle motion, camera behavior over time, dialogue only when the video model needs visible speech, and realistic environmental movement.
-- Write 120-220 words in "p", 140-260 words in "image_prompt", and 180-360 words in "video_prompt" for normal shots. Complex narrative shots can be longer when needed.
-- Include specific foreground subjects, background action, environment geography, set dressing, props, lighting direction, color temperature, weather/atmosphere, clothing fabric/color, facial expression, body posture, and realistic micro-actions.
-- Include a clear camera grammar: static/locked-off/handheld/dolly only when appropriate, shot size, lens/framing, camera height, depth of field, and whether there is no pan/no zoom/no cut.
-- Include action timing inside "video_prompt" and "action_timing" for 6-8 second clips when motion matters, using bracketed beats such as [00:00-00:02], [00:02-00:05], [00:05-00:08]. Never put those bracketed timing beats in "image_prompt".
-- Keep movement subtle and filmable: small steps, eye shifts, hand movement, breathing, fabric movement, background extras working naturally. Avoid generic posing.
-- Do not produce bland prompts like "character in location." The still prompt must be rich enough for a photorealistic image model; the video prompt must be rich enough for an 8-second video model.
+- "p" is the shared production brief. Keep it useful for humans reviewing the shot list but do not rely on it as the final image or video prompt.
+- "image_prompt" must describe the exact first frame of the video clip — the frame at t=0.00 of "video_prompt". It is not a separate creative choice; it is the frozen opening moment of that clip. Derive it directly from the first [00:00.00-...] beat in "video_prompt": use the same camera setup (shot size, lens feel, height, depth of field), the same environment (foreground, midground, background, lighting), and the exact character positions, poses, gazes, and expressions described for that first beat. This frame will be uploaded to the video model as the source anchor image, so it must be consistent enough that the video model can begin the motion from it without deviation. Include: subject placement, exact pose, facial expression, wardrobe, location layers, lighting direction and color temperature, lens/framing, textures. Do not include dialogue, sound design, clip duration, bracketed action timing, camera moves over time, or instructions like "the video should last". End with: "This is the first frame of a [Xs] clip — compose it so the video model can begin the motion from this exact position."
+- "video_prompt" is the most important field. It must be a complete, self-contained director's instruction for the video model covering the full clip duration. Structure it as:
+  1. CAMERA SETUP LINE: state shot size (close-up / medium / wide / establishing), lens feel (e.g. 50mm), camera height (eye level / low angle / overhead), depth of field, and camera movement for the full clip (static locked-off / gentle handheld drift / tracking backward / push-in). This line appears first with no timestamp.
+  2. ENVIRONMENT LINE: describe the full scene — foreground, midground, background, set dressing, lighting direction, color temperature, atmosphere (dust, steam, haze, crowd density). State what is moving in each layer throughout the clip.
+  3. TIMESTAMPED CHARACTER BEATS: for every [MM:SS.ss-MM:SS.ss] beat, write exactly what EACH named character does — body position, gaze direction, hand placement, facial expression, micro-movement, and any spoken words or lip movement. Every beat must name the character explicitly. Do not say "the character" — use the actual name or the wardrobe-locked label.
+  4. CAMERA BEHAVIOR DURING BEATS: for each beat also state whether the camera moves, adjusts focus, or stays locked. If the camera drifts, state which direction and speed.
+  5. CLOSING LINE: state the final held frame — what both the character(s) and camera are doing in the last half-second.
+- Timestamp beats must cover the entire clip with no gaps. A 4s clip needs at least 2 beats; a 6s clip at least 3; an 8s clip at least 4.
+- "action_timing" must mirror the beats from video_prompt in compact form: each [MM:SS.ss-MM:SS.ss] entry names the character and their exact action for that window.
+- Write 120-220 words in "p", 140-260 words in "image_prompt", and 220-420 words in "video_prompt". Complex multi-character narrative shots can be longer.
+- Camera grammar is mandatory in every video_prompt: shot size, lens feel, camera height, depth of field, movement type, and direction. Never omit these.
+- Environmental layers are mandatory: foreground subject(s), midground texture/props, background activity, and how each layer moves during the clip.
+- Keep movement subtle and filmable: small steps, eye shifts, hand movement, breathing, fabric sway, background extras working naturally. No exaggerated gestures.
+- Do not produce vague prompts. Every video_prompt must be specific enough that a director reading it could recreate the shot without additional context.
 
 Shot count guidance:
 - Do not mirror the script scene count. A single script scene can and should become multiple smaller shots when that improves image/video quality.
@@ -262,6 +269,10 @@ Shot count guidance:
 - Keep prompts grounded and usable: one scene, one camera setup, one continuous action, simple stable movement, natural tone, and no novelty visual tricks.
 - Avoid close-up visible mouth singing/rapping unless the shot can be treated as a loose performance moment. Prefer dance, gesture, silhouette, profile, crowd, hands, environment, and reaction cutaways for lyric timing.
 
+Use the following curated examples as your benchmark for prompt depth, camera grammar, and emotional specificity. Match or exceed this standard for every shot you write:
+
+${CAMERA_STYLE_EXAMPLES}
+
 Return STRICTLY one JSON object:
 {
   "coverage_notes": "Short note explaining how the shots cover transcript, script, characters, and locations.",
@@ -269,8 +280,8 @@ Return STRICTLY one JSON object:
     {
       "n": "Short raw source shot title",
       "p": "Shared master production brief for the shot. Include exact characters, exact costumes/wardrobe, exact location, story concept, camera setup, visual mood, and key continuity locks. Keep it reviewable and do not include final edit transitions.",
-      "image_prompt": "Still-frame-only prompt. Describe one photorealistic 16:9 frame with exact characters, wardrobe, location, pose, expression, composition, foreground/midground/background, props, lighting, color, lens/framing, texture, and mood. No action timing, no dialogue, no sound design, no clip duration, no camera movement over time.",
-      "video_prompt": "Video-only source clip prompt. Describe one continuous 4-8 second 16:9 shot with exact characters, wardrobe, location, camera behavior, subtle action timing, natural motion, environmental movement, performance/dialogue if needed, and continuity constraints. No transitions or edit instructions.",
+      "image_prompt": "First frame of the video clip — derived from the [00:00.00-...] beat in video_prompt. Same camera setup as video_prompt (shot size, lens feel, height, depth of field). Same environment layers (foreground subject(s), midground props/texture, background activity, lighting direction, color temperature, atmosphere). Character(s) in the exact starting position/pose/gaze/expression described in the first beat. Wardrobe unchanged from continuity lock. No motion, no timing brackets, no dialogue, no sound. End with: 'This is the first frame of a [Xs] clip — compose it so the video model can begin the motion from this exact position.'",
+      "video_prompt": "CAMERA: [shot size, lens feel, height, depth of field, movement for full clip]. ENVIRONMENT: [foreground subject(s), midground props/texture, background activity, lighting direction, color temperature, atmosphere — state what moves in each layer]. [00:00.00-00:02.00] [CHARACTER NAME] does [exact body position, gaze, hand placement, micro-expression, spoken words if any] — camera [locked / drifts X direction]. [00:02.00-00:05.00] [CHARACTER NAME] does [exact action] while [OTHER CHARACTER NAME if present] does [exact action] — camera [behavior]. [00:05.00-00:08.00] [CHARACTER NAME] does [final action / reaction / held expression] — camera holds. Final frame: [what character(s) and camera are doing in the last half-second]. No transitions, no cuts, no edit instructions.",
       "start": 0.0,
       "end": 4.0,
       "duration": 4,
@@ -281,7 +292,7 @@ Return STRICTLY one JSON object:
       "concept": "The locked story/script concept this shot serves",
       "costumes": "Locked wardrobe/costume continuity visible in this shot",
       "continuity": "Non-negotiable script, character, costume, and location facts preserved in this shot",
-      "action_timing": "[00:00-00:02] first visual beat; [00:02-00:05] subtle subject action; [00:05-00:08] final held beat or reaction",
+      "action_timing": "[00:00.00-00:02.00] CHARACTER NAME: exact body position, gaze, micro-action, spoken word if any; [00:02.00-00:05.00] CHARACTER NAME: exact action — OTHER CHARACTER NAME if present: their simultaneous action; [00:05.00-00:08.00] CHARACTER NAME: final held expression or movement",
       "visual_style": "Photorealistic cinematic realism, specific lighting, color palette, texture, and mood",
       "negative_constraints": "No cuts, no transitions, no exaggerated gestures, no extra main characters, no distorted anatomy, no changing layout or wardrobe",
       "shot_size": "establishing | wide | medium | close-up | insert",

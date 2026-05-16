@@ -326,16 +326,84 @@ function buildLockedShotFacts(shot, projectState, shotCharacters, shotLocations,
   return facts.length ? facts.map(fact => `- ${fact}`).join("\n") : fallback;
 }
 
-function buildShotDetailContext(shot) {
+// Parses "[MM:SS.ss-MM:SS.ss]" or "[MM:SS-MM:SS]" style timestamps from action_timing text.
+// Returns array of { start, end, body } in seconds.
+function parseTimestampBlocks(text) {
+  const blocks = [];
+  const re = /\[(\d+):(\d+(?:\.\d+)?)-(\d+):(\d+(?:\.\d+)?)\]/g;
+  let match;
+  let lastIndex = 0;
+  const parts = [];
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push({ type: 'text', value: text.slice(lastIndex, match.index) });
+    const start = parseInt(match[1], 10) * 60 + parseFloat(match[2]);
+    const end = parseInt(match[3], 10) * 60 + parseFloat(match[4]);
+    parts.push({ type: 'ts', start, end, value: match[0] });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) parts.push({ type: 'text', value: text.slice(lastIndex) });
+  return parts;
+}
+
+function formatTimestamp(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds - m * 60;
+  return `${String(m).padStart(2, '0')}:${s < 10 ? '0' : ''}${s.toFixed(2)}`;
+}
+
+// Re-scales existing timestamps to fit videoDuration, or injects evenly-spaced
+// ones if the text has none but contains multiple beat-lines.
+function injectRelativeTimestamps(text, videoDuration) {
+  if (!text || !videoDuration) return text;
+  const parts = parseTimestampBlocks(text);
+  const tsParts = parts.filter(p => p.type === 'ts');
+
+  if (tsParts.length > 0) {
+    // Find original span and rescale proportionally to videoDuration
+    const originalEnd = Math.max(...tsParts.map(p => p.end));
+    const originalStart = Math.min(...tsParts.map(p => p.start));
+    const originalSpan = originalEnd - originalStart || originalEnd || 1;
+    const scale = videoDuration / originalSpan;
+    return parts.map(p => {
+      if (p.type === 'text') return p.value;
+      const newStart = Math.max(0, (p.start - originalStart) * scale);
+      const newEnd = Math.min(videoDuration, (p.end - originalStart) * scale);
+      return `[${formatTimestamp(newStart)}-${formatTimestamp(newEnd)}]`;
+    }).join('');
+  }
+
+  // No existing timestamps — detect shot/beat lines and inject evenly-spaced ones
+  const lines = text.split('\n');
+  const shotLineRe = /^(SHOT\s*\d+|shot\s*\d+|BEAT\s*\d+|\[\d)/i;
+  const beatIndices = lines.reduce((acc, line, i) => {
+    if (shotLineRe.test(line.trim())) acc.push(i);
+    return acc;
+  }, []);
+
+  if (beatIndices.length < 2) return text; // Not enough structure to inject
+
+  const interval = videoDuration / beatIndices.length;
+  const newLines = [...lines];
+  beatIndices.forEach((lineIdx, i) => {
+    const start = parseFloat((i * interval).toFixed(2));
+    const end = parseFloat(Math.min((i + 1) * interval, videoDuration).toFixed(2));
+    newLines[lineIdx] = `[${formatTimestamp(start)}-${formatTimestamp(end)}] ${newLines[lineIdx]}`;
+  });
+  return newLines.join('\n');
+}
+
+function buildShotDetailContext(shot, videoDuration) {
+  const rawTiming = shot.action_timing || shot.timing || shot.actionTiming;
+  const timedTiming = rawTiming ? injectRelativeTimestamps(rawTiming, videoDuration) : null;
   const details = [
-    shot.action_timing || shot.timing || shot.actionTiming ? `Action timing: ${compact(shot.action_timing || shot.timing || shot.actionTiming, 1600)}` : "",
+    timedTiming ? `Action timing (timestamps relative to this ${videoDuration}s clip): ${compact(timedTiming, 2000)}` : "",
     shot.visual_style || shot.style || shot.look ? `Visual style: ${compact(shot.visual_style || shot.style || shot.look, 1000)}` : "",
     shot.sound_design || shot.soundDesign || shot.audio_notes ? `Sound/ambience note for visual mood only; do not generate audio: ${compact(shot.sound_design || shot.soundDesign || shot.audio_notes, 700)}` : "",
     shot.negative_constraints || shot.constraints || shot.avoid ? `Avoid/constraints: ${compact(shot.negative_constraints || shot.constraints || shot.avoid, 1200)}` : "",
   ].filter(Boolean);
 
   if (!details.length) {
-    return "No separate action-timing fields provided; infer subtle realistic 4-8 second micro-actions from the raw shot prompt and preserve the source frame.";
+    return `No separate action-timing fields provided; infer subtle realistic micro-actions across the full ${videoDuration || 5}s clip and preserve the source frame.`;
   }
 
   return details.map(detail => `- ${detail}`).join("\n");
@@ -365,7 +433,7 @@ function applyCharLabel(name, charLabelMap) {
   return charLabelMap.get(normalizeLookupName(name)) || name;
 }
 
-function buildPrompt({ shot, projectState, promptOverride, usedSourceImage }) {
+function buildPrompt({ shot, projectState, promptOverride, usedSourceImage, videoDuration }) {
   const characters = projectState?.characters || [];
   const locations = projectState?.locations || [];
   const shotCharacters = shot.characters?.length ? shot.characters : namesFrom(characters);
@@ -411,7 +479,7 @@ RAW SOURCE SHOT ACTION:
 ${shotAction}
 
 SHOT DETAIL FIELDS:
-${buildShotDetailContext(shot)}
+${buildShotDetailContext(shot, videoDuration)}
 
 TIMING AND VOCAL CUE:
 Song time: ${shot.start ?? "unknown"}s to ${shot.end ?? "unknown"}s, planned shot duration ${shot.duration || 5}s
@@ -463,7 +531,7 @@ Rules:
 3. Preserve continuity with the named characters, locations, source image, wardrobe, lighting, lens language, and emotional arc.
 4. CHARACTER IDENTITY — CRITICAL: Main character faces, skin tone, hair, and body must match the CHARACTER reference set only. Any people visible inside LOCATION reference images are irrelevant background extras. Do NOT carry their faces, skin tone, hair, or clothing into the main characters at any point in the clip.
 5. Make the clip visually rich and grounded: foreground, midground, background, props, texture, clothing fabric, facial expression, body posture, environment geography, and practical lighting must remain readable.
-5. Follow action timing when present. For 8-second shots, stage clear beats across the clip while keeping movement subtle, natural, and realistic.
+5. Follow action timing when present. The timestamps in the action timing block are relative to this clip's duration (0s to ${videoDuration || 5}s). Stage each beat at exactly the indicated moment, keeping movement subtle, natural, and realistic.
 6. Keep camera motion simple, stable, and usable as raw footage. If the prompt says static, locked-off, no zoom, no pan, or no camera movement, obey it exactly for the full clip.
 7. Do not invent extra main characters unless the shot explicitly asks for background extras.
 8. GENERATE SILENT VIDEO. Do not include sound, ambient noise, dialogue, or music. The video will be layered over a separate audio track.
@@ -963,17 +1031,18 @@ export async function POST(req) {
     }
 
     const sourceImageWasUsed = Boolean(sourceImage);
+    const requestedDuration = normalizeVideoDurationForModel(
+      durationSeconds || normalizedShot.veo_duration_seconds || normalizedShot.duration,
+      selectedModel.value
+    );
+
     const prompt = buildPrompt({
       shot: normalizedShot,
       projectState,
       promptOverride,
       usedSourceImage: sourceImageWasUsed,
+      videoDuration: requestedDuration,
     });
-
-    const requestedDuration = normalizeVideoDurationForModel(
-      durationSeconds || normalizedShot.veo_duration_seconds || normalizedShot.duration,
-      selectedModel.value
-    );
     const requestConfig = {
       numberOfVideos: 1,
       durationSeconds: requestedDuration,

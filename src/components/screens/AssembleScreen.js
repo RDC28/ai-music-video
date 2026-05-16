@@ -1098,7 +1098,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
                 <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Export Status</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 800, color: exportRenderStatus === 'done' ? 'var(--teal)' : 'var(--dark)' }}>
-                  {isShotstackRendering ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : exportRenderStatus === 'done' ? <CheckCircle2 size={12} /> : <Film size={12} />}
+                  {isShotstackRendering ? <Loader2 size={12} className="spin" /> : exportRenderStatus === 'done' ? <CheckCircle2 size={12} /> : <Film size={12} />}
                   {shotstackStatusLabel(exportRenderStatus)}
                 </span>
               </div>
@@ -1129,7 +1129,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
           >
             {isShotstackRendering ? (
               <>
-                <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                <Loader2 size={14} className="spin" />
                 Rendering
               </>
             ) : exportVideoUrl ? (

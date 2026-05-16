@@ -16,21 +16,7 @@ import {
 } from 'lucide-react';
 import { countTranscriptWords, getProjectAudioDuration, getShotTimingLabel, normalizeShotListForVeo } from '@/utils/shotList';
 
-const panelStyle = {
-  background: 'var(--card)',
-  border: '1px solid var(--border)',
-  borderRadius: '8px',
-  padding: '20px',
-  boxShadow: 'var(--shadow-card)',
-};
-
-const labelStyle = {
-  fontFamily: 'var(--font-display)',
-  fontSize: '10px',
-  fontWeight: 700,
-  letterSpacing: '0.11em',
-  textTransform: 'uppercase',
-};
+// Styles moved to components.css as .gen-shot-panel, .form-label
 
 function parseLooseShotLines(text) {
   return text
@@ -260,11 +246,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
   };
 
   return (
-    <div
-      className="screen active"
-      id="s7"
-      style={{ background: 'var(--bg)', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
-    >
+    <div className="screen active screen-fill flex-col" id="s7">
       <input
         type="file"
         ref={fileInputRef}
@@ -460,25 +442,11 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
               </span>
             </div>
             <textarea
+              className="textarea-inset"
               value={manualText}
               onChange={(e) => setManualText(e.target.value)}
               placeholder={'Shot 1 - Wide shot of THE ARTIST...\nShot 2 - Close-up at first vocal phrase...'}
-              style={{
-                background: 'var(--surface-2)',
-                boxShadow: 'var(--neo-inset)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                padding: '10px 12px',
-                color: 'var(--text)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
-                resize: 'none',
-                height: '80px',
-                width: '100%',
-                outline: 'none',
-                lineHeight: 1.5,
-                boxSizing: 'border-box',
-              }}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', height: '80px' }}
               onFocus={e => { e.target.style.borderColor = 'var(--cyan-border)'; }}
               onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
             />

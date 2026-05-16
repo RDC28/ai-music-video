@@ -341,7 +341,7 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
                     disabled={isAnalyzing}
                     style={{ width: '100%', padding: '14px', justifyContent: 'center' }}
                   >
-                    {isAnalyzing ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Sparkles size={15} />}
+                    {isAnalyzing ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
                     {isAnalyzing ? 'Analyzing…' : 'Analyze Track'}
                   </button>
                 ) : (
@@ -401,7 +401,7 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
                 color: 'var(--cyan)',
               }}>
                 {isUploading
-                  ? <Loader2 size={26} style={{ animation: 'spin 1s linear infinite' }} />
+                  ? <Loader2 size={26} className="spin" />
                   : <UploadCloud size={26} />}
               </div>
               <div>

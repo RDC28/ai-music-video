@@ -372,6 +372,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
   const [activeCategory, setActiveCategory] = useState('project');
   const [renamingPanel, setRenamingPanel] = useState(null);
 
+  const [scriptPromptPreview, setScriptPromptPreview] = useState(null); // { name, description, replaceIndex }
   const [sheetReplaceTarget, setSheetReplaceTarget] = useState(null);
   const [sheetProcessStatus, setSheetProcessStatus] = useState('');
   const [charProgressStep, setCharProgressStep] = useState(-1);
@@ -804,13 +805,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
     });
   };
 
-  const handleGenerateFromScript = async () => {
-    const projectIndex = activeCategory === 'project' && activeChar && activeChar.id !== 'generating'
+  const handleGenerateFromScript = () => {
+    const targetIndex = activeCategory === 'project' && activeChar && activeChar.id !== 'generating'
       ? activeTab
       : -1;
-    const activeNeedsImages = projectIndex >= 0 && !projectCharacters[projectIndex]?.images?.length;
-    const firstMissingIndex = projectCharacters.findIndex(character => !character?.images?.length);
-    const targetIndex = activeNeedsImages ? projectIndex : firstMissingIndex;
     const scriptCharacters = Array.isArray(projectState?.characters) ? projectState.characters : [];
     const sourceCharacter = targetIndex >= 0
       ? projectCharacters[targetIndex]
@@ -828,11 +826,14 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
       return;
     }
 
-    await generateCharacterReferences({
-      name,
-      description,
-      replaceIndex: targetIndex >= 0 ? targetIndex : null,
-    });
+    setScriptPromptPreview({ name, description, replaceIndex: targetIndex >= 0 ? targetIndex : null });
+  };
+
+  const handleConfirmScriptGenerate = async () => {
+    if (!scriptPromptPreview) return;
+    const { name, description, replaceIndex } = scriptPromptPreview;
+    setScriptPromptPreview(null);
+    await generateCharacterReferences({ name, description, replaceIndex });
   };
 
   const handleEditSave = async () => {
@@ -895,25 +896,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
     await onDataUpdate({ characters: updatedChars });
   };
 
-  const inputStyle = {
-    width: '100%',
-    padding: '10px 13px',
-    border: '1px solid var(--border-mid)',
-    borderRadius: '8px',
-    background: '#0f0f0f',
-    color: '#fff',
-    fontSize: '13px',
-    fontFamily: 'var(--font-body)',
-    boxSizing: 'border-box',
-    outline: 'none',
-    transition: 'border-color 0.15s',
-  };
-
   return (
-    <div className="screen active" id="s4" style={{ height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
+    <div className="screen active screen-fill" id="s4">
       <style>{`
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .skeleton-shimmer { background:linear-gradient(90deg,var(--bg-deep) 25%,var(--surface-2) 50%,var(--bg-deep) 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
         .img-card {
           --board-card-scale: 1;
@@ -926,10 +912,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         }
       `}</style>
 
-      <div className="studio-shell" style={{ display: 'flex', height: '100%' }}>
+      <div className="layout-sidebar-main">
 
         {/* ── Sidebar ── */}
-        <div className="studio-sidebar" style={{ width: '256px', minWidth: '256px', background: 'var(--bg-deep)', boxShadow: '4px 0 16px rgba(0,0,0,0.4)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', padding: '24px', height: '100%', overflowY: 'auto' }}>
+        <div className="layout-sidebar scroll-y" style={{ width: '256px', minWidth: '256px', padding: '24px', height: '100%' }}>
 
           <div style={{ marginBottom: '26px' }}>
             <div className="kicker" style={{ marginBottom: '12px' }}>Character · Studio</div>
@@ -944,17 +930,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
           </div>
 
           {/* Category toggle */}
-          <div
-            style={{
-              display: 'flex',
-              background: 'var(--bg)',
-              boxShadow: 'var(--neo-inset)',
-              borderRadius: '10px',
-              padding: '4px',
-              marginBottom: '22px',
-              border: '1px solid var(--border)',
-            }}
-          >
+          <div className="neo-inset" style={{ display: 'flex', padding: '4px', marginBottom: '22px' }}>
             {['project', 'global'].map(cat => (
               <button
                 key={cat}
@@ -1035,10 +1011,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         </div>
 
         {/* ── Right panel ── */}
-        <div className="studio-main" style={{ flex: 1, background: 'var(--bg)', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div className="main-content" style={{ background: 'var(--bg)' }}>
 
           {/* Header */}
-          <div style={{ flexShrink: 0, background: 'rgba(17,17,20,0.95)', backdropFilter: 'blur(16px)', padding: '18px 32px', borderBottom: '1px solid var(--border)' }}>
+          <div className="main-header" style={{ padding: '18px 32px' }}>
             {/* Character tabs */}
             <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '14px' }}>
               {displayedCharacters.map((char, i) => (
@@ -1058,7 +1034,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                   )}
                   {!char.isGeneratingReference && anchorStatus[char.name] === 'generating' && (
                     <span style={{ marginLeft: '6px', opacity: 0.75, fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} />
+                      <Loader2 size={10} className="spin" />
                       ANCHOR
                     </span>
                   )}
@@ -1122,7 +1098,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                   </span>
                   {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'generating' && (
                     <span style={{ color: '#8fd9ff', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                      <Loader2 size={12} className="spin" />
                       Building identity anchor…
                     </span>
                   )}
@@ -1342,7 +1318,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
             </div>
           </div>
         </div>
-      </div>
+      </div>{/* end layout-sidebar-main */}
 
       {/* ── Create Modal ── */}
       {showCreateModal && (
@@ -1360,12 +1336,12 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>CHARACTER NAME</label>
-                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)} style={inputStyle} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)} className="input-inset" style={{ padding: '10px 13px', background: '#0f0f0f', fontSize: '13px', borderRadius: '8px' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               <div>
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
                 <textarea placeholder="Ancient Indian warrior, 40s, grey beard, dark red dhoti, gold jewellery..." value={createDesc} onChange={e => setCreateDesc(e.target.value)}
-                  style={{ ...inputStyle, minHeight: '90px', resize: 'none' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                  className="textarea-inset" style={{ padding: '10px 13px', background: '#0f0f0f', fontSize: '13px', borderRadius: '8px', minHeight: '90px' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
 
               {/* Reference image */}
@@ -1415,11 +1391,11 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>NAME</label>
-                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={inputStyle} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="input-inset" style={{ padding: '10px 13px', background: '#0f0f0f', fontSize: '13px', borderRadius: '8px' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               <div>
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
-                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} style={{ ...inputStyle, minHeight: '72px', resize: 'none' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} className="textarea-inset" style={{ padding: '10px 13px', background: '#0f0f0f', fontSize: '13px', borderRadius: '8px', minHeight: '72px' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               {activeCategory === 'project' && (
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px' }}>
@@ -1459,12 +1435,34 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         />
       )}
 
+      {/* Script prompt preview modal */}
+      {scriptPromptPreview && (
+        <div className="modal-overlay">
+          <div className="modal-panel flex-col gap-16" style={{ maxWidth: '560px' }}>
+            <div>
+              <div className="panel-meta-label" style={{ marginBottom: '6px' }}>▪ Generate from Script</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>{scriptPromptPreview.name}</div>
+            </div>
+            <div className="panel-inset" style={{ maxHeight: '260px', fontSize: '12.5px' }}>
+              {scriptPromptPreview.description}
+            </div>
+            <p className="body-sm">
+              This prompt will be sent to the image model to generate character reference angles. Edit the description in the character card first if you need to adjust it.
+            </p>
+            <div className="flex-row gap-10">
+              <button onClick={handleConfirmScriptGenerate} className="btn-orange" style={{ flex: 1, padding: '13px', fontWeight: 700 }}>Generate References</button>
+              <button onClick={() => setScriptPromptPreview(null)} className="btn-outline" style={{ flex: 1, padding: '13px' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {busy && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--teal)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Loader2 size={24} style={{ color: 'var(--teal)', animation: 'spin 1s linear infinite' }} />
+        <div className="flex-row gap-16" style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--cyan)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', alignItems: 'center' }}>
+          <Loader2 size={24} className="spin" style={{ color: 'var(--cyan)' }} />
           <div>
             <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating character sheet...'}</div>
-            <div style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
+            <div style={{ color: 'var(--cyan)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
           </div>
         </div>
       )}

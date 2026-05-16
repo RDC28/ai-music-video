@@ -51,119 +51,40 @@ export default function DashboardNav() {
   const initial = profile?.full_name?.charAt(0)?.toUpperCase() || '?';
 
   return (
-    <nav style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '0 32px',
-      height: '56px',
-      borderBottom: '1px solid var(--border)',
-      background: 'rgba(17,17,20,0.92)',
-      backdropFilter: 'blur(12px)',
-      position: 'sticky',
-      top: 0,
-      zIndex: 100,
-    }}>
+    <nav className="dash-nav">
 
       {/* Logo */}
-      <Link href="/dashboard" style={{
-        textDecoration: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-      }}>
-        <div style={{
-          width: '28px',
-          height: '28px',
-          borderRadius: '8px',
-          background: 'var(--surface-2)',
-          boxShadow: 'var(--neo-flat)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: 'var(--font-display)',
-          fontSize: '14px',
-          fontWeight: '700',
-          color: 'var(--cyan)',
-        }}>
-          A
-        </div>
-        <span style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: '15px',
-          fontWeight: '700',
-          color: 'var(--text)',
-          letterSpacing: '-0.02em',
-        }}>
-          Aura
-        </span>
+      <Link href="/dashboard" className="dash-nav-logo">
+        <div className="dash-nav-logo-mark">A</div>
+        <span className="dash-nav-logo-name">Aura</span>
       </Link>
 
       {/* Nav links */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+      <div className="dash-nav-links">
         {navLinks.map(link => (
-          <Link key={link.href} href={link.href} style={{
-            fontFamily: 'var(--font-body)',
-            fontSize: '13px',
-            fontWeight: '500',
-            textDecoration: 'none',
-            padding: '6px 14px',
-            borderRadius: '8px',
-            color: isActive(link.href) ? 'var(--cyan)' : 'var(--text-muted)',
-            background: isActive(link.href) ? 'var(--cyan-dim)' : 'transparent',
-            border: isActive(link.href) ? '1px solid var(--cyan-border)' : '1px solid transparent',
-            transition: 'color 140ms ease-out, background 140ms ease-out, border-color 140ms ease-out',
-          }}>
+          <Link
+            key={link.href}
+            href={link.href}
+            className={`dash-nav-link${isActive(link.href) ? ' active' : ''}`}
+          >
             {link.label}
           </Link>
         ))}
       </div>
 
       {/* Right: credits + avatar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }} ref={menuRef}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          padding: '5px 10px',
-          borderRadius: '8px',
-          background: 'var(--surface-2)',
-          boxShadow: 'var(--neo-inset)',
-          border: '1px solid var(--border)',
-        }}>
+      <div className="flex-row gap-10" style={{ alignItems: 'center' }} ref={menuRef}>
+        <div className="dash-nav-credits">
           <Zap size={11} color="var(--cyan)" />
-          <span style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '10px',
-            fontWeight: '700',
-            color: 'var(--text-soft)',
-            letterSpacing: '0.06em',
-          }}>
-            {profile?.credits ?? '—'}
-          </span>
+          <span className="dash-nav-credits-val">{profile?.credits ?? '—'}</span>
         </div>
 
         {/* Avatar + dropdown */}
         <div style={{ position: 'relative' }}>
           <button
+            className="dash-nav-avatar"
             onClick={() => setMenuOpen(!menuOpen)}
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: 'var(--surface-2)',
-              boxShadow: menuOpen ? 'var(--neo-active)' : 'var(--neo-flat)',
-              border: '1px solid var(--border-mid)',
-              color: 'var(--cyan)',
-              fontFamily: 'var(--font-display)',
-              fontSize: '13px',
-              fontWeight: '700',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'box-shadow 160ms ease-out',
-            }}
+            style={{ boxShadow: menuOpen ? 'var(--neo-active)' : 'var(--neo-flat)' }}
           >
             {initial}
           </button>
@@ -175,93 +96,33 @@ export default function DashboardNav() {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 8px)',
-                  right: 0,
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--border-mid)',
-                  borderRadius: 'var(--radius-lg)',
-                  minWidth: '200px',
-                  boxShadow: 'var(--shadow-modal)',
-                  padding: '6px',
-                  transformOrigin: 'top right',
-                }}
+                className="dash-dropdown"
               >
-                <div style={{
-                  padding: '10px 12px 10px',
-                  borderBottom: '1px solid var(--border)',
-                  marginBottom: '4px',
-                }}>
-                  <div style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    color: 'var(--text)',
-                    letterSpacing: '-0.02em',
-                  }}>
-                    {profile?.full_name || 'User'}
-                  </div>
-                  <div style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '10px',
-                    color: 'var(--text-muted)',
-                    letterSpacing: '0.06em',
-                    marginTop: '3px',
-                  }}>
-                    {profile?.credits ?? 0} CREDITS
-                  </div>
+                <div className="dash-dropdown-header">
+                  <div className="dash-dropdown-name">{profile?.full_name || 'User'}</div>
+                  <div className="dash-dropdown-credits">{profile?.credits ?? 0} CREDITS</div>
                 </div>
 
                 {navLinks.map(link => (
-                  <Link key={link.href} href={link.href} onClick={() => setMenuOpen(false)} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    textDecoration: 'none',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    color: isActive(link.href) ? 'var(--cyan)' : 'var(--text-soft)',
-                    background: isActive(link.href) ? 'var(--cyan-dim)' : 'transparent',
-                    transition: 'background 120ms ease-out, color 120ms ease-out',
-                  }}>
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setMenuOpen(false)}
+                    className={`dash-dropdown-link${isActive(link.href) ? ' active' : ''}`}
+                  >
                     {link.label}
                   </Link>
                 ))}
-                <Link href="/payment" onClick={() => setMenuOpen(false)} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  textDecoration: 'none',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  color: 'var(--text-soft)',
-                  transition: 'background 120ms ease-out',
-                }}>
+                <Link
+                  href="/payment"
+                  onClick={() => setMenuOpen(false)}
+                  className="dash-dropdown-link"
+                >
                   <CreditCard size={13} />
                   Payment
                 </Link>
                 <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
-                <button onClick={handleLogout} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  width: '100%',
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: 'transparent',
-                  textAlign: 'left',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  color: 'var(--error)',
-                  cursor: 'pointer',
-                  transition: 'background 120ms ease-out',
-                }}>
+                <button className="dash-dropdown-btn" onClick={handleLogout}>
                   <LogOut size={13} />
                   Sign out
                 </button>

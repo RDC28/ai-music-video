@@ -11,6 +11,39 @@ import { sidePanel } from '@/lib/motion';
 const MAX_CLIENT_RETRIES = 2;
 const CLIENT_REQUEST_TIMEOUT_MS = 130000;
 
+const DESCRIPTION_LIMIT = 120;
+
+function ExpandableText({ text, style }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return null;
+  const isLong = text.length > DESCRIPTION_LIMIT;
+  return (
+    <div style={style}>
+      {expanded || !isLong ? text : text.slice(0, DESCRIPTION_LIMIT)}
+      {isLong && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setExpanded(v => !v); }}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: '0 0 0 4px',
+            cursor: 'pointer',
+            color: 'var(--cyan)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '10px',
+            fontWeight: 700,
+            letterSpacing: '0.05em',
+            verticalAlign: 'middle',
+            lineHeight: 1,
+          }}
+        >
+          {expanded ? '↑ less' : '···'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function isRetryableClientError(error) {
@@ -335,6 +368,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   const [generatingIndex, setGeneratingIndex] = useState(null);
   const [generationError, setGenerationError] = useState('');
   const [queueSummary, setQueueSummary] = useState('');
+  const [isRewritingPrompt, setIsRewritingPrompt] = useState(false);
   const projectCharacterPool = Array.isArray(projectData)
     ? []
     : (Array.isArray(projectData?.characters) ? projectData.characters : []);
@@ -450,6 +484,30 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
     });
   };
 
+  const handleRewritePrompt = async () => {
+    if (editModalIndex === null || isRewritingPrompt) return;
+    setIsRewritingPrompt(true);
+    try {
+      const shot = shots[editModalIndex];
+      const res = await fetch('/api/rewrite-shot-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shot,
+          projectState: projectData,
+          mode: 'image',
+          currentPrompt: promptDraft,
+        }),
+      });
+      const data = await res.json();
+      if (data.prompt) setPromptDraft(data.prompt);
+    } catch (err) {
+      console.error('Prompt rewrite failed:', err);
+    } finally {
+      setIsRewritingPrompt(false);
+    }
+  };
+
   const handleGenerateAll = async () => {
     if (!shots.length || isGeneratingAll) return;
     await runGenerationQueue(shots.map((_, index) => index), { label: 'Generate all' });
@@ -480,179 +538,74 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   const remainingCount = shots.length - generatedCount;
   const failedCount = shots.filter(shot => !shot.image_url && shot.image_error).length;
 
-  const modelSelectStyle = {
-    background: 'var(--surface-2)',
-    boxShadow: 'var(--neo-inset)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius)',
-    color: 'var(--text)',
-    padding: '8px 12px',
-    fontSize: '12px',
-    width: '190px',
-    outline: 'none',
-  };
-
   return (
-    <div
-      className="screen active"
-      id="s9"
-      style={{
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        height: '100%',
-        minHeight: 0,
-        overflow: 'hidden',
-        background: 'var(--bg)',
-      }}
-    >
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
+    <div className="screen active screen-row" id="s9">
 
       {/* LEFT PANEL */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
+      <div className="layout-main">
 
         {/* Header */}
-        <div style={{
-          padding: '20px 28px',
-          borderBottom: '1px solid var(--border)',
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          flexShrink: 0,
-          gap: '16px',
-          background: 'rgba(17,17,20,0.95)',
-        }}>
-          {/* Left block */}
-          <div>
-            <div style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '10px',
-              color: 'var(--cyan)',
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              marginBottom: '6px',
-            }}>
-              ▪ Frames · Render
-            </div>
-            <h2 style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: '30px',
-              fontWeight: 700,
-              letterSpacing: '-0.03em',
-              color: 'var(--text)',
-              margin: 0,
-              marginBottom: '8px',
-              lineHeight: 1.1,
-            }}>
+        <div className="panel-header">
+          <div className="panel-header-left">
+            <div className="sidebar-header-kicker">▪ Frames · Render</div>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '30px', fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--text)', margin: '0 0 8px', lineHeight: 1.1 }}>
               Paint each frame.
             </h2>
-            <div style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '10px',
-              color: 'var(--text-muted)',
-              letterSpacing: '0.06em',
-              marginBottom: queueSummary || generationError ? '4px' : 0,
-            }}>
+            <div className="panel-meta-label" style={{ marginBottom: queueSummary || generationError ? '4px' : 0 }}>
               {shots.length
                 ? `${generatedCount}/${shots.length} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
                 : '0/0 ready · 0 remaining'}
             </div>
-            {queueSummary && (
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-                {queueSummary}
-              </p>
-            )}
-            {generationError && (
-              <p style={{ fontSize: '12px', color: 'var(--error)', margin: '4px 0 0' }}>
-                {generationError}
-              </p>
-            )}
+            {queueSummary && <p className="queue-msg" style={{ margin: '4px 0 0' }}>{queueSummary}</p>}
+            {generationError && <p className="queue-msg queue-msg--error" style={{ margin: '4px 0 0' }}>{generationError}</p>}
           </div>
 
-          {/* Right block */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-end', flexShrink: 0 }}>
-            <select
-              value={modelDraft}
-              onChange={(event) => setModelDraft(event.target.value)}
-              style={modelSelectStyle}
-              title="Image model"
-            >
+          <div className="panel-header-right">
+            <select className="select-model" value={modelDraft} onChange={(event) => setModelDraft(event.target.value)} title="Image model">
               {IMAGE_GENERATION_MODELS.map(option => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div className="flex-row gap-8" style={{ alignItems: 'center' }}>
               <button
                 className="btn-teal"
                 onClick={handleGenerateRemaining}
                 disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}
-                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
               >
                 {isGeneratingAll ? (
-                  <>
-                    <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                    Generating {generatingIndex !== null ? `${generatingIndex + 1}/${shots.length}` : 'Images'}
-                  </>
+                  <><Loader2 size={14} className="spin" /> Generating {generatingIndex !== null ? `${generatingIndex + 1}/${shots.length}` : 'Images'}</>
                 ) : (
-                  <>
-                    <Wand2 size={14} />
-                    {remainingCount === shots.length ? 'Generate Frames' : `Generate Remaining (${remainingCount})`}
-                  </>
+                  <><Wand2 size={14} /> {remainingCount === shots.length ? 'Generate Frames' : `Generate Remaining (${remainingCount})`}</>
                 )}
               </button>
               <button
                 className="btn-outline"
                 onClick={handleGenerateAll}
                 disabled={!shots.length || isGeneratingAll || generatingIndex !== null}
-                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
                 title="Regenerate every shot, including completed images"
               >
-                <RotateCcw size={14} />
-                Regenerate All
+                <RotateCcw size={14} /> Regenerate All
               </button>
-              <button
-                className="btn-teal"
-                onClick={handleApproveAll}
-                disabled={isApproving}
-                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
-              >
-                {isApproving ? 'Saving...' : 'Approve All'}
-                {!isApproving && <Check size={14} />}
+              <button className="btn-teal" onClick={handleApproveAll} disabled={isApproving}>
+                {isApproving ? 'Saving...' : <><Check size={14} /> Approve All</>}
               </button>
             </div>
           </div>
         </div>
 
         {/* Shot list */}
-        <div id="imgList" style={{ flex: 1, overflowY: 'auto' }}>
+        <div id="imgList" className="shot-list">
           {shots.length > 0 ? shots.map((shot, i) => {
             const sceneCharacterTags = resolveSceneCharacterTags(shot, projectCharacterPool);
             return (
               <div
                 key={`${shot.n}-${i}`}
-                style={{
-                  padding: '14px 28px',
-                  borderBottom: '1px solid var(--border)',
-                  display: 'flex',
-                  gap: '16px',
-                  alignItems: 'flex-start',
-                  background: editModalIndex === i ? 'var(--cyan-dim)' : 'transparent',
-                  borderLeft: `3px solid ${editModalIndex === i ? 'var(--cyan)' : 'transparent'}`,
-                  transition: 'all 0.2s',
-                }}
+                className={`shot-row ${editModalIndex === i ? 'shot-row--active' : 'shot-row--inactive'}`}
+                style={{ transition: 'all 0.2s' }}
               >
                 {/* Left column */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '10px',
-                    color: 'var(--text-muted)',
-                    letterSpacing: '0.08em',
-                    marginBottom: '4px',
-                  }}>
-                    {String(i + 1).padStart(2, '0')}
-                  </div>
+                <div className="shot-details">
+                  <div className="shot-number">{String(i + 1).padStart(2, '0')}</div>
                   <div style={{
                     fontFamily: 'var(--font-display)',
                     fontSize: '16px',
@@ -664,65 +617,23 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                   }}>
                     {shot.n || shot.title || `Shot ${i + 1}`}
                   </div>
-                  <div style={{
-                    fontFamily: 'var(--font-body)',
-                    fontSize: '12px',
-                    color: 'var(--text-muted)',
-                    lineHeight: 1.5,
-                    marginBottom: '8px',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}>
-                    {(shot.p || shot.prompt || 'No prompt available').substring(0, 150)}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                  <ExpandableText
+                    text={shot.p || shot.prompt || 'No prompt available'}
+                    style={{ fontFamily: 'var(--font-body)', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.55, marginBottom: '8px' }}
+                  />
+                  <div className="flex-row" style={{ flexWrap: 'wrap', gap: '5px' }}>
                     {sceneCharacterTags.length ? sceneCharacterTags.map((tag) => (
-                      <span
-                        key={`${shot.n || i}-${tag}`}
-                        style={{
-                          background: 'var(--surface-2)',
-                          boxShadow: 'var(--neo-flat)',
-                          border: '1px solid var(--border)',
-                          borderRadius: '999px',
-                          padding: '3px 8px',
-                          fontSize: '9px',
-                          fontFamily: 'var(--font-mono)',
-                          color: 'var(--cyan)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.06em',
-                        }}
-                      >
+                      <span key={`${shot.n || i}-${tag}`} className="chip chip--teal" style={{ fontSize: '9px', padding: '3px 8px' }}>
                         {tag}
                       </span>
                     )) : (
-                      <span
-                        style={{
-                          background: 'var(--surface-2)',
-                          boxShadow: 'var(--neo-flat)',
-                          border: '1px solid var(--border)',
-                          borderRadius: '999px',
-                          padding: '3px 8px',
-                          fontSize: '9px',
-                          fontFamily: 'var(--font-mono)',
-                          color: 'var(--text-muted)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.06em',
-                        }}
-                      >
+                      <span className="chip chip--ghost" style={{ fontSize: '9px', padding: '3px 8px' }}>
                         No named characters
                       </span>
                     )}
                   </div>
                   {!shot.image_url && shot.image_error && (
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      marginTop: '7px',
-                      color: 'var(--error)',
-                      fontSize: '11px',
-                    }}>
+                    <div className="flex-row gap-6" style={{ marginTop: '7px', color: 'var(--error)', fontSize: '11px', alignItems: 'center' }}>
                       <AlertTriangle size={13} />
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {shot.image_error.message}
@@ -733,78 +644,26 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
 
                 {/* Right column — image preview */}
                 <div style={{ flexShrink: 0 }}>
-                  <div style={{
-                    borderRadius: 'var(--radius)',
-                    overflow: 'hidden',
-                    border: '1px solid var(--border)',
-                    width: '220px',
-                    height: '128px',
-                    background: 'var(--surface-2)',
-                    boxShadow: 'var(--neo-flat)',
-                    position: 'relative',
-                  }}>
+                  <div className="shot-thumb neo-flat" style={{ width: '220px', height: '128px', border: '1px solid var(--border)', position: 'relative' }}>
                     {shot.image_url ? (
-                      <img
-                        src={shot.image_url}
-                        alt={shot.n || `Shot ${i + 1}`}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                      />
+                      <img src={shot.image_url} alt={shot.n || `Shot ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     ) : (
-                      <canvas
-                        ref={(el) => (canvasRefs.current[i] = el)}
-                        width={220}
-                        height={128}
-                        style={{ display: 'block' }}
-                      />
+                      <canvas ref={(el) => (canvasRefs.current[i] = el)} width={220} height={128} style={{ display: 'block' }} />
                     )}
                     {generatingIndex === i && (
-                      <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: 'rgba(0,0,0,0.7)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        color: 'var(--cyan)',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                      }}>
-                        <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
-                        Generating...
+                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', color: 'var(--cyan)', fontSize: '11px', fontWeight: 700 }}>
+                        <Loader2 size={13} className="spin" /> Generating...
                       </div>
                     )}
                     {!shot.image_url && shot.image_error && generatingIndex !== i && (
-                      <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: 'rgba(0,0,0,0.7)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        color: 'var(--error)',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                      }}>
+                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', color: 'var(--error)', fontSize: '11px', fontWeight: 700 }}>
                         Try again
                       </div>
                     )}
                   </div>
                   <button
                     className="btn-outline"
-                    style={{
-                      fontSize: '11px',
-                      padding: '6px 12px',
-                      marginTop: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      opacity: editModalIndex === i ? 0.5 : 1,
-                      cursor: editModalIndex === i ? 'default' : 'pointer',
-                      width: '100%',
-                      justifyContent: 'center',
-                    }}
+                    style={{ fontSize: '11px', padding: '6px 12px', marginTop: '8px', opacity: editModalIndex === i ? 0.5 : 1, cursor: editModalIndex === i ? 'default' : 'pointer', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
                     onClick={() => openEditor(i)}
                   >
                     {editModalIndex === i ? 'Editing...' : shot.image_url ? 'Edit & Regenerate' : shot.image_error ? 'Try Again' : 'Edit & Generate'}
@@ -813,34 +672,11 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
               </div>
             );
           }) : (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '80px 40px',
-              gap: '16px',
-            }}>
-              <div style={{
-                width: '52px',
-                height: '52px',
-                borderRadius: 'var(--radius-lg)',
-                background: 'var(--surface-2)',
-                boxShadow: 'var(--neo-raised)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
+            <div className="flex-col flex-center gap-16" style={{ padding: '80px 40px' }}>
+              <div className="icon-box-lg" style={{ width: '52px', height: '52px' }}>
                 <ImagePlus size={22} color="var(--cyan)" />
               </div>
-              <div style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '18px',
-                fontWeight: 700,
-                color: 'var(--text)',
-                letterSpacing: '-0.02em',
-                textAlign: 'center',
-              }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em', textAlign: 'center' }}>
                 No shots generated yet.
               </div>
               <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '12px' }}>
@@ -851,7 +687,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
         </div>
       </div>
 
-      {/* RIGHT PANEL — Edit modal */}
+      {/* RIGHT PANEL — Edit panel */}
       <AnimatePresence>
         {editModalIndex !== null && selectedShot && (
           <motion.div
@@ -860,158 +696,48 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
             initial="hidden"
             animate="visible"
             exit="exit"
-            style={{
-              position: 'sticky',
-              top: 0,
-              width: '440px',
-              height: '100%',
-              background: 'var(--surface-2)',
-              boxShadow: '-4px 0 20px rgba(0,0,0,0.4)',
-              borderLeft: '1px solid var(--border-mid)',
-              padding: '24px',
-              display: 'flex',
-              flexDirection: 'column',
-              flexShrink: 0,
-              overflowY: 'auto',
-            }}
+            className="flex-col scroll-y"
+            style={{ position: 'sticky', top: 0, width: '440px', height: '100%', background: 'var(--surface-2)', boxShadow: '-4px 0 20px rgba(0,0,0,0.4)', borderLeft: '1px solid var(--border-mid)', padding: '24px', flexShrink: 0 }}
           >
             {/* Panel header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div className="flex-between" style={{ marginBottom: '20px' }}>
               <div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '10px',
-                  color: 'var(--cyan)',
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  marginBottom: '4px',
-                }}>
-                  ▪ Edit Frame
-                </div>
-                <h3 style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '18px',
-                  fontWeight: 700,
-                  color: 'var(--text)',
-                  margin: 0,
-                  letterSpacing: '-0.02em',
-                }}>
+                <div className="sidebar-header-kicker">▪ Edit Frame</div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', margin: 0, letterSpacing: '-0.02em' }}>
                   Frame.
                 </h3>
               </div>
-              <button
-                onClick={() => setEditModalIndex(null)}
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
-                  background: 'var(--surface)',
-                  boxShadow: 'var(--neo-flat)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text-muted)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-              >
+              <button className="modal-close-btn" onClick={() => setEditModalIndex(null)} style={{ borderRadius: '50%' }}>
                 <X size={13} />
               </button>
             </div>
 
             {/* Panel content */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="flex-col gap-16">
 
               {/* Two-column grid: Current image + Frame Status */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <div style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '10px',
-                    color: 'var(--text-muted)',
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
-                    marginBottom: '8px',
-                  }}>
-                    Current
-                  </div>
-                  <div style={{
-                    background: 'var(--bg-deep)',
-                    boxShadow: 'var(--neo-inset)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius)',
-                    aspectRatio: '16/9',
-                    overflow: 'hidden',
-                  }}>
+                  <div className="panel-meta-label" style={{ marginBottom: '8px' }}>Current</div>
+                  <div className="panel-inset" style={{ aspectRatio: '16/9', padding: 0, flex: 'none', overflow: 'hidden' }}>
                     {selectedShot.image_url ? (
-                      <img
-                        src={selectedShot.image_url}
-                        alt={selectedShot.n || 'Current shot'}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                      />
+                      <img src={selectedShot.image_url} alt={selectedShot.n || 'Current shot'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     ) : (
-                      <canvas
-                        ref={modalCanvasRef}
-                        width={560}
-                        height={315}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
+                      <canvas ref={modalCanvasRef} width={560} height={315} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     )}
                   </div>
                 </div>
                 <div>
-                  <div style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '10px',
-                    color: 'var(--text-muted)',
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
-                    marginBottom: '8px',
-                  }}>
-                    Frame Status
-                  </div>
-                  <div style={{
-                    background: 'var(--bg-deep)',
-                    boxShadow: 'var(--neo-inset)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius)',
-                    aspectRatio: '16/9',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                  }}>
+                  <div className="panel-meta-label" style={{ marginBottom: '8px' }}>Frame Status</div>
+                  <div className="panel-inset flex-col flex-center gap-6" style={{ aspectRatio: '16/9', flex: 'none', whiteSpace: 'normal' }}>
                     <span style={{
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: generatingIndex === editModalIndex
-                        ? 'var(--cyan)'
-                        : selectedShot.image_url
-                          ? 'var(--cyan)'
-                          : selectedShot.image_error
-                            ? 'var(--error)'
-                            : 'var(--text-muted)',
-                      textAlign: 'center',
-                      padding: '0 8px',
+                      fontSize: '11px', fontWeight: 600, textAlign: 'center', padding: '0 8px',
+                      color: generatingIndex === editModalIndex ? 'var(--cyan)' : selectedShot.image_url ? 'var(--cyan)' : selectedShot.image_error ? 'var(--error)' : 'var(--text-muted)',
                     }}>
-                      {generatingIndex === editModalIndex
-                        ? 'Generating now...'
-                        : selectedShot.image_url
-                          ? 'Generated'
-                          : selectedShot.image_error
-                            ? 'Ready to try again'
-                            : 'Not created yet'}
+                      {generatingIndex === editModalIndex ? 'Generating now...' : selectedShot.image_url ? 'Generated' : selectedShot.image_error ? 'Ready to try again' : 'Not created yet'}
                     </span>
                     {!selectedShot.image_url && selectedShot.image_error && (
-                      <span style={{
-                        fontSize: '10px',
-                        color: 'var(--error)',
-                        lineHeight: 1.4,
-                        textAlign: 'center',
-                        padding: '0 8px',
-                      }}>
+                      <span style={{ fontSize: '10px', color: 'var(--error)', lineHeight: 1.4, textAlign: 'center', padding: '0 8px' }}>
                         {selectedShot.image_error.message}
                       </span>
                     )}
@@ -1019,96 +745,41 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                 </div>
               </div>
 
-              {/* Divider */}
               <div style={{ height: '1px', background: 'var(--border)' }} />
 
-              {/* Replace With heading */}
-              <div style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '13px',
-                fontWeight: 700,
-                letterSpacing: '-0.01em',
-                color: 'var(--text)',
-              }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text)' }}>
                 Replace With
               </div>
 
               {/* Section 1: Upload */}
               <div>
-                <div style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: 'var(--text)',
-                  marginBottom: '8px',
-                }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
                   1. Upload Your Own
                 </div>
-                <div style={{
-                  background: 'var(--bg-deep)',
-                  boxShadow: 'var(--neo-inset)',
-                  border: '1.5px dashed var(--border-mid)',
-                  borderRadius: 'var(--radius)',
-                  padding: '20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '8px',
-                  opacity: 0.55,
-                }}>
+                <div className="flex-col flex-center gap-8" style={{ background: 'var(--bg-deep)', boxShadow: 'var(--neo-inset)', border: '1.5px dashed var(--border-mid)', borderRadius: 'var(--radius)', padding: '20px', opacity: 0.55 }}>
                   <ImagePlus size={20} color="var(--text-muted)" />
-                  <span style={{
-                    fontSize: '12px',
-                    color: 'var(--text-muted)',
-                  }}>
-                    Browse Files
-                  </span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Browse Files</span>
                 </div>
               </div>
 
               {/* Section 2: Generate from Prompt */}
               <div>
-                <div style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: 'var(--text)',
-                  marginBottom: '8px',
-                }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
                   2. Generate from Prompt
                 </div>
                 <textarea
+                  className="textarea-inset"
                   value={promptDraft}
                   onChange={(e) => setPromptDraft(e.target.value)}
                   onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
                   onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
-                  style={{
-                    background: 'var(--bg-deep)',
-                    boxShadow: 'var(--neo-inset)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius)',
-                    padding: '12px',
-                    color: 'var(--text)',
-                    fontFamily: 'var(--font-body)',
-                    fontSize: '13px',
-                    resize: 'vertical',
-                    minHeight: '108px',
-                    width: '100%',
-                    lineHeight: 1.45,
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                    transition: 'border-color 0.15s',
-                  }}
+                  style={{ minHeight: '108px', fontSize: '13px', padding: '12px', lineHeight: 1.45, transition: 'border-color 0.15s' }}
                 />
                 <select
+                  className="select-model"
                   value={modelDraft}
                   onChange={(event) => setModelDraft(event.target.value)}
-                  style={{
-                    ...modelSelectStyle,
-                    width: '100%',
-                    marginTop: '8px',
-                    boxSizing: 'border-box',
-                  }}
+                  style={{ width: '100%', marginTop: '8px' }}
                   title="Image model"
                 >
                   {IMAGE_GENERATION_MODELS.map(option => (
@@ -1116,30 +787,23 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                   ))}
                 </select>
                 <button
+                  className="btn-outline"
+                  onClick={handleRewritePrompt}
+                  disabled={isRewritingPrompt || generatingIndex !== null}
+                  style={{ width: '100%', fontSize: '12px', padding: '10px', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                >
+                  {isRewritingPrompt ? <><Loader2 size={13} className="spin" /> Rewriting…</> : <><RotateCcw size={13} /> Regenerate Prompt</>}
+                </button>
+                <button
                   className="btn-orange"
                   onClick={handleGenerateOne}
                   disabled={generatingIndex !== null || !promptDraft.trim()}
-                  style={{
-                    width: '100%',
-                    fontSize: '12px',
-                    padding: '10px',
-                    marginTop: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '7px',
-                  }}
+                  style={{ width: '100%', fontSize: '12px', padding: '10px', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
                 >
                   {generatingIndex === editModalIndex ? (
-                    <>
-                      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                      Generating...
-                    </>
+                    <><Loader2 size={14} className="spin" /> Generating...</>
                   ) : (
-                    <>
-                      <Wand2 size={14} />
-                      {selectedShot.image_error && !selectedShot.image_url ? 'Try Again' : 'Generate New'}
-                    </>
+                    <><Wand2 size={14} /> {selectedShot.image_error && !selectedShot.image_url ? 'Try Again' : 'Generate New'}</>
                   )}
                 </button>
               </div>

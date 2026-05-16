@@ -56,67 +56,20 @@ export default function LandingScreen({ onNavigate, userName }) {
       />
 
       {/* Asymmetric grid: 56% / 44% */}
-      <div style={{
-        position: 'relative',
-        zIndex: 1,
-        display: 'grid',
-        gridTemplateColumns: '56fr 44fr',
-        gap: '28px',
-        padding: '32px 28px',
-        flex: 1,
-        minHeight: 0,
-        height: '100%',
-      }}>
+      <div className="grid-56-44">
 
         {/* ── Left column ── */}
-        <section style={{ display: 'flex', flexDirection: 'column', gap: '24px', minHeight: 0 }}>
+        <section className="flex-col gap-20 min-h-0">
 
           {/* Greeting card */}
-          <div style={{
-            background: 'var(--surface-2)',
-            boxShadow: 'var(--neo-raised)',
-            borderRadius: 'var(--radius-xl)',
-            border: '1px solid var(--border)',
-            padding: '36px 32px',
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            minHeight: 0,
-          }}>
+          <div className="hero-card">
             <div>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '10px',
-                fontWeight: '700',
-                letterSpacing: '0.16em',
-                textTransform: 'uppercase',
-                color: 'var(--cyan)',
-                marginBottom: '20px',
-              }}>
-                ▪ Welcome back
-              </div>
-              <h1 style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 'clamp(40px, 5.5vw, 64px)',
-                fontWeight: '700',
-                color: 'var(--text)',
-                letterSpacing: '-0.03em',
-                lineHeight: 1.0,
-                marginBottom: '16px',
-              }}>
+              <div className="screen-kicker" style={{ marginBottom: '20px' }}>▪ Welcome back</div>
+              <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(40px, 5.5vw, 64px)', fontWeight: '700', color: 'var(--text)', letterSpacing: '-0.03em', lineHeight: 1.0, marginBottom: '16px' }}>
                 Hello,{' '}
-                <span style={{ color: 'var(--cyan)' }}>
-                  {userName || 'friend'}.
-                </span>
+                <span style={{ color: 'var(--cyan)' }}>{userName || 'friend'}.</span>
               </h1>
-              <p style={{
-                fontFamily: 'var(--font-body)',
-                fontSize: '14px',
-                color: 'var(--text-muted)',
-                lineHeight: 1.7,
-                maxWidth: '420px',
-              }}>
+              <p className="body-sm" style={{ fontSize: '14px', maxWidth: '420px', lineHeight: 1.7 }}>
                 Build a music video from the track outward — song insights, story, visual references, shots, clips, and final edit, all in one focused space.
               </p>
             </div>
@@ -127,72 +80,19 @@ export default function LandingScreen({ onNavigate, userName }) {
               tabIndex={0}
               onClick={() => onNavigate(2)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate(2); } }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '16px',
-                padding: '22px 24px',
-                background: 'var(--surface)',
-                boxShadow: 'var(--neo-raised)',
-                border: '1px solid var(--border-mid)',
-                borderRadius: 'var(--radius-lg)',
-                cursor: 'pointer',
-                marginTop: '28px',
-                transition: 'box-shadow 200ms ease-out, border-color 200ms ease-out',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.boxShadow = 'var(--neo-active)';
-                e.currentTarget.style.borderColor = 'var(--cyan-border)';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.boxShadow = 'var(--neo-raised)';
-                e.currentTarget.style.borderColor = 'var(--border-mid)';
-              }}
+              className="subtle-panel flex-between"
+              style={{ gap: '16px', padding: '22px 24px', cursor: 'pointer', marginTop: '28px', transition: 'box-shadow 200ms ease-out, border-color 200ms ease-out', borderRadius: 'var(--radius-lg)' }}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = 'var(--neo-active)'; e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = 'var(--neo-flat)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
             >
               <div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '10px',
-                  fontWeight: '700',
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                  color: 'var(--cyan)',
-                  marginBottom: '6px',
-                }}>
-                  ▪ Begin · Step 01
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '20px',
-                  fontWeight: '700',
-                  color: 'var(--text)',
-                  letterSpacing: '-0.02em',
-                  marginBottom: '4px',
-                }}>
+                <div className="screen-kicker" style={{ marginBottom: '6px' }}>▪ Begin · Step 01</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: '700', color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: '4px' }}>
                   Start with the song
                 </div>
-                <div style={{
-                  fontFamily: 'var(--font-body)',
-                  fontSize: '12px',
-                  color: 'var(--text-muted)',
-                  lineHeight: 1.5,
-                }}>
-                  Upload your track and move through the production flow at your pace.
-                </div>
+                <div className="body-sm">Upload your track and move through the production flow at your pace.</div>
               </div>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '50%',
-                background: 'var(--surface-2)',
-                boxShadow: 'var(--neo-flat)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                color: 'var(--cyan)',
-              }}>
+              <div className="flex-center neo-flat" style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0, color: 'var(--cyan)' }}>
                 <ArrowRight size={18} />
               </div>
             </div>
@@ -200,68 +100,20 @@ export default function LandingScreen({ onNavigate, userName }) {
         </section>
 
         {/* ── Right column — starts 56px lower (asymmetric) ── */}
-        <section style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-          paddingTop: '56px',
-          minHeight: 0,
-        }}>
+        <section className="flex-col gap-16 min-h-0" style={{ paddingTop: '56px' }}>
           {/* Workflow step cards in 2x2 grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             {workflowSteps.map(({ num, title, copy, icon: Icon }) => (
-              <div key={title} style={{
-                background: 'var(--surface-2)',
-                boxShadow: 'var(--neo-flat)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-lg)',
-                padding: '18px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '8px',
-                    background: 'var(--surface)',
-                    boxShadow: 'var(--neo-raised)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--cyan)',
-                  }}>
+              <div key={title} className="panel-flat flex-col gap-10" style={{ padding: '18px' }}>
+                <div className="flex-between">
+                  <div className="icon-circle" style={{ width: '32px', height: '32px', borderRadius: '8px' }}>
                     <Icon size={15} />
                   </div>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '10px',
-                    color: 'var(--text-muted)',
-                    letterSpacing: '0.08em',
-                  }}>
-                    {num}
-                  </span>
+                  <span className="panel-meta-label" style={{ marginBottom: 0 }}>{num}</span>
                 </div>
                 <div>
-                  <div style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: '14px',
-                    fontWeight: '700',
-                    color: 'var(--text)',
-                    letterSpacing: '-0.01em',
-                    marginBottom: '4px',
-                  }}>
-                    {title}
-                  </div>
-                  <div style={{
-                    fontFamily: 'var(--font-body)',
-                    fontSize: '11px',
-                    color: 'var(--text-muted)',
-                    lineHeight: 1.55,
-                  }}>
-                    {copy}
-                  </div>
+                  <div className="step-title">{title}</div>
+                  <div className="step-copy">{copy}</div>
                 </div>
               </div>
             ))}
@@ -269,48 +121,12 @@ export default function LandingScreen({ onNavigate, userName }) {
 
           {/* Quote */}
           {quote && (
-            <div style={{
-              background: 'var(--surface-2)',
-              boxShadow: 'var(--neo-flat)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '20px',
-              flex: 1,
-            }}>
-              <div style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '10px',
-                fontWeight: '700',
-                letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                color: 'var(--text-muted)',
-                marginBottom: '14px',
-              }}>
-                ▪ Creative signal
-              </div>
-              <div style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '15px',
-                fontWeight: '500',
-                color: 'var(--text-soft)',
-                lineHeight: 1.6,
-                letterSpacing: '-0.01em',
-                position: 'relative',
-                paddingLeft: '16px',
-                borderLeft: '2px solid var(--cyan-border)',
-              }}>
+            <div className="panel-flat flex-1" style={{ padding: '20px' }}>
+              <div className="panel-meta-label" style={{ marginBottom: '14px' }}>▪ Creative signal</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: '500', color: 'var(--text-soft)', lineHeight: 1.6, letterSpacing: '-0.01em', paddingLeft: '16px', borderLeft: '2px solid var(--cyan-border)' }}>
                 {quote.text}
                 {quote.author && (
-                  <div style={{
-                    marginTop: '10px',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '10px',
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
-                    color: 'var(--text-muted)',
-                  }}>
-                    — {quote.author}
-                  </div>
+                  <div className="panel-meta-label" style={{ marginTop: '10px' }}>— {quote.author}</div>
                 )}
               </div>
             </div>

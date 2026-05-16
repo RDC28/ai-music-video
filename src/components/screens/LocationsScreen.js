@@ -153,13 +153,25 @@ function buildScriptLocationDescription(location = {}, projectState = {}) {
     ''
   );
 
+  // Collect character names so we can strip them from the storyline
+  const characterNames = Array.isArray(projectState?.characters)
+    ? projectState.characters.map(c => c?.name).filter(Boolean)
+    : [];
+
+  // Remove named character references from storyline — keep setting/mood context only
+  let storyline = script.storyline ? compactScriptText(script.storyline, 520) : '';
+  if (storyline && characterNames.length) {
+    const namePattern = new RegExp(`\\b(${characterNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
+    storyline = storyline.replace(namePattern, 'someone').replace(/\btheir\b/gi, 'the').trim();
+  }
+
   return [
     sourceDescription,
     script.title ? `Music video title: ${script.title}` : '',
-    script.storyline ? `Story context: ${compactScriptText(script.storyline, 520)}` : '',
+    storyline ? `Story context (setting and mood only): ${storyline}` : '',
     script.mood || analysis.mood ? `Mood and atmosphere: ${compactScriptText(script.mood || analysis.mood, 240)}` : '',
     analysis.genre || analysis.theme ? `Genre/theme: ${compactScriptText(analysis.genre || analysis.theme, 180)}` : '',
-    'Create a production-ready location reference set for this music video. The place must remain stable across every view: same architecture, geography, materials, props, era, palette, weather logic, and lighting language.',
+    'Create a production-ready location reference set for this music video. Show only the environment — no specific named people, no character faces, no story actors. Generic crowd or ambient figures are acceptable if the location calls for it. The place must remain stable across every view: same architecture, geography, materials, props, era, palette, weather logic, and lighting language.',
   ].filter(Boolean).join('\n');
 }
 
@@ -599,6 +611,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
   const [activeCategory, setActiveCategory] = useState('project');
   const [renamingPanel, setRenamingPanel] = useState(null);
 
+  const [scriptPromptPreview, setScriptPromptPreview] = useState(null); // { name, description, replaceIndex }
   const [pendingSheetFile, setPendingSheetFile] = useState(null);
   const [sheetReplaceTarget, setSheetReplaceTarget] = useState(null);
   const [showSheetCropModal, setShowSheetCropModal] = useState(false);
@@ -1076,13 +1089,10 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
     });
   };
 
-  const handleGenerateFromScript = async () => {
-    const projectIndex = activeCategory === 'project' && activeLoc && activeLoc.id !== 'generating'
+  const handleGenerateFromScript = () => {
+    const targetIndex = activeCategory === 'project' && activeLoc && activeLoc.id !== 'generating'
       ? activeTab
       : -1;
-    const activeNeedsImages = projectIndex >= 0 && !projectLocations[projectIndex]?.images?.length;
-    const firstMissingIndex = projectLocations.findIndex(location => !location?.images?.length);
-    const targetIndex = activeNeedsImages ? projectIndex : firstMissingIndex;
     const scriptLocations = Array.isArray(projectState?.locations) ? projectState.locations : [];
     const sourceLocation = targetIndex >= 0
       ? projectLocations[targetIndex]
@@ -1100,11 +1110,14 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       return;
     }
 
-    await generateLocationReferences({
-      name,
-      description,
-      replaceIndex: targetIndex >= 0 ? targetIndex : null,
-    });
+    setScriptPromptPreview({ name, description, replaceIndex: targetIndex >= 0 ? targetIndex : null });
+  };
+
+  const handleConfirmScriptGenerate = async () => {
+    if (!scriptPromptPreview) return;
+    const { name, description, replaceIndex } = scriptPromptPreview;
+    setScriptPromptPreview(null);
+    await generateLocationReferences({ name, description, replaceIndex });
   };
 
   const handleEditSave = async () => {
@@ -1243,22 +1256,8 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
     await onDataUpdate({ locations: updatedLocs });
   };
 
-  const inputStyle = {
-    width: '100%',
-    padding: '10px 13px',
-    border: '1px solid var(--border-mid)',
-    borderRadius: '8px',
-    background: 'var(--bg-deep)',
-    color: '#fff',
-    fontSize: '13px',
-    fontFamily: 'var(--font-body)',
-    boxSizing: 'border-box',
-    outline: 'none',
-    transition: 'border-color 0.15s',
-  };
-
   return (
-    <div className="screen active" id="s5" style={{ height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
+    <div className="screen active screen-fill" id="s5">
       <style>{`
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         .skeleton-shimmer { background:linear-gradient(90deg,var(--bg-deep) 25%,var(--surface-2) 50%,var(--bg-deep) 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
@@ -1273,9 +1272,9 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         }
       `}</style>
 
-      <div className="studio-shell" style={{ display: 'flex', height: '100%' }}>
+      <div className="layout-sidebar-main">
         {/* Sidebar */}
-        <div className="studio-sidebar" style={{ width: '280px', flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--bg-deep)', boxShadow: '4px 0 16px rgba(0,0,0,0.4)' }}>
+        <div className="layout-sidebar" style={{ width: '280px' }}>
           <div style={{ padding: '26px' }}>
             <div className="kicker kicker--orange" style={{ marginBottom: '12px' }}>Location · Studio</div>
             <h2 className="editorial-title editorial-h2" style={{ margin: 0, marginBottom: '10px' }}>
@@ -1288,7 +1287,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
 
           <div style={{ padding: '0 26px 26px', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {/* Category Toggle */}
-            <div style={{ display: 'flex', background: 'var(--bg)', boxShadow: 'var(--neo-inset)', borderRadius: '10px', padding: '4px', border: '1px solid var(--border)' }}>
+            <div className="neo-inset" style={{ display: 'flex', padding: '4px' }}>
               {['project', 'history'].map(cat => (
                 <button
                   key={cat}
@@ -1356,7 +1355,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         </div>
 
         {/* Content Area */}
-        <div className="studio-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'var(--bg)' }}>
+        <div className="main-content" style={{ background: 'var(--bg)' }}>
           {/* Header row with tabs */}
           <div style={{ height: '64px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 24px', background: 'rgba(17,17,20,0.95)', backdropFilter: 'blur(12px)' }}>
             <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingRight: '20px', scrollbarWidth: 'none' }}>
@@ -1603,14 +1602,14 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
             </div>
           </div>
         </div>
-      </div>
+      </div>{/* end layout-sidebar-main */}
 
       {/* Sheet Crop Choice Modal */}
       {showSheetCropModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
-          <div style={{ width: '560px', background: 'var(--surface-2)', border: '1px solid var(--border-mid)', borderRadius: 'var(--radius-xl)', padding: '32px', textAlign: 'center' }}>
+        <div className="modal-overlay">
+          <div className="modal-panel" style={{ maxWidth: '560px', textAlign: 'center' }}>
             <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: '0 0 12px' }}>Choose Crop Method</h3>
-            <p style={{ color: isProcessingSheet ? 'var(--teal)' : '#666', fontSize: '13px', margin: '0 0 24px' }}>
+            <p style={{ color: isProcessingSheet ? 'var(--cyan)' : '#666', fontSize: '13px', margin: '0 0 24px' }}>
               {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Automatically detect and crop each view from your sheet.'}
             </p>
             {sheetWarning && (
@@ -1618,24 +1617,20 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                 {sheetWarning}
               </div>
             )}
-
             {sheetPreviewUrl && (
               <img src={sheetPreviewUrl} alt="Preview" style={{ width: '100%', height: '200px', objectFit: 'contain', background: '#050505', borderRadius: '12px', marginBottom: '24px', border: '1px solid rgba(255,255,255,0.05)' }} />
             )}
-
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div className="flex-row gap-12">
               <button
                 onClick={() => processSheetFile(pendingSheetFile)}
                 disabled={isProcessingSheet}
                 className="btn-orange"
                 style={{ flex: 1, padding: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isProcessingSheet ? 0.82 : 1, cursor: isProcessingSheet ? 'wait' : 'pointer' }}
               >
-                {isProcessingSheet && <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />}
+                {isProcessingSheet && <Loader2 size={15} className="spin" />}
                 {isProcessingSheet ? 'Detecting Views...' : 'Auto-detect Views'}
               </button>
-              <div style={{ flex: 1 }}>
-                <button disabled={isProcessingSheet} onClick={handleCloseSheetCropModal} className="btn-outline" style={{ width: '100%', padding: '16px', opacity: isProcessingSheet ? 0.45 : 1, cursor: isProcessingSheet ? 'not-allowed' : 'pointer' }}>Cancel Upload</button>
-              </div>
+              <button disabled={isProcessingSheet} onClick={handleCloseSheetCropModal} className="btn-outline" style={{ flex: 1, padding: '16px', opacity: isProcessingSheet ? 0.45 : 1 }}>Cancel Upload</button>
             </div>
           </div>
         </div>
@@ -1643,28 +1638,28 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
-          <div style={{ width: '500px', background: 'var(--surface-2)', border: '1px solid var(--border-mid)', borderRadius: 'var(--radius-xl)', padding: '32px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div className="modal-overlay">
+          <div className="modal-panel" style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
               <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: 0 }}>Create New</h3>
-              <button onClick={() => setShowCreateModal(false)} style={{ background: 'transparent', border: 'none', color: '#444', fontSize: '20px', cursor: 'pointer' }}>×</button>
+              <button className="modal-close-btn" onClick={() => setShowCreateModal(false)}>×</button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div className="flex-col gap-16">
               <div>
-                <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '10.5px', fontWeight: 500, marginBottom: '10px', letterSpacing: '0.16em', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>LOCATION NAME</label>
-                <input style={inputStyle} value={createName} onChange={e => setCreateName(e.target.value)} placeholder="e.g. CYBERPUNK BAR" />
+                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '10px' }}>LOCATION NAME</label>
+                <input className="input-inset" value={createName} onChange={e => setCreateName(e.target.value)} placeholder="e.g. CYBERPUNK BAR" style={{ padding: '10px 13px', fontSize: '13px', borderRadius: '8px' }} />
               </div>
               <div>
-                <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '10.5px', fontWeight: 500, marginBottom: '10px', letterSpacing: '0.16em', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
-                <textarea style={{ ...inputStyle, height: '100px', resize: 'none' }} value={createDesc} onChange={e => setCreateDesc(e.target.value)} placeholder="Neon-lit interior with rain-slicked windows, holographic advertisements, and crowded seating..." />
+                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '10px' }}>DESCRIPTION</label>
+                <textarea className="textarea-inset" value={createDesc} onChange={e => setCreateDesc(e.target.value)} placeholder="Neon-lit interior with rain-slicked windows, holographic advertisements, and crowded seating..." style={{ padding: '10px 13px', fontSize: '13px', borderRadius: '8px', height: '100px' }} />
               </div>
 
               <div>
-                <label style={{ display: 'block', color: 'var(--text-muted)', fontSize: '10.5px', fontWeight: 500, marginBottom: '10px', letterSpacing: '0.16em', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>REFERENCE IMAGE (OPTIONAL)</label>
+                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '10px' }}>REFERENCE IMAGE (OPTIONAL)</label>
                 <input type="file" ref={refFileInputRef} onChange={handleRefImageSelect} style={{ display: 'none' }} accept="image/*" />
                 {createRefImage ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: 'var(--bg-deep)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px' }}>
+                  <div className="flex-row gap-12" style={{ padding: '10px', background: 'var(--bg-deep)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', alignItems: 'center' }}>
                     <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: '#050505', borderRadius: '6px', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ color: '#bbb', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
@@ -1685,11 +1680,11 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                 )}
               </div>
 
-              <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(124,58,237,0.03)', borderRadius: '12px', border: '1px solid rgba(124,58,237,0.08)' }}>
-                <div style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '8px' }}>SET PREVIEW</div>
-                <div style={{ display: 'flex', gap: '4px' }}>
+              <div style={{ marginTop: '12px', padding: '12px', background: 'var(--cyan-dim)', borderRadius: '12px', border: '1px solid var(--cyan-border)' }}>
+                <div className="panel-meta-label panel-meta-label--cyan" style={{ marginBottom: '8px' }}>SET PREVIEW</div>
+                <div className="flex-row gap-6">
                   {['WIDE', 'DETAIL', 'INTERIOR', 'ATMOS'].map(tag => (
-                    <span key={tag} style={{ background: 'rgba(124,58,237,0.1)', color: 'var(--teal)', fontSize: '8px', fontWeight: 800, padding: '2px 6px', borderRadius: '3px' }}>{tag}</span>
+                    <span key={tag} className="tag-badge tag-teal" style={{ fontSize: '8px' }}>{tag}</span>
                   ))}
                 </div>
               </div>
@@ -1704,34 +1699,30 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
 
       {/* Edit Modal */}
       {showEditModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
-          <div style={{ width: '460px', background: 'var(--surface-2)', border: '1px solid var(--border-mid)', borderRadius: 'var(--radius-xl)', padding: '32px' }}>
+        <div className="modal-overlay">
+          <div className="modal-panel" style={{ maxWidth: '460px' }}>
             <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 600, margin: '0 0 24px' }}>
               {activeCategory === 'history' ? 'Rename Location' : 'Edit Location'}
             </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div className="flex-col gap-16">
               <div>
-                <label style={{ display: 'block', color: '#888', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>LOCATION NAME</label>
-                <input style={inputStyle} value={editName} onChange={e => setEditName(e.target.value)} />
+                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '8px' }}>LOCATION NAME</label>
+                <input className="input-inset" value={editName} onChange={e => setEditName(e.target.value)} style={{ padding: '10px 13px', fontSize: '13px', borderRadius: '8px' }} />
               </div>
               <div>
-                <label style={{ display: 'block', color: '#888', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>DESCRIPTION</label>
-                <textarea style={{ ...inputStyle, height: '100px', resize: 'none' }} value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '8px' }}>DESCRIPTION</label>
+                <textarea className="textarea-inset" value={editDesc} onChange={e => setEditDesc(e.target.value)} style={{ padding: '10px 13px', fontSize: '13px', borderRadius: '8px', height: '100px' }} />
               </div>
               {activeCategory === 'project' && (
                 <button onClick={() => {
-                  setSheetReplaceTarget({
-                    index: activeTab,
-                    name: (editName || activeLoc?.name || '').trim().toUpperCase(),
-                    description: editDesc.trim(),
-                  });
+                  setSheetReplaceTarget({ index: activeTab, name: (editName || activeLoc?.name || '').trim().toUpperCase(), description: editDesc.trim() });
                   setShowEditModal(false);
                   fileInputRef.current?.click();
                 }} style={{ padding: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: '8px', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
                   Upload New Location Sheet
                 </button>
               )}
-              <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
+              <div className="flex-row gap-12" style={{ marginTop: '12px' }}>
                 <button onClick={handleEditSave} className="btn-orange" style={{ flex: 1, padding: '14px', fontWeight: 700 }}>{activeCategory === 'history' ? 'Rename' : 'Save Changes'}</button>
                 <button onClick={() => setShowEditModal(false)} className="btn-outline" style={{ flex: 1, padding: '14px' }}>Cancel</button>
               </div>
@@ -1747,10 +1738,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
           label={zoomCropTarget.label}
           onClose={() => setZoomCropTarget(null)}
           onApply={handleApplyCrop}
-          onDelete={() => {
-            handleDeleteImage(zoomCropTarget.locIdx, zoomCropTarget.imgIdx);
-            setZoomCropTarget(null);
-          }}
+          onDelete={() => { handleDeleteImage(zoomCropTarget.locIdx, zoomCropTarget.imgIdx); setZoomCropTarget(null); }}
           initialBox={zoomCropTarget.initialBox || null}
           showLabelInput={zoomCropTarget.showLabelInput || false}
           recropUrl={zoomCropTarget.recropUrl || null}
@@ -1758,26 +1746,39 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         />
       )}
 
-      {busy && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--teal)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Loader2 size={24} style={{ color: 'var(--teal)', animation: 'spin 1s linear infinite' }} />
+      {/* Script prompt preview modal */}
+      {scriptPromptPreview && (
+        <div className="modal-overlay">
+          <div className="modal-panel flex-col gap-16" style={{ maxWidth: '560px' }}>
             <div>
-            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>
-              {isProcessingSheet
-                ? (sheetProcessStatus || 'Reading sheet...')
-                : isLockingStyle
-                  ? 'Locking visual style...'
-                  : 'Creating references...'}
+              <div className="panel-meta-label" style={{ marginBottom: '6px' }}>▪ Generate from Script</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>{scriptPromptPreview.name}</div>
             </div>
-            <div style={{ color: 'var(--teal)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
+            <div className="panel-inset" style={{ maxHeight: '260px', fontSize: '12.5px' }}>
+              {scriptPromptPreview.description}
+            </div>
+            <p className="body-sm">
+              This prompt will be sent to the image model to generate location reference angles. Edit the description in the location card first if you need to adjust it.
+            </p>
+            <div className="flex-row gap-10">
+              <button onClick={handleConfirmScriptGenerate} className="btn-orange" style={{ flex: 1, padding: '13px', fontWeight: 700 }}>Generate References</button>
+              <button onClick={() => setScriptPromptPreview(null)} className="btn-outline" style={{ flex: 1, padding: '13px' }}>Cancel</button>
+            </div>
           </div>
         </div>
       )}
 
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-      `}</style>
+      {busy && (
+        <div className="flex-row gap-16" style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--cyan)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', alignItems: 'center' }}>
+          <Loader2 size={24} className="spin" style={{ color: 'var(--cyan)' }} />
+          <div>
+            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>
+              {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : isLockingStyle ? 'Locking visual style...' : 'Creating references...'}
+            </div>
+            <div style={{ color: 'var(--cyan)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

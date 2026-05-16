@@ -6,14 +6,6 @@ import { createClient } from '@/utils/supabase';
 
 const emptyWardrobe = [];
 const emptyList = [];
-const libraryPanelStyle = {
-  border: '1px solid rgba(255,255,255,0.07)',
-  borderRadius: '8px',
-  background: '#0d0d0d',
-  padding: '10px',
-  display: 'grid',
-  gap: '8px',
-};
 
 function cleanText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -279,90 +271,31 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
 
   if (!locations.length || !characters.length) {
     return (
-      <div
-        className="screen active"
-        style={{
-          height: '100%',
-          overflow: 'hidden',
-          background: 'var(--bg)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '28px',
-        }}
-      >
-        <div
-          style={{
-            maxWidth: '480px',
-            textAlign: 'center',
-            background: 'var(--surface-2)',
-            boxShadow: '6px 6px 14px #09090C, -6px -6px 14px #1A1A1F',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-xl)',
-            padding: '40px',
-          }}
-        >
-          <div
-            style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '12px',
-              background: 'var(--surface-2)',
-              boxShadow: '6px 6px 14px #09090C, -6px -6px 14px #1A1A1F',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 20px',
-            }}
-          >
+      <div className="screen active screen-empty">
+        <div className="panel-empty-state">
+          <div className="icon-box-lg">
             <Shirt size={28} style={{ color: 'var(--cyan)' }} />
           </div>
 
-          <h1
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: '22px',
-              fontWeight: 700,
-              color: 'var(--text)',
-              margin: '0 0 10px',
-            }}
-          >
+          <h1 className="sidebar-header-title" style={{ margin: '0 0 10px' }}>
             Wardrobe needs cast and locations.
           </h1>
-          <p
-            style={{
-              fontFamily: 'var(--font-body)',
-              fontSize: '13px',
-              color: 'var(--text-muted)',
-              lineHeight: 1.6,
-              margin: '0 0 22px',
-            }}
-          >
+          <p className="body-sm" style={{ margin: '0 0 22px' }}>
             Add at least one character and one location before locking outfits by set.
           </p>
 
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '18px' }}>
+          <div className="flex-row flex-center gap-10" style={{ marginBottom: '18px' }}>
             <button className="btn-outline" onClick={() => onNavigate(4)}>Open cast</button>
             <button className="btn-orange" onClick={() => onNavigate(5)}>Open locations</button>
           </div>
 
           <div style={{ display: 'grid', gap: '10px', textAlign: 'left' }}>
             <select
+              className="select-std"
               value=""
               onChange={event => {
                 const item = globalCharacters.find(character => String(character.id) === event.target.value);
                 if (item) addCharacterFromHistory(item);
-              }}
-              style={{
-                background: 'var(--bg-deep)',
-                boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
-                color: 'var(--text)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                padding: '10px 12px',
-                fontSize: '12px',
-                width: '100%',
-                outline: 'none',
               }}
             >
               <option value="">Add character from history...</option>
@@ -373,21 +306,11 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
               ))}
             </select>
             <select
+              className="select-std"
               value=""
               onChange={event => {
                 const item = globalLocations.find(location => String(location.id) === event.target.value);
                 if (item) addLocationFromHistory(item);
-              }}
-              style={{
-                background: 'var(--bg-deep)',
-                boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
-                color: 'var(--text)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                padding: '10px 12px',
-                fontSize: '12px',
-                width: '100%',
-                outline: 'none',
               }}
             >
               <option value="">Add location from history...</option>
@@ -400,14 +323,7 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
           </div>
 
           {status && (
-            <div
-              style={{
-                marginTop: '12px',
-                color: status.includes('failed') || status.includes('could not') ? 'var(--error)' : 'var(--cyan)',
-                fontSize: '12px',
-                fontWeight: 600,
-              }}
-            >
+            <div className={`status-message ${status.includes('failed') || status.includes('could not') ? 'status-message--error' : 'status-message--ok'}`}>
               {status}
             </div>
           )}
@@ -417,76 +333,23 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
   }
 
   return (
-    <div
-      className="screen active"
-      id="s6"
-      style={{ height: '100%', overflow: 'hidden', background: 'var(--bg)' }}
-    >
-      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleUploadImage} style={{ display: 'none' }} />
+    <div className="screen active screen-fill" id="s6">
+      <input ref={fileInputRef} type="file" accept="image/*,application/pdf,.pdf,.heic,.heif,.webp,.avif" onChange={handleUploadImage} style={{ display: 'none' }} />
 
-      <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+      <div className="layout-sidebar-main">
 
         {/* SIDEBAR */}
-        <aside
-          style={{
-            width: '292px',
-            flexShrink: 0,
-            background: 'var(--bg-deep)',
-            boxShadow: '4px 0 16px rgba(0,0,0,0.4)',
-            borderRight: '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {/* Sidebar header */}
-          <div style={{ padding: '24px' }}>
-            <div
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '10px',
-                color: 'var(--cyan)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.12em',
-                marginBottom: '10px',
-              }}
-            >
-              ▪ Wardrobe · Locks
-            </div>
-            <h1
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '22px',
-                fontWeight: 700,
-                color: 'var(--text)',
-                margin: '0 0 8px',
-              }}
-            >
-              Dress each set.
-            </h1>
-            <p
-              style={{
-                fontFamily: 'var(--font-body)',
-                fontSize: '12px',
-                color: 'var(--text-muted)',
-                lineHeight: 1.6,
-                margin: 0,
-              }}
-            >
+        <aside className="layout-sidebar">
+          <div className="sidebar-header">
+            <div className="sidebar-header-kicker">▪ Wardrobe · Locks</div>
+            <h1 className="sidebar-header-title">Dress each set.</h1>
+            <p className="sidebar-header-desc">
               Optional outfit overrides by location. Blank rows use each character&apos;s base reference-sheet outfit.
             </p>
           </div>
 
           {/* Location buttons */}
-          <div
-            style={{
-              padding: '0 16px 16px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-              overflowY: 'auto',
-              flex: 1,
-            }}
-          >
+          <div className="sidebar-list">
             {wardrobe.map((location, index) => {
               const active = index === activeLocationIndex;
               const lockedCount = (location.outfits || []).filter(hasOutfitLock).length;
@@ -494,42 +357,14 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                 <button
                   key={location.location_id || index}
                   type="button"
+                  className={`sidebar-list-btn${active ? ' active' : ''}`}
                   onClick={() => setActiveLocationIndex(index)}
-                  style={{
-                    background: active ? 'var(--surface-2)' : 'transparent',
-                    boxShadow: active ? '3px 3px 8px #09090C, -3px -3px 8px #1A1A1F' : 'none',
-                    border: active ? '1px solid var(--cyan-border)' : '1px solid var(--border)',
-                    borderRadius: 'var(--radius)',
-                    padding: '12px',
-                    cursor: 'pointer',
-                    width: '100%',
-                    textAlign: 'left',
-                    transition: 'all 160ms ease-out',
-                    color: 'var(--text)',
-                  }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <div className="flex-row gap-8" style={{ marginBottom: '6px', alignItems: 'center' }}>
                     <MapPin size={14} style={{ color: active ? 'var(--cyan)' : 'var(--text-muted)' }} />
-                    <span
-                      style={{
-                        fontFamily: 'var(--font-display)',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                        color: 'var(--text)',
-                      }}
-                    >
-                      {location.location_name}
-                    </span>
+                    <span className="sidebar-list-btn-name">{location.location_name}</span>
                   </div>
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '10px',
-                      color: 'var(--text-muted)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
-                    }}
-                  >
+                  <div className="sidebar-list-btn-meta">
                     {lockedCount}/{characters.length} outfit locks
                   </div>
                 </button>
@@ -538,45 +373,15 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
           </div>
 
           {/* Library panels */}
-          <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div
-              style={{
-                background: 'var(--bg-deep)',
-                boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                padding: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '10px',
-                  color: 'var(--text-muted)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.12em',
-                }}
-              >
-                Add cast from history
-              </div>
+          <div className="sidebar-footer">
+            <div className="sidebar-library-panel">
+              <div className="sidebar-library-label">Add cast from history</div>
               <select
+                className="select-sm"
                 value=""
                 onChange={event => {
                   const item = globalCharacters.find(character => String(character.id) === event.target.value);
                   if (item) addCharacterFromHistory(item);
-                }}
-                style={{
-                  background: 'var(--bg-deep)',
-                  color: 'var(--text)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '7px',
-                  padding: '8px 10px',
-                  fontSize: '11px',
-                  width: '100%',
-                  outline: 'none',
                 }}
               >
                 <option value="">Select character...</option>
@@ -588,44 +393,14 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
               </select>
             </div>
 
-            <div
-              style={{
-                background: 'var(--bg-deep)',
-                boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                padding: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '10px',
-                  color: 'var(--text-muted)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.12em',
-                }}
-              >
-                Add set from history
-              </div>
+            <div className="sidebar-library-panel">
+              <div className="sidebar-library-label">Add set from history</div>
               <select
+                className="select-sm"
                 value=""
                 onChange={event => {
                   const item = globalLocations.find(location => String(location.id) === event.target.value);
                   if (item) addLocationFromHistory(item);
-                }}
-                style={{
-                  background: 'var(--bg-deep)',
-                  color: 'var(--text)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '7px',
-                  padding: '8px 10px',
-                  fontSize: '11px',
-                  width: '100%',
-                  outline: 'none',
                 }}
               >
                 <option value="">Select location...</option>
@@ -639,23 +414,14 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
           </div>
 
           {/* Continue button */}
-          <div style={{ borderTop: '1px solid var(--border)', padding: '16px' }}>
+          <div className="sidebar-continue">
             <button
               className="btn-teal"
               onClick={() => saveWardrobe(7)}
               disabled={isSaving || isUploading}
-              style={{
-                width: '100%',
-                padding: '14px',
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-              }}
             >
               {isSaving
-                ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                ? <Loader2 size={14} className="spin" />
                 : <Check size={14} />
               }
               Continue to Shot Plan
@@ -664,57 +430,25 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
         </aside>
 
         {/* MAIN AREA */}
-        <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <main className="main-content">
 
           {/* Main header */}
-          <header
-            style={{
-              padding: '20px 28px',
-              borderBottom: '1px solid var(--border)',
-              background: 'rgba(17,17,20,0.95)',
-              backdropFilter: 'blur(12px)',
-              flexShrink: 0,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                gap: '18px',
-                flexWrap: 'wrap',
-              }}
-            >
+          <header className="main-header">
+            <div className="main-header-row">
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <div className="flex-row gap-10" style={{ marginBottom: '6px', alignItems: 'center' }}>
                   <Shirt size={18} style={{ color: 'var(--cyan)' }} />
-                  <h2
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: '20px',
-                      fontWeight: 700,
-                      color: 'var(--text)',
-                      margin: 0,
-                    }}
-                  >
+                  <h2 className="main-header-title">
                     {activeLocation?.location_name || 'Wardrobe'}
                   </h2>
                 </div>
-                <p
-                  style={{
-                    margin: 0,
-                    color: 'var(--text-muted)',
-                    maxWidth: '720px',
-                    fontSize: '13px',
-                    lineHeight: 1.6,
-                  }}
-                >
+                <p className="main-header-desc">
                   Every project character stays available here. Fill only the outfits you want to override; blank rows fall back to each character&apos;s base reference-sheet outfit.
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span className="tag-badge tag-teal" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <div className="flex-row gap-8" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className="tag-badge tag-teal flex-row gap-6" style={{ alignItems: 'center' }}>
                   <Users size={12} /> {summary.outfitCount} locked
                 </span>
                 <span className="tag-badge tag-outline">{summary.locationCount} locations</span>
@@ -730,68 +464,22 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
             </div>
 
             {status && (
-              <div
-                style={{
-                  marginTop: '12px',
-                  color: status.includes('failed') || status.includes('could not') ? 'var(--error)' : 'var(--cyan)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                }}
-              >
+              <div className={`status-message ${status.includes('failed') || status.includes('could not') ? 'status-message--error' : 'status-message--ok'}`}>
                 {status}
               </div>
             )}
           </header>
 
-          {/* Section grid */}
-          <section style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px 28px 80px' }}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                gap: '16px',
-                alignItems: 'stretch',
-              }}
-            >
+          {/* Outfit grid */}
+          <section className="main-section">
+            <div className="grid-auto-fit">
               {(activeLocation?.outfits || []).map((outfit, charIndex) => (
-                <article
-                  key={outfit.character_id || charIndex}
-                  style={{
-                    background: 'var(--surface-2)',
-                    boxShadow: '6px 6px 14px #09090C, -6px -6px 14px #1A1A1F',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-lg)',
-                    padding: '16px',
-                    display: 'grid',
-                    gap: '14px',
-                  }}
-                >
+                <article key={outfit.character_id || charIndex} className="outfit-grid-card">
                   {/* Card header row */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
+                  <div className="flex-between" style={{ gap: '12px' }}>
                     <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontFamily: 'var(--font-display)',
-                          fontWeight: 700,
-                          fontSize: '15px',
-                          color: 'var(--text)',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {outfit.character_name}
-                      </div>
-                      <div
-                        style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: '10px',
-                          color: 'var(--text-muted)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.1em',
-                          marginTop: '3px',
-                        }}
-                      >
+                      <div className="outfit-char-name">{outfit.character_name}</div>
+                      <div className="outfit-char-status">
                         {hasOutfitLock(outfit) ? 'Outfit override locked' : 'Uses base character outfit'}
                       </div>
                     </div>
@@ -800,104 +488,104 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                     </span>
                   </div>
 
-                  {/* Image area */}
-                  {outfit.image_url ? (
-                    <button
-                      type="button"
-                      onClick={() => handleUploadClick(activeLocationIndex, charIndex)}
-                      style={{
-                        padding: 0,
-                        aspectRatio: '16/10',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius)',
-                        overflow: 'hidden',
-                        cursor: 'pointer',
-                        background: 'transparent',
-                      }}
-                      title="Replace outfit image"
-                    >
-                      <img
-                        src={outfit.image_url}
-                        alt={`${outfit.character_name} outfit`}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                      />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleUploadClick(activeLocationIndex, charIndex)}
-                      onDragOver={(e) => { e.preventDefault(); if (!isUploading) setDraggingTarget({ locIndex: activeLocationIndex, charIndex }); }}
-                      onDragEnter={(e) => { e.preventDefault(); if (!isUploading) setDraggingTarget({ locIndex: activeLocationIndex, charIndex }); }}
-                      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDraggingTarget(null); }}
-                      onDrop={(e) => handleWardrobeDrop(e, activeLocationIndex, charIndex)}
-                      disabled={isUploading}
-                      style={{
-                        background: draggingTarget?.locIndex === activeLocationIndex && draggingTarget?.charIndex === charIndex ? 'rgba(0,210,200,0.04)' : 'var(--bg-deep)',
-                        boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
-                        border: draggingTarget?.locIndex === activeLocationIndex && draggingTarget?.charIndex === charIndex ? '1.5px dashed var(--cyan-border)' : '1.5px dashed var(--border-mid)',
-                        borderRadius: 'var(--radius)',
-                        minHeight: '120px',
-                        cursor: isUploading ? 'wait' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexDirection: 'column',
-                        gap: '8px',
-                        color: 'var(--text-muted)',
-                        transition: 'border-color 160ms ease-out, background 160ms ease-out',
-                      }}
-                      onMouseEnter={e => { if (!draggingTarget) e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
-                      onMouseLeave={e => { if (!draggingTarget) e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-                    >
-                      {isUploading && uploadTarget?.locIndex === activeLocationIndex && uploadTarget?.charIndex === charIndex
-                        ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite', color: 'var(--cyan)' }} />
-                        : <ImagePlus size={20} style={{ color: 'var(--cyan)' }} />
-                      }
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>
-                        {draggingTarget?.locIndex === activeLocationIndex && draggingTarget?.charIndex === charIndex ? 'Drop to upload' : 'Upload outfit image'}
-                      </span>
-                    </button>
-                  )}
+                  {/* Image area — border colors are state-driven so stay inline */}
+                  {(() => {
+                    const isDragTarget = draggingTarget?.locIndex === activeLocationIndex && draggingTarget?.charIndex === charIndex;
+                    const isThisUploading = isUploading && uploadTarget?.locIndex === activeLocationIndex && uploadTarget?.charIndex === charIndex;
+                    const dragHandlers = {
+                      onDragOver: (e) => { e.preventDefault(); if (!isUploading) setDraggingTarget({ locIndex: activeLocationIndex, charIndex }); },
+                      onDragEnter: (e) => { e.preventDefault(); if (!isUploading) setDraggingTarget({ locIndex: activeLocationIndex, charIndex }); },
+                      onDragLeave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDraggingTarget(null); },
+                      onDrop: (e) => handleWardrobeDrop(e, activeLocationIndex, charIndex),
+                    };
+                    return outfit.image_url ? (
+                      <div {...dragHandlers} style={{ position: 'relative', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleUploadClick(activeLocationIndex, charIndex)}
+                          style={{
+                            padding: 0,
+                            border: isDragTarget ? '2px dashed var(--cyan-border)' : '1px solid var(--border)',
+                            borderRadius: 'var(--radius)',
+                            overflow: 'hidden',
+                            cursor: 'pointer',
+                            background: 'var(--bg-deep)',
+                            width: '100%',
+                            maxHeight: '340px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'border-color 160ms ease-out',
+                          }}
+                          title="Click or drop to replace outfit image"
+                        >
+                          <img
+                            src={outfit.image_url}
+                            alt={`${outfit.character_name} outfit`}
+                            style={{ width: '100%', height: '100%', maxHeight: '340px', objectFit: 'contain', display: 'block', opacity: isDragTarget ? 0.4 : 1, transition: 'opacity 160ms ease-out' }}
+                          />
+                          {isDragTarget && (
+                            <div className="flex-col flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(0,210,200,0.06)', pointerEvents: 'none' }}>
+                              <ImagePlus size={24} style={{ color: 'var(--cyan)' }} />
+                              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--cyan)' }}>Drop to replace</span>
+                            </div>
+                          )}
+                          {isThisUploading && (
+                            <div className="flex-center" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }}>
+                              <Loader2 size={24} className="spin" style={{ color: 'var(--cyan)' }} />
+                            </div>
+                          )}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleUploadClick(activeLocationIndex, charIndex)}
+                        {...dragHandlers}
+                        disabled={isUploading}
+                        style={{
+                          background: isDragTarget ? 'rgba(0,210,200,0.04)' : 'var(--bg-deep)',
+                          boxShadow: 'var(--neo-inset)',
+                          border: isDragTarget ? '1.5px dashed var(--cyan-border)' : '1.5px dashed var(--border-mid)',
+                          borderRadius: 'var(--radius)',
+                          minHeight: '120px',
+                          cursor: isUploading ? 'wait' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexDirection: 'column',
+                          gap: '8px',
+                          color: 'var(--text-muted)',
+                          transition: 'border-color 160ms ease-out, background 160ms ease-out',
+                        }}
+                        onMouseEnter={e => { if (!draggingTarget) e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
+                        onMouseLeave={e => { if (!draggingTarget) e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
+                      >
+                        {isThisUploading
+                          ? <Loader2 size={20} className="spin" style={{ color: 'var(--cyan)' }} />
+                          : <ImagePlus size={20} style={{ color: 'var(--cyan)' }} />
+                        }
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                          {isDragTarget ? 'Drop to upload' : 'Click or drop image'}
+                        </span>
+                      </button>
+                    );
+                  })()}
 
                   {/* Inputs */}
                   <div style={{ display: 'grid', gap: '8px' }}>
                     <input
+                      className="input-inset"
                       value={outfit.outfit_name || ''}
                       onChange={event => updateOutfit(activeLocationIndex, charIndex, { outfit_name: event.target.value })}
                       placeholder="Optional outfit name"
-                      style={{
-                        background: 'var(--bg-deep)',
-                        boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius)',
-                        padding: '10px 12px',
-                        color: 'var(--text)',
-                        fontSize: '12px',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        outline: 'none',
-                      }}
                     />
                     <textarea
+                      className="textarea-inset"
                       value={outfit.description || ''}
                       onChange={event => updateOutfit(activeLocationIndex, charIndex, { description: event.target.value })}
                       placeholder="Optional override. Leave blank to use the base outfit from the character reference sheet."
-                      style={{
-                        background: 'var(--bg-deep)',
-                        boxShadow: 'inset 4px 4px 10px #09090C, inset -4px -4px 10px #1A1A1F',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius)',
-                        padding: '10px 12px',
-                        color: 'var(--text)',
-                        fontSize: '12px',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        outline: 'none',
-                        minHeight: '88px',
-                        resize: 'vertical',
-                        lineHeight: 1.5,
-                        fontFamily: 'var(--font-body)',
-                      }}
+                      style={{ minHeight: '88px' }}
                     />
                   </div>
                 </article>
@@ -906,10 +594,6 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
           </section>
         </main>
       </div>
-
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   );
 }

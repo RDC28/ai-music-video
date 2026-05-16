@@ -1261,14 +1261,16 @@ function selectImagePrompt(shot, promptOverride) {
 }
 
 function buildShotDetailContext(shot) {
+  const videoPrompt = shot.video_prompt || shot.motion_prompt || shot.clip_prompt;
   const details = [
+    videoPrompt ? `VIDEO CLIP THIS IMAGE ANCHORS:\n${compact(videoPrompt, 2400)}\nThis still frame is the first frame (t=0.00) of the above clip. The video model will use it as the source anchor and begin motion from this exact position. Camera setup, environment layers, character poses, and lighting must match the [00:00.00-...] beat of the video prompt exactly. Do not choose a different moment.` : "",
     shot.visual_style || shot.style || shot.look ? `Visual style: ${compact(shot.visual_style || shot.style || shot.look, 900)}` : "",
     shot.negative_constraints || shot.constraints || shot.avoid ? `Avoid/constraints: ${compact(shot.negative_constraints || shot.constraints || shot.avoid, 1000)}` : "",
-    shot.action_timing || shot.timing || shot.actionTiming ? "Motion timing exists for the later video clip; choose one strong representative frozen moment and do not render timing text, motion trails, or sequential action." : "",
+    !videoPrompt && (shot.action_timing || shot.timing || shot.actionTiming) ? "Motion timing exists for the later video clip; freeze the opening position from the first beat and do not render timing text, motion trails, or sequential action." : "",
   ].filter(Boolean);
 
   if (!details.length) {
-    return "No separate still-frame detail fields provided; infer a rich still composition from the image prompt, master shot brief, and locked context.";
+    return "No separate still-frame detail fields provided; infer a rich still composition from the image prompt, master shot brief, and locked context. The image will be used as the first frame of a video clip.";
   }
 
   return details.map(detail => `- ${detail}`).join("\n");
@@ -1483,7 +1485,7 @@ Still-frame rules:
 3. Preserve character and location continuity from the provided context and attached reference images. When text and reference images disagree, follow the attached reference images.
 4. CHARACTER IDENTITY — CRITICAL: Main characters' faces, skin tone, hair, and body must come ONLY from CHARACTER and WARDROBE reference images. Any people visible inside LOCATION reference images are irrelevant background extras — do NOT use them as the basis for any main character's appearance. This is the single most common generation error and must be treated as a hard, inviolable constraint.
 5. Make the frame visually rich and specific: foreground, midground, background, props, texture, clothing fabric, facial expression, body posture, environment geography, and practical lighting must all feel intentionally designed.
-6. Make the frame usable as source footage for a video model: clear subject, readable action, natural depth, clean lighting, and enough environmental detail for an 8-second clip.
+6. This frame is the first frame (t=0.00) of the video clip described in SHOT DETAIL FIELDS. The video model receives this image as its source anchor and generates motion starting from it. If a video prompt is provided, derive this frame from the [00:00.00-...] beat only — same camera setup, same character position, same lighting. A frame that contradicts the video prompt's opening beat will cause the video model to deviate immediately.
 7. If the still-frame prompt is short, expand internally using the locked context instead of generating a generic image.
 8. Do not invent extra main characters unless the shot clearly needs background extras.
 9. Keep the main subject inside a 16:9 center-safe composition so the follow-up video generation and final render do not crop faces or bodies awkwardly.

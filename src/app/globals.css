@@ -4,6 +4,8 @@
    Runway / Kling-inspired AI creative tool aesthetic
    ============================================================ */
 
+@import './components.css';
+
 /* ===== RESET & BASE ===== */
 * {
   box-sizing: border-box;
@@ -289,6 +291,11 @@ a {
 @keyframes tickerScroll {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 /* ===== NEOMORPHISM UTILITY CLASSES ===== */
