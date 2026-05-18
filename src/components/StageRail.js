@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import {
   Home, Music2, BookOpen, Users, MapPin, Film,
-  Layers, Image, Video, Scissors, Shirt,
+  Layers, Video, Scissors, Shirt,
   Check, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
@@ -17,9 +17,8 @@ const STEPS = [
   { id: 6,  name: 'Looks',  icon: Shirt },
   { id: 7,  name: 'Plan',   icon: Film },
   { id: 8,  name: 'Shots',  icon: Layers },
-  { id: 9,  name: 'Frames', icon: Image },
-  { id: 10, name: 'Clips',  icon: Video },
-  { id: 11, name: 'Editor', icon: Scissors },
+  { id: 9,  name: 'Clips',  icon: Video },
+  { id: 10, name: 'Editor', icon: Scissors },
 ];
 
 export default function StageRail({ activeScreen, onNavigate, userName, projectName }) {
@@ -53,25 +52,19 @@ export default function StageRail({ activeScreen, onNavigate, userName, projectN
                 aria-current={isActive ? 'step' : undefined}
                 title={step.name}
               >
-                <div className="stage-rail-step-dot" aria-hidden="true">
-                  {isCompleted ? (
-                    <Check size={10} strokeWidth={2.5} color="var(--success)" />
-                  ) : isActive ? (
-                    <span style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: '50%',
-                      background: 'var(--cyan)',
-                      display: 'block',
-                      boxShadow: '0 0 6px var(--cyan-glow)',
-                    }} />
-                  ) : null}
+                <div className="stage-rail-step-main" aria-hidden="true">
+                  <span className="stage-rail-step-num">
+                    {String(step.id).padStart(2, '0')}
+                  </span>
+                  <Icon size={14} className="stage-rail-step-icon" />
+                  <span className="stage-rail-step-name">{step.name}</span>
                 </div>
-                <span className="stage-rail-step-num" aria-hidden="true">
-                  {String(step.id).padStart(2, '0')}
-                </span>
-                <Icon size={14} className="stage-rail-step-icon" aria-hidden="true" />
-                <span className="stage-rail-step-name">{step.name}</span>
+
+                <div className="stage-rail-step-dot" aria-hidden="true">
+                  {isCompleted && (
+                    <Check size={8} strokeWidth={2.5} color="var(--success)" />
+                  )}
+                </div>
               </button>
             );
           })}
@@ -85,9 +78,9 @@ export default function StageRail({ activeScreen, onNavigate, userName, projectN
           {userName && (
             <span style={{
               fontFamily: 'var(--font-mono)',
-              fontSize: '10px',
-              color: 'var(--text-muted)',
-              letterSpacing: '0.1em',
+              fontSize: '12px',
+              color: 'var(--text-soft)',
+              letterSpacing: '0.08em',
               textTransform: 'uppercase',
             }}>
               {userName}
@@ -106,9 +99,9 @@ export default function StageRail({ activeScreen, onNavigate, userName, projectN
           </button>
           <span style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: '10px',
-            color: 'var(--text-muted)',
-            letterSpacing: '0.05em',
+            fontSize: '12px',
+            color: 'var(--text-soft)',
+            letterSpacing: '0.04em',
             minWidth: '36px',
             textAlign: 'center',
           }}>

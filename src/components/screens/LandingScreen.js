@@ -1,15 +1,46 @@
 'use client';
 
 import { useRef } from 'react';
-import { ArrowRight, Film, Image, Music2, Wand2, Scissors } from 'lucide-react';
+import { ArrowRight, Image, Music2, Scissors, Wand2 } from 'lucide-react';
 import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from 'framer-motion';
-import { quotes } from '@/data/quotes';
 
-const workflowSteps = [
-  { num: '01', title: 'Track',    copy: 'Upload your song. The studio reads rhythm, lyrics, and mood.', icon: Music2 },
-  { num: '02', title: 'Plan',     copy: 'Turn your idea into script beats, cast, locations, and shots.',  icon: Wand2  },
-  { num: '03', title: 'Generate', copy: 'Build approved frames into video clips without losing context.', icon: Image  },
-  { num: '04', title: 'Assemble', copy: 'Finish in the timeline with audio-aware trimming and export.',   icon: Scissors },
+const homeActions = [
+  {
+    id: 'music-video',
+    num: '01',
+    title: 'Music Video',
+    copy: 'Available now. End-to-end workflow for music-video production.',
+    step: 2,
+    available: true,
+    icon: Music2,
+  },
+  {
+    id: 'short',
+    num: '02',
+    title: 'Short',
+    copy: 'Coming soon. Narrative short-format mode.',
+    step: null,
+    available: false,
+    icon: Wand2,
+  },
+  {
+    id: 'movie',
+    num: '03',
+    title: 'Movie',
+    copy: 'Coming soon. Long-form film mode.',
+    step: null,
+    available: false,
+    icon: Image,
+  },
+  {
+    id: 'tv-series',
+    num: '04',
+    title: 'TV Series',
+    copy: 'Coming soon. Episodic multi-part production mode.',
+    step: null,
+    available: false,
+    icon: Scissors,
+  },
 ];
 
 export default function LandingScreen({ onNavigate, userName }) {
@@ -30,8 +61,6 @@ export default function LandingScreen({ onNavigate, userName }) {
     mouseY.set((e.clientY - rect.top) / rect.height);
   };
 
-  const quote = quotes[Math.floor(Math.random() * quotes.length)];
-
   return (
     <div
       className="screen active"
@@ -50,87 +79,98 @@ export default function LandingScreen({ onNavigate, userName }) {
           zIndex: 0,
           x: bgX,
           y: bgY,
-          background: `radial-gradient(ellipse 60% 50% at 20% 30%, rgba(103,232,249,0.05), transparent 65%),
-                       radial-gradient(ellipse 40% 40% at 85% 75%, rgba(103,232,249,0.04), transparent 65%)`,
+          background: `radial-gradient(ellipse 60% 50% at 20% 30%, rgba(var(--cyan-rgb), 0.05), transparent 65%),
+                       radial-gradient(ellipse 40% 40% at 85% 75%, rgba(var(--cyan-rgb), 0.04), transparent 65%)`,
         }}
       />
 
-      {/* Asymmetric grid: 56% / 44% */}
-      <div className="grid-56-44">
-
-        {/* ── Left column ── */}
-        <section className="flex-col gap-20 min-h-0">
-
-          {/* Greeting card */}
-          <div className="hero-card">
-            <div>
-              <div className="screen-kicker" style={{ marginBottom: '20px' }}>▪ Welcome back</div>
-              <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(40px, 5.5vw, 64px)', fontWeight: '700', color: 'var(--text)', letterSpacing: '-0.03em', lineHeight: 1.0, marginBottom: '16px' }}>
-                Hello,{' '}
-                <span style={{ color: 'var(--cyan)' }}>{userName || 'friend'}.</span>
-              </h1>
-              <p className="body-sm" style={{ fontSize: '14px', maxWidth: '420px', lineHeight: 1.7 }}>
-                Build a music video from the track outward — song insights, story, visual references, shots, clips, and final edit, all in one focused space.
-              </p>
-            </div>
-
-            {/* Primary CTA */}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => onNavigate(2)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate(2); } }}
-              className="subtle-panel flex-between"
-              style={{ gap: '16px', padding: '22px 24px', cursor: 'pointer', marginTop: '28px', transition: 'box-shadow 200ms ease-out, border-color 200ms ease-out', borderRadius: 'var(--radius-lg)' }}
-              onMouseEnter={e => { e.currentTarget.style.boxShadow = 'var(--neo-active)'; e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
-              onMouseLeave={e => { e.currentTarget.style.boxShadow = 'var(--neo-flat)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+      <div className="landing-mosaic">
+        <section className="landing-side-stack landing-side-stack-left">
+          {homeActions.slice(0, 2).map(({ id, num, title, copy, icon: Icon, step, available }) => (
+            <button
+              key={id}
+              type="button"
+              disabled={!available}
+              className={`landing-action-card landing-action-${id} ${available ? 'is-active' : 'is-disabled'}`}
+              onClick={() => {
+                if (!available || !step) return;
+                onNavigate(step);
+              }}
             >
-              <div>
-                <div className="screen-kicker" style={{ marginBottom: '6px' }}>▪ Begin · Step 01</div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: '700', color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: '4px' }}>
-                  Start with the song
-                </div>
-                <div className="body-sm">Upload your track and move through the production flow at your pace.</div>
+              <div className="landing-action-top">
+                <span className="panel-meta-label panel-meta-label--cyan" style={{ marginBottom: 0 }}>
+                  {num}
+                </span>
+                <span className="landing-action-icon" aria-hidden>
+                  <Icon size={18} />
+                </span>
               </div>
-              <div className="flex-center neo-flat" style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0, color: 'var(--cyan)' }}>
-                <ArrowRight size={18} />
-              </div>
-            </div>
-          </div>
+              <div className="landing-action-title">{title}</div>
+              <p className="landing-action-copy">{copy}</p>
+              <span className={`landing-action-foot ${available ? '' : 'is-disabled'}`}>
+                {available ? (
+                  <>
+                    Start now
+                    <ArrowRight size={15} />
+                  </>
+                ) : (
+                  'Coming soon'
+                )}
+              </span>
+            </button>
+          ))}
         </section>
 
-        {/* ── Right column — starts 56px lower (asymmetric) ── */}
-        <section className="flex-col gap-16 min-h-0" style={{ paddingTop: '56px' }}>
-          {/* Workflow step cards in 2x2 grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            {workflowSteps.map(({ num, title, copy, icon: Icon }) => (
-              <div key={title} className="panel-flat flex-col gap-10" style={{ padding: '18px' }}>
-                <div className="flex-between">
-                  <div className="icon-circle" style={{ width: '32px', height: '32px', borderRadius: '8px' }}>
-                    <Icon size={15} />
-                  </div>
-                  <span className="panel-meta-label" style={{ marginBottom: 0 }}>{num}</span>
-                </div>
-                <div>
-                  <div className="step-title">{title}</div>
-                  <div className="step-copy">{copy}</div>
-                </div>
-              </div>
-            ))}
+        <section className="landing-center-card">
+          <div>
+            <div className="screen-kicker" style={{ marginBottom: '18px' }}>▪ Welcome back</div>
+            <h1 className="landing-center-title">
+              Hello, <span>{userName || 'friend'}.</span>
+            </h1>
+            <p className="landing-center-copy">
+              Music Video mode is live today. Short, Movie, and TV Series modes are in progress and will unlock next.
+            </p>
           </div>
+          <button type="button" className="landing-center-cta" onClick={() => onNavigate(2)}>
+            Open Music Video
+            <ArrowRight size={17} />
+          </button>
+        </section>
 
-          {/* Quote */}
-          {quote && (
-            <div className="panel-flat flex-1" style={{ padding: '20px' }}>
-              <div className="panel-meta-label" style={{ marginBottom: '14px' }}>▪ Creative signal</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: '500', color: 'var(--text-soft)', lineHeight: 1.6, letterSpacing: '-0.01em', paddingLeft: '16px', borderLeft: '2px solid var(--cyan-border)' }}>
-                {quote.text}
-                {quote.author && (
-                  <div className="panel-meta-label" style={{ marginTop: '10px' }}>— {quote.author}</div>
-                )}
+        <section className="landing-side-stack landing-side-stack-right">
+          {homeActions.slice(2).map(({ id, num, title, copy, icon: Icon, step, available }) => (
+            <button
+              key={id}
+              type="button"
+              disabled={!available}
+              className={`landing-action-card landing-action-${id} ${available ? 'is-active' : 'is-disabled'}`}
+              onClick={() => {
+                if (!available || !step) return;
+                onNavigate(step);
+              }}
+            >
+              <div className="landing-action-top">
+                <span className="panel-meta-label panel-meta-label--cyan" style={{ marginBottom: 0 }}>
+                  {num}
+                </span>
+                <span className="landing-action-icon" aria-hidden>
+                  <Icon size={18} />
+                </span>
               </div>
-            </div>
-          )}
+              <div className="landing-action-title">{title}</div>
+              <p className="landing-action-copy">{copy}</p>
+              <span className={`landing-action-foot ${available ? '' : 'is-disabled'}`}>
+                {available ? (
+                  <>
+                    Open workflow
+                    <ArrowRight size={15} />
+                  </>
+                ) : (
+                  'Coming soon'
+                )}
+              </span>
+            </button>
+          ))}
         </section>
       </div>
     </div>

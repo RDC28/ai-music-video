@@ -102,8 +102,8 @@ export default function BillingScreen() {
             style={{
               padding: '28px',
               background:
-                'linear-gradient(155deg, rgba(0,229,255,0.14), rgba(0,184,212,0.04)), linear-gradient(180deg, rgba(14,17,22,0.95), rgba(11,14,19,0.86))',
-              borderColor: 'rgba(0,229,255,0.24)',
+                'linear-gradient(155deg, rgba(var(--cyan-rgb), 0.14), rgba(var(--cyan-rgb), 0.04)), linear-gradient(180deg, rgba(var(--ink-900-rgb), 0.95), rgba(var(--ink-900-rgb), 0.86))',
+              borderColor: 'rgba(var(--cyan-rgb), 0.24)',
             }}
           >
             <div className="kicker">── Current balance</div>
@@ -163,9 +163,9 @@ export default function BillingScreen() {
                   gap: '14px',
                   textAlign: 'center',
                   position: 'relative',
-                  borderColor: plan.popular ? 'rgba(0,229,255,0.32)' : undefined,
+                  borderColor: plan.popular ? 'rgba(var(--cyan-rgb), 0.32)' : undefined,
                   background: plan.popular
-                    ? 'linear-gradient(155deg, rgba(0,229,255,0.14), rgba(0,184,212,0.04)), linear-gradient(180deg, rgba(14,17,22,0.95), rgba(11,14,19,0.86))'
+                    ? 'linear-gradient(155deg, rgba(var(--cyan-rgb), 0.14), rgba(var(--cyan-rgb), 0.04)), linear-gradient(180deg, rgba(var(--ink-900-rgb), 0.95), rgba(var(--ink-900-rgb), 0.86))'
                     : undefined,
                   boxShadow: plan.popular ? 'var(--glow-soft), var(--shadow-premium)' : 'var(--shadow-premium)',
                   overflow: 'visible',
@@ -179,7 +179,7 @@ export default function BillingScreen() {
                       left: '50%',
                       transform: 'translateX(-50%)',
                       background: 'linear-gradient(135deg, var(--orange), var(--teal))',
-                      color: '#04060A',
+                      color: 'var(--ink-950)',
                       fontSize: '9.5px',
                       fontWeight: 600,
                       letterSpacing: '0.18em',
@@ -187,7 +187,7 @@ export default function BillingScreen() {
                       padding: '5px 14px',
                       borderRadius: '999px',
                       fontFamily: 'var(--font-mono)',
-                      boxShadow: '0 8px 22px rgba(0,229,255,0.35)',
+                      boxShadow: '0 8px 22px rgba(var(--cyan-rgb), 0.35)',
                     }}
                   >
                     ◇ Most popular
@@ -260,7 +260,7 @@ export default function BillingScreen() {
                       borderBottom: i < transactions.length - 1 ? '1px solid var(--border)' : 'none',
                       transition: 'background 0.18s',
                     }}
-                    onMouseOver={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                    onMouseOver={e => (e.currentTarget.style.background = 'rgba(var(--cyan-300-rgb), 0.02)')}
                     onMouseOut={e => (e.currentTarget.style.background = 'transparent')}
                   >
                     <div>
@@ -292,7 +292,7 @@ export default function BillingScreen() {
                       style={{
                         fontSize: '18px',
                         fontWeight: 500,
-                        color: tx.amount > 0 ? 'var(--teal)' : '#ff8a8a',
+                        color: tx.amount > 0 ? 'var(--teal)' : 'var(--violet-400)',
                         fontFamily: 'var(--font-display)',
                         fontStyle: 'italic',
                         letterSpacing: '-0.025em',

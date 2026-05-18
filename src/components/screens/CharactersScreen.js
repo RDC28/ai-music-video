@@ -8,9 +8,9 @@ import ProgressBar from '../ProgressBar';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MODAL_BTN = {
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  color: '#bbb',
+  background: 'rgba(var(--cyan-300-rgb), 0.06)',
+  border: '1px solid rgba(var(--cyan-300-rgb), 0.08)',
+  color: 'var(--text-soft)',
   padding: '7px 12px',
   borderRadius: '6px',
   fontSize: '11px',
@@ -316,26 +316,26 @@ function ImagePreviewModal({ imageUrl, label, onClose, onDelete }) {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.97)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(var(--ink-950-rgb), 0.97)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px' }}
       onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
     >
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <span style={{ color: '#444', fontSize: '10px', fontWeight: 700, letterSpacing: '0.12em', marginRight: '4px' }}>{label?.toUpperCase()}</span>
-        <span style={{ color: '#333', fontSize: '11px', marginRight: '4px' }}>Scroll to zoom · Drag to pan</span>
-        <div style={{ width: '1px', height: '18px', background: '#222' }} />
+        <span style={{ color: 'var(--ink-800)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.12em', marginRight: '4px' }}>{label?.toUpperCase()}</span>
+        <span style={{ color: 'var(--ink-800)', fontSize: '11px', marginRight: '4px' }}>Scroll to zoom · Drag to pan</span>
+        <div style={{ width: '1px', height: '18px', background: 'var(--ink-800)' }} />
         {onDelete && (
-          <button onClick={onDelete} style={{ ...MODAL_BTN, color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>
+          <button onClick={onDelete} style={{ ...MODAL_BTN, color: 'var(--violet-400)', border: '1px solid rgba(var(--violet-rgb), 0.3)' }}>
             Delete Image
           </button>
         )}
-        <button onClick={onClose} style={{ ...MODAL_BTN, color: '#bbb', border: '1px solid rgba(255,255,255,0.1)' }}>Close</button>
+        <button onClick={onClose} style={{ ...MODAL_BTN, color: 'var(--text-soft)', border: '1px solid rgba(var(--cyan-300-rgb), 0.1)' }}>Close</button>
       </div>
 
       {/* Viewport */}
       <div
         ref={containerRef}
-        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: '#0c0c0c', borderRadius: '12px', border: '1px solid #1a1a1a', cursor: drag ? 'grabbing' : 'grab' }}
+        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: 'var(--ink-950)', borderRadius: '12px', border: '1px solid var(--ink-800)', cursor: drag ? 'grabbing' : 'grab' }}
         onMouseDown={onMouseDown}
         onWheel={onWheel}
       >
@@ -343,7 +343,7 @@ function ImagePreviewModal({ imageUrl, label, onClose, onDelete }) {
           ref={imgRef} src={imageUrl} alt={label} draggable={false}
           style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'center center', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
         />
-        <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: '#2a2a2a', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
+        <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: 'var(--ink-800)', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
           Scroll to zoom · Drag to pan
         </div>
       </div>
@@ -1000,7 +1000,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
 
           <div style={{ marginTop: 'auto', paddingTop: '24px' }}>
             {anyAnchorsGenerating && (
-              <div style={{ marginBottom: '10px', color: '#f4d67a', fontSize: '11px', lineHeight: 1.5 }}>
+              <div style={{ marginBottom: '10px', color: 'var(--violet-400)', fontSize: '11px', lineHeight: 1.5 }}>
                 Identity anchors still processing — shot consistency will be better if you wait.
               </div>
             )}
@@ -1039,10 +1039,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                     </span>
                   )}
                   {!char.isGeneratingReference && (anchorStatus[char.name] === 'done' || char?.anchor_image_url) && (
-                    <span style={{ marginLeft: '6px', color: '#9be0a0', fontSize: '9px' }}>✓</span>
+                    <span style={{ marginLeft: '6px', color: 'var(--cyan-400)', fontSize: '9px' }}>✓</span>
                   )}
                   {!char.isGeneratingReference && anchorStatus[char.name] === 'failed' && (
-                    <span style={{ marginLeft: '6px', color: '#f4d67a', fontSize: '9px' }}>!</span>
+                    <span style={{ marginLeft: '6px', color: 'var(--violet-400)', fontSize: '9px' }}>!</span>
                   )}
                 </div>
               ))}
@@ -1053,8 +1053,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                   style={{
                     fontSize: '14px',
                     color: 'var(--orange)',
-                    background: 'rgba(124,58,237,0.06)',
-                    borderColor: 'rgba(124,58,237,0.22)',
+                    background: 'rgba(var(--violet-rgb), 0.06)',
+                    borderColor: 'rgba(var(--violet-rgb), 0.22)',
                     cursor: 'pointer',
                     padding: '5px 14px',
                   }}
@@ -1085,9 +1085,9 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                       fontWeight: 500,
                       padding: '4px 10px',
                       borderRadius: '999px',
-                      background: activeCategory === 'global' ? 'rgba(124,58,237,0.1)' : 'rgba(124,58,237,0.1)',
+                      background: activeCategory === 'global' ? 'rgba(var(--violet-rgb), 0.1)' : 'rgba(var(--violet-rgb), 0.1)',
                       color: activeCategory === 'global' ? 'var(--orange)' : 'var(--teal)',
-                      border: `1px solid ${activeCategory === 'global' ? 'rgba(124,58,237,0.22)' : 'rgba(124,58,237,0.22)'}`,
+                      border: `1px solid ${activeCategory === 'global' ? 'rgba(var(--violet-rgb), 0.22)' : 'rgba(var(--violet-rgb), 0.22)'}`,
                       letterSpacing: '0.18em',
                     }}
                   >
@@ -1097,13 +1097,13 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                     {truncateCharacterDescription(activeChar?.description) || 'No notes yet.'}
                   </span>
                   {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'generating' && (
-                    <span style={{ color: '#8fd9ff', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--cyan-400)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Loader2 size={12} className="spin" />
                       Building identity anchor…
                     </span>
                   )}
                   {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'failed' && (
-                    <span style={{ color: '#f4d67a', fontSize: '11px' }}>
+                    <span style={{ color: 'var(--violet-400)', fontSize: '11px' }}>
                       Anchor failed — will use reference panels
                     </span>
                   )}
@@ -1128,7 +1128,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                   <button
                     onClick={handleDelete}
                     className="btn-outline"
-                    style={{ padding: '8px 14px', fontSize: '11.5px', color: '#ff7a7a', borderColor: 'rgba(239,68,68,0.2)' }}
+                    style={{ padding: '8px 14px', fontSize: '11.5px', color: 'var(--violet-400)', borderColor: 'rgba(var(--violet-rgb), 0.2)' }}
                   >
                     Delete from history
                   </button>
@@ -1141,9 +1141,9 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                       <img
                         src={activeChar.anchor_image_url}
                         alt={`${activeChar.name} anchor`}
-                        style={{ width: '160px', height: '90px', objectFit: 'cover', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.14)' }}
+                        style={{ width: '160px', height: '90px', objectFit: 'cover', borderRadius: '6px', border: '1px solid rgba(var(--cyan-300-rgb), 0.14)' }}
                       />
-                      <div style={{ color: '#9be0a0', fontSize: '10px', fontWeight: 600 }}>
+                      <div style={{ color: 'var(--cyan-400)', fontSize: '10px', fontWeight: 600 }}>
                         Identity anchor ready ✓
                       </div>
                     </div>
@@ -1158,9 +1158,9 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                   <button
                     onClick={handleDelete}
                     style={{
-                      background: 'rgba(239,68,68,0.06)',
-                      border: '1px solid rgba(239,68,68,0.2)',
-                      color: '#ff7a7a',
+                      background: 'rgba(var(--violet-rgb), 0.06)',
+                      border: '1px solid rgba(var(--violet-rgb), 0.2)',
+                      color: 'var(--violet-400)',
                       padding: '8px 14px',
                       borderRadius: '999px',
                       fontSize: '11.5px',
@@ -1170,8 +1170,8 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                       letterSpacing: '-0.005em',
                       transition: 'background 0.18s, transform 0.3s var(--ease-spring)',
                     }}
-                    onMouseOver={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.12)')}
-                    onMouseOut={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.06)')}
+                    onMouseOver={e => (e.currentTarget.style.background = 'rgba(var(--violet-rgb), 0.12)')}
+                    onMouseOut={e => (e.currentTarget.style.background = 'rgba(var(--violet-rgb), 0.06)')}
                   >
                     Delete
                   </button>
@@ -1215,16 +1215,16 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                     height: `${boardHeight}px`,
                     position: 'relative',
                     overflow: 'hidden',
-                    border: `${Math.max(2, 4 * boardScale)}px solid #1a1a1a`,
+                    border: `${Math.max(2, 4 * boardScale)}px solid var(--ink-800)`,
                     borderRadius: `${Math.max(6, 12 * boardScale)}px`,
-                    backgroundColor: '#050505',
-                    backgroundImage: 'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',
+                    backgroundColor: 'var(--ink-950)',
+                    backgroundImage: 'radial-gradient(rgba(var(--cyan-300-rgb), 0.04) 1px, transparent 1px)',
                     backgroundPosition: '0 0',
                     backgroundSize: `${Math.max(10, 20 * boardScale)}px ${Math.max(10, 20 * boardScale)}px`,
-                    boxShadow: '0 28px 80px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(255,255,255,0.02)',
+                    boxShadow: '0 28px 80px rgba(var(--ink-950-rgb), 0.8), inset 0 0 0 1px rgba(var(--cyan-300-rgb), 0.02)',
                     boxSizing: 'border-box',
                   }}>
-                    <div style={{ position: 'absolute', inset: `${18 * boardScale}px`, border: '1px solid rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
+                    <div style={{ position: 'absolute', inset: `${18 * boardScale}px`, border: '1px solid rgba(var(--cyan-300-rgb), 0.06)', pointerEvents: 'none' }} />
                     {boxes.map(item => {
                       const cardPadding = Math.max(1, 2 * boardScale);
                       return (
@@ -1242,9 +1242,9 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                             });
                           }}
                           style={{
-                            background: 'rgba(255,255,255,0.9)',
+                            background: 'rgba(var(--cyan-300-rgb), 0.9)',
                             borderRadius: `${Math.max(2, 3 * boardScale)}px`,
-                            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                            boxShadow: '0 8px 24px rgba(var(--ink-950-rgb), 0.5)',
                             overflow: 'hidden',
                             position: 'absolute',
                             left: `${item.x * boardScale}px`,
@@ -1265,7 +1265,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                               key={item.src}
                               src={item.src}
                               alt={item.label}
-                              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#f7f7f7' }}
+                              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: 'var(--cyan-300)' }}
                               onLoad={e => {
                                 const ratio = e.currentTarget.naturalWidth / e.currentTarget.naturalHeight;
                                 setImgRatios(prev => prev[item.src] === ratio ? prev : { ...prev, [item.src]: ratio });
@@ -1284,7 +1284,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                                   if (e.key === 'Escape') setRenamingPanel(null);
                                 }}
                                 onClick={e => e.stopPropagation()}
-                                style={{ background: 'rgba(0,0,0,0.92)', border: '1px solid var(--teal)', color: '#fff', borderRadius: '4px', padding: '2px 7px', fontSize: '8px', fontWeight: 700, outline: 'none', width: '100px', maxWidth: '100%', letterSpacing: '0.05em' }}
+                                style={{ background: 'rgba(var(--ink-950-rgb), 0.92)', border: '1px solid var(--teal)', color: 'var(--text)', borderRadius: '4px', padding: '2px 7px', fontSize: '8px', fontWeight: 700, outline: 'none', width: '100px', maxWidth: '100%', letterSpacing: '0.05em' }}
                               />
                             ) : (
                               <div
@@ -1295,7 +1295,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                                   }
                                 }}
                                 title={charIdx >= 0 ? 'Click to rename' : ''}
-                                style={{ padding: '2px 7px', background: 'rgba(0,0,0,0.75)', borderRadius: '3px', fontSize: '8px', color: item.loading ? '#222' : '#ddd', backdropFilter: 'blur(8px)', fontWeight: 700, cursor: charIdx >= 0 ? 'text' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'var(--font-display)' }}
+                                style={{ padding: '2px 7px', background: 'rgba(var(--ink-950-rgb), 0.75)', borderRadius: '3px', fontSize: '8px', color: item.loading ? 'var(--ink-800)' : 'var(--text-soft)', backdropFilter: 'blur(8px)', fontWeight: 700, cursor: charIdx >= 0 ? 'text' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'var(--font-display)' }}
                               >
                                 {item.label.toUpperCase()}
                               </div>
@@ -1336,28 +1336,28 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>CHARACTER NAME</label>
-                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)} className="input-inset" style={{ padding: '10px 13px', background: '#0f0f0f', fontSize: '13px', borderRadius: '8px' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)} className="input-inset" style={{ padding: '10px 13px', background: 'var(--ink-900)', fontSize: '13px', borderRadius: '8px' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               <div>
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
                 <textarea placeholder="Ancient Indian warrior, 40s, grey beard, dark red dhoti, gold jewellery..." value={createDesc} onChange={e => setCreateDesc(e.target.value)}
-                  className="textarea-inset" style={{ padding: '10px 13px', background: '#0f0f0f', fontSize: '13px', borderRadius: '8px', minHeight: '90px' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                  className="textarea-inset" style={{ padding: '10px 13px', background: 'var(--ink-900)', fontSize: '13px', borderRadius: '8px', minHeight: '90px' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
 
               {/* Reference image */}
               <div>
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
-                  REFERENCE IMAGE <span style={{ color: '#333', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+                  REFERENCE IMAGE <span style={{ color: 'var(--ink-800)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
                 </label>
                 <input type="file" ref={refFileInputRef} onChange={handleRefImageSelect} style={{ display: 'none' }} accept="image/*" />
                 {createRefImage ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px' }}>
-                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: '#050505', borderRadius: '6px', flexShrink: 0 }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: 'var(--ink-950)', border: '1px solid rgba(var(--cyan-300-rgb), 0.07)', borderRadius: '8px' }}>
+                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: 'var(--ink-950)', borderRadius: '6px', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: '#bbb', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
-                      <div style={{ color: '#777', fontSize: '10px', marginTop: '2px' }}>The sheet will match this character</div>
+                      <div style={{ color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '10px', marginTop: '2px' }}>The sheet will match this character</div>
                     </div>
-                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: '5px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>Remove</button>
+                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'rgba(var(--violet-rgb), 0.1)', border: '1px solid rgba(var(--violet-rgb), 0.2)', color: 'var(--violet-400)', borderRadius: '5px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>Remove</button>
                   </div>
                 ) : (
                   <button
@@ -1366,7 +1366,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                     onDragEnter={(e) => { e.preventDefault(); setIsDraggingRef(true); }}
                     onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingRef(false); }}
                     onDrop={handleRefDrop}
-                    style={{ width: '100%', padding: '10px', borderRadius: '8px', background: isDraggingRef ? 'rgba(0,210,200,0.06)' : 'rgba(255,255,255,0.04)', border: isDraggingRef ? '1px dashed var(--cyan-border)' : '1px dashed rgba(255,255,255,0.22)', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'border-color 120ms ease-out, background 120ms ease-out' }}>
+                    style={{ width: '100%', padding: '10px', borderRadius: '8px', background: isDraggingRef ? 'rgba(var(--cyan-rgb), 0.06)' : 'rgba(var(--cyan-300-rgb), 0.04)', border: isDraggingRef ? '1px dashed var(--cyan-border)' : '1px dashed rgba(var(--cyan-300-rgb), 0.22)', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'border-color 120ms ease-out, background 120ms ease-out' }}>
                     {isDraggingRef ? 'Drop image here' : 'Upload Reference Image'}
                   </button>
                 )}
@@ -1383,22 +1383,22 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
       {/* ── Edit Modal ── */}
       {showEditModal && activeChar && (
         <div className="auth-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '440px', background: '#0e0e0e' }} onClick={e => e.stopPropagation()}>
+          <div className="auth-modal" style={{ maxWidth: '440px', background: 'var(--ink-900)' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowEditModal(false)}>×</button>
-            <div style={{ color: '#fff', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, marginBottom: '20px', letterSpacing: '-0.01em' }}>
+            <div style={{ color: 'var(--text)', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, marginBottom: '20px', letterSpacing: '-0.01em' }}>
               {activeCategory === 'global' ? 'Rename Character' : 'Edit Character'}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>NAME</label>
-                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="input-inset" style={{ padding: '10px 13px', background: '#0f0f0f', fontSize: '13px', borderRadius: '8px' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="input-inset" style={{ padding: '10px 13px', background: 'var(--ink-900)', fontSize: '13px', borderRadius: '8px' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               <div>
                 <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
-                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} className="textarea-inset" style={{ padding: '10px 13px', background: '#0f0f0f', fontSize: '13px', borderRadius: '8px', minHeight: '72px' }} onFocus={e => e.target.style.borderColor = 'rgba(124,58,237,0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} className="textarea-inset" style={{ padding: '10px 13px', background: 'var(--ink-900)', fontSize: '13px', borderRadius: '8px', minHeight: '72px' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               {activeCategory === 'project' && (
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px' }}>
+                <div style={{ borderTop: '1px solid rgba(var(--cyan-300-rgb), 0.05)', paddingTop: '14px' }}>
                   <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.1em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>REPLACE SHEET</label>
                   <button onClick={() => {
                     setSheetReplaceTarget({
@@ -1409,7 +1409,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                     setShowEditModal(false);
                     fileInputRef.current.click();
                   }}
-                    style={{ width: '100%', padding: '10px', borderRadius: '7px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)', color: 'var(--text-soft)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
+                    style={{ width: '100%', padding: '10px', borderRadius: '7px', background: 'rgba(var(--cyan-300-rgb), 0.04)', border: '1px solid rgba(var(--cyan-300-rgb), 0.14)', color: 'var(--text-soft)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
                     Upload New Character Sheet
                   </button>
                 </div>
@@ -1458,10 +1458,10 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
       )}
 
       {busy && (
-        <div className="flex-row gap-16" style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--cyan)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', alignItems: 'center' }}>
+        <div className="flex-row gap-16" style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: 'var(--ink-950)', border: '1px solid var(--cyan)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(var(--ink-950-rgb), 0.5)', alignItems: 'center' }}>
           <Loader2 size={24} className="spin" style={{ color: 'var(--cyan)' }} />
           <div>
-            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating character sheet...'}</div>
+            <div style={{ color: 'var(--text)', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating character sheet...'}</div>
             <div style={{ color: 'var(--cyan)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
           </div>
         </div>

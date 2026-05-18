@@ -1,0 +1,326 @@
+{
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/next.config.mjs": {
+    "mtime": 1777439693.8660154,
+    "hash": "9b2513e16440eb1cf02bc3ff4b3d8a34"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/supabase_schema.sql": {
+    "mtime": 1778843829.30889,
+    "hash": "59acee5987a26d35fba92726fd117533"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/test-gemini-api.js": {
+    "mtime": 1777706869.6052444,
+    "hash": "2dc52e3fceb58e943d992fb5f114d5a6"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/eslint.config.mjs": {
+    "mtime": 1777439693.8656106,
+    "hash": "bcb00e240634dd9448e57386fdff1902"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/python-service/main.py": {
+    "mtime": 1778328951.0938568,
+    "hash": "b388247d42e0866e95c22ee3be65964b"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/python-service/shotstack_editor.py": {
+    "mtime": 1778224797.4232013,
+    "hash": "f17a21beb01606c8e60be41cea3e7a3b"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/scratch/check_db_schema.js": {
+    "mtime": 1777979732.1034832,
+    "hash": "8be508e56c87c7702d20ed0826c82842"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/scripts/probe-seedance-models.mjs": {
+    "mtime": 1778499396.3490188,
+    "hash": "d0a3b65d09aed7bebc62497d32fe698b"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/middleware.js": {
+    "mtime": 1777544543.0503435,
+    "hash": "6509bbc3328358b6c0bde18be24daea2"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/layout.js": {
+    "mtime": 1778833805.483256,
+    "hash": "9d194934b2cccbd7d8555950730c7e4d"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/page.js": {
+    "mtime": 1778484355.1890256,
+    "hash": "b50a8e50f4f39716763dd8af7748e74f"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/loading.js": {
+    "mtime": 1778236500.354542,
+    "hash": "267c76e96cea917c6a4c0d6076ca40d4"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/payment/page.js": {
+    "mtime": 1778329857.2347372,
+    "hash": "29e2e1d89903ea4038e5674471424f32"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/dashboard/page.js": {
+    "mtime": 1778834003.704004,
+    "hash": "fd7bb43ad3288beed10359bc2f0c7900"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/profile/page.js": {
+    "mtime": 1778329837.3883946,
+    "hash": "344258c99ee449f8bfc3b743d9496ee5"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/generate-shot-video/route.js": {
+    "mtime": 1778678209.17385,
+    "hash": "745f27806e0e41f898c135c316c77741"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/shotstack/render/route.js": {
+    "mtime": 1778236775.5517673,
+    "hash": "449cbb76ebded41edae56d6b8250a993"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/shotstack/render/[renderId]/route.js": {
+    "mtime": 1778236775.597004,
+    "hash": "26db68031dc374a09ef151338bce9d77"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/generate-character-anchor/route.js": {
+    "mtime": 1778755861.2655318,
+    "hash": "03062704e073d1a9f7b4026c13fea02a"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/split-character-sheet/route.js": {
+    "mtime": 1778074416.7798193,
+    "hash": "24b7238e9766559d47ac40e30870d926"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/generate-style-bible/route.js": {
+    "mtime": 1778738885.1265104,
+    "hash": "d86957f193259bd6d0ad28f5a431242e"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/generate-shot-image/route.js": {
+    "mtime": 1778760822.5647488,
+    "hash": "ad99718a3c0b048a2f7951bdfd02f6e0"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/generate-shot-list/route.js": {
+    "mtime": 1778328951.0951633,
+    "hash": "ce4628afbb23eae3ab9e4ea30c72d5be"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/generate-script/route.js": {
+    "mtime": 1777710054.0108757,
+    "hash": "3037e9cd0da4ef266866dcc14d85841c"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/checkout/session/route.js": {
+    "mtime": 1777542637.7599738,
+    "hash": "31038e462dcbae72c783c8ed2d97d9ad"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/generate-location-image/route.js": {
+    "mtime": 1778583383.907388,
+    "hash": "0863153ba80c353bcb289d262e7fcc9d"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/analyze/route.js": {
+    "mtime": 1778328951.094298,
+    "hash": "555cedf22f8d88275947bc431aef30fc"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/split-location-sheet/route.js": {
+    "mtime": 1778328951.0956953,
+    "hash": "4bc299d87ba1dff34007480aa4417733"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/webhooks/stripe/route.js": {
+    "mtime": 1777543935.828335,
+    "hash": "f9b581438c1539f3a9e742d4ae8d97f8"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/api/generate-character-pose/route.js": {
+    "mtime": 1778843757.9951608,
+    "hash": "7658b023066be5a0777e1c178611caed"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/create/[projectId]/page.js": {
+    "mtime": 1778662826.2439013,
+    "hash": "8b2ead1f3409512bcd4b3de61986a443"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/create/[projectId]/loading.js": {
+    "mtime": 1778236500.4026597,
+    "hash": "40dad2e993620f3eea4c45072eab5d5a"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/app/billing/page.js": {
+    "mtime": 1778329799.3463032,
+    "hash": "c8b2065a34c19926a6668718d460526c"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/utils/generationModels.js": {
+    "mtime": 1778499870.9362965,
+    "hash": "68ebc01f970ddf52232200e176e8a6cc"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/utils/supabase.js": {
+    "mtime": 1777458289.6335475,
+    "hash": "9e633e8d8efda04ef0aff8b8f9fe5b75"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/utils/supabase-admin.js": {
+    "mtime": 1777542632.148304,
+    "hash": "71916512bf834a5af1a6370af498689a"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/utils/supabase-server.js": {
+    "mtime": 1777542628.9001234,
+    "hash": "89162a98e23b6cd42773739e8a613a9b"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/utils/googleModelFallbacks.js": {
+    "mtime": 1778583324.4467633,
+    "hash": "1fdf97f035e214ffcbcd24955c3e179e"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/utils/credits.js": {
+    "mtime": 1777543949.540078,
+    "hash": "65c8d843fee84e7b0839cb2ec199e8a8"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/utils/geminiAgents.js": {
+    "mtime": 1778675217.244325,
+    "hash": "6b1c10246a544be4d14c630856249174"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/utils/drawClubScene.js": {
+    "mtime": 1777439693.8693833,
+    "hash": "a711b71768d2044d6a315d085dc5d0d2"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/utils/shotList.js": {
+    "mtime": 1778328951.102217,
+    "hash": "2e8a93dc9bed448216bbbbb69bb7eea7"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/utils/shotstack-python.js": {
+    "mtime": 1778136845.1204607,
+    "hash": "409b215c2e634cb6422683c09099dca9"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/StageRail.js": {
+    "mtime": 1778833856.9299629,
+    "hash": "5d0ee3926d8cb81ea0bccdfc5222889d"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/TopBar.js": {
+    "mtime": 1778663278.6928384,
+    "hash": "db8febeeb08c471e055e2896430fb4c2"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/ProgressBar.js": {
+    "mtime": 1778484533.1393867,
+    "hash": "30f44a1bfa74cee42c496e6ae1f139c4"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/WorkflowBuffer.js": {
+    "mtime": 1778833867.1290822,
+    "hash": "ccd2b07c0217388b59c5d17cee4d0390"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/DashboardNav.js": {
+    "mtime": 1778833920.514412,
+    "hash": "6520c555a9b8002aa88f1bf617c99070"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/NavDots.js": {
+    "mtime": 1778663278.6936119,
+    "hash": "72a26f623b8e795ddb7d62472cd3f7a1"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/LocationsScreen.js": {
+    "mtime": 1778843820.8743017,
+    "hash": "8e5989860b071964eeece80b94f037f0"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/ShotListScreen.js": {
+    "mtime": 1778837001.1644855,
+    "hash": "f6a98f6d6a3b01947d3076065585e339"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/BrainDumpScreen.js": {
+    "mtime": 1778834266.0049005,
+    "hash": "0a51dc778fcd02a25698e2f5b0726b46"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/GenerateShotListScreen.js": {
+    "mtime": 1778838492.920724,
+    "hash": "0b3a920a30798180dadf2c284b7a50a0"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/ImagesScreen.js": {
+    "mtime": 1778837247.2360866,
+    "hash": "c2b5f6f3a173e983935e263a97a5edc9"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/UploadAudioScreen.js": {
+    "mtime": 1778834149.0934627,
+    "hash": "91898fa8b773e9c91ddb4754f7bdc878"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/WardrobeScreen.js": {
+    "mtime": 1778836966.4714851,
+    "hash": "c81d9d792ff2c2b3bfb8851b0032d561"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/AssembleScreen.js": {
+    "mtime": 1778831302.616406,
+    "hash": "b6d7da6be106b8a9ee6a9f9520cf249f"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/CharactersScreen.js": {
+    "mtime": 1778843930.8733199,
+    "hash": "5dfb442830c8196dbbfd47ee6c89656c"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/LandingScreen.js": {
+    "mtime": 1778834063.4675536,
+    "hash": "f6abb7ffcc343ccd8cbce7552d6e0b38"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/components/screens/VideosScreen.js": {
+    "mtime": 1778837322.9916575,
+    "hash": "b861fc7e8f4248b6d29e8d35af025a1b"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/lib/motion.js": {
+    "mtime": 1778833144.9309876,
+    "hash": "492af039f2d46035bf91eb3338986105"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/data/shots.js": {
+    "mtime": 1777449119.129351,
+    "hash": "2bbdc82b701e093ae5b7c7307e23654f"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/data/quotes.js": {
+    "mtime": 1777439693.8690624,
+    "hash": "31996a1a3889d93405c5da0de365642c"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/REDESIGN_PLAN.md": {
+    "mtime": 1778480026.4646382,
+    "hash": "eef76898816079ee4038b45765ddd283"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/README.md": {
+    "mtime": 1777439693.853238,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/music_video_app_full_shell.html": {
+    "mtime": 1777439693.8658988,
+    "hash": "7b7bf75d29ca616698bc5a6ef9eb3e93"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/pass.txt": {
+    "mtime": 1777458764.841445,
+    "hash": "b1f45f57059bd23141e687f704b97f3b"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/AGENTS.md": {
+    "mtime": 1778053959.2920432,
+    "hash": "c7466351eea275fa42e2b36bd7070b9f"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/CLAUDE.md": {
+    "mtime": 1778053959.2487035,
+    "hash": "c952fc3eda6be484d4db5babe9826e85"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/python-service/requirements.txt": {
+    "mtime": 1778328951.0940542,
+    "hash": "d6b45dbb73b9ee1718629ef4ba1387d6"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/docs/database-er-diagram.md": {
+    "mtime": 1778318716.6152465,
+    "hash": "01daafa5f6d66ef5925204283822b77e"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/docs/database-er-diagram.html": {
+    "mtime": 1778318837.7319262,
+    "hash": "0c96389877591aa7da6205b2a59e7cf2"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/docs/system-design.html": {
+    "mtime": 1778319986.2739997,
+    "hash": "1a584a0c563e9166d179d57ca549634e"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/src/data/quotes.txt": {
+    "mtime": 1777439693.869156,
+    "hash": "d472d0a9a1cab9aecea04541dedac2ee"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/concept_ui.pdf": {
+    "mtime": 1777439693.8651562,
+    "hash": "76958cdf2119cea373b62a91dc9c40ae"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/docs/system-design.pdf": {
+    "mtime": 1778319750.9364827,
+    "hash": "e4116c78ba717c0719214a6aafb50358"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/public/file.svg": {
+    "mtime": 1777439693.8667018,
+    "hash": "d09f95206c3fa0bb9bd9fefabfd0ea71"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/public/vercel.svg": {
+    "mtime": 1777439693.8669846,
+    "hash": "c0af2f507b369b085b35ef4bbe3bcf1e"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/public/next.svg": {
+    "mtime": 1777439693.8669012,
+    "hash": "8e061864f388b47f33a1c3780831193e"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/public/globe.svg": {
+    "mtime": 1777439693.8668098,
+    "hash": "2aaafa6a49b6563925fe440891e32717"
+  },
+  "/Users/ais2/Desktop/Rohit/Dev/ai-music-video/public/window.svg": {
+    "mtime": 1777439693.867067,
+    "hash": "a2760511c65806022ad20adf74370ff3"
+  }
+}

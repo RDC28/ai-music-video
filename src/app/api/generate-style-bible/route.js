@@ -227,9 +227,9 @@ function normalizePalette(primaryPalette) {
   const matches = candidateText.match(/#[0-9a-fA-F]{6}\b/g) || [];
   const unique = [...new Set(matches.map(color => color.toLowerCase()))];
   if (unique.length >= 3) return unique.slice(0, 3);
-  if (unique.length === 2) return [...unique, "#f5f5f5"];
-  if (unique.length === 1) return [...unique, "#2f3b52", "#f5f5f5"];
-  return ["#1f2937", "#334155", "#e5e7eb"];
+  if (unique.length === 2) return [...unique, "#a99fff"];
+  if (unique.length === 1) return [...unique, "#111723", "#a99fff"];
+  return ["#111723", "#3dd6f5", "#a99fff"];
 }
 
 function normalizeChoice(value, allowed, fallback) {

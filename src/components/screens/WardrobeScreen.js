@@ -525,13 +525,13 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                             style={{ width: '100%', height: '100%', maxHeight: '340px', objectFit: 'contain', display: 'block', opacity: isDragTarget ? 0.4 : 1, transition: 'opacity 160ms ease-out' }}
                           />
                           {isDragTarget && (
-                            <div className="flex-col flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(0,210,200,0.06)', pointerEvents: 'none' }}>
+                            <div className="flex-col flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--cyan-rgb), 0.06)', pointerEvents: 'none' }}>
                               <ImagePlus size={24} style={{ color: 'var(--cyan)' }} />
                               <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--cyan)' }}>Drop to replace</span>
                             </div>
                           )}
                           {isThisUploading && (
-                            <div className="flex-center" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }}>
+                            <div className="flex-center" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.5)' }}>
                               <Loader2 size={24} className="spin" style={{ color: 'var(--cyan)' }} />
                             </div>
                           )}
@@ -544,7 +544,7 @@ export default function WardrobeScreen({ onNavigate, projectId, projectData = {}
                         {...dragHandlers}
                         disabled={isUploading}
                         style={{
-                          background: isDragTarget ? 'rgba(0,210,200,0.04)' : 'var(--bg-deep)',
+                          background: isDragTarget ? 'rgba(var(--cyan-rgb), 0.04)' : 'var(--bg-deep)',
                           boxShadow: 'var(--neo-inset)',
                           border: isDragTarget ? '1.5px dashed var(--cyan-border)' : '1.5px dashed var(--border-mid)',
                           borderRadius: 'var(--radius)',

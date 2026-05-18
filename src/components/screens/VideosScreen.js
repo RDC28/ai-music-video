@@ -621,10 +621,10 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     await onDataUpdate({
       shot_list: shots,
       videos_approved: true,
-      current_step: 11,
+      current_step: 10,
     });
     setIsApproving(false);
-    onNavigate(11);
+    onNavigate(10);
   };
 
   const handleDownload = (shot, index) => {
@@ -640,39 +640,38 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   const failedCount = shots.filter(shot => !shot.video_url && shot.video_error).length;
 
   return (
-    <div className="screen active screen-row" id="s10">
-
-      {/* LEFT PANEL */}
-      <div className="layout-main">
+    <div
+      className="screen active"
+      id="s9"
+      style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100%', overflow: 'hidden', background: 'var(--bg)' }}
+    >
+      {/* ── Main content column ── */}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
         {/* Header */}
-        <div className="panel-header" style={{ flexWrap: 'wrap' }}>
-          <div className="panel-header-left">
-            <div className="sidebar-header-kicker">▪ Clips · Render</div>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '30px', fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--text)', margin: '0 0 6px', lineHeight: 1.1 }}>
-              Bring frames to life.
-            </h2>
-            <div className="panel-meta-label">
-              {shots.length
-                ? `${String(generatedCount).padStart(2, '0')} / ${String(shots.length).padStart(2, '0')} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
-                : 'Create and review video clips for each shot.'}
+        <div className="panel-header clips-header">
+          <div className="clips-header-top">
+            <div className="clips-header-copy">
+              <div className="sidebar-header-kicker">▪ Clips · Render</div>
+              <h2 className="clips-screen-title">Bring frames to life.</h2>
+              <div className="panel-meta-label">
+                {shots.length
+                  ? `${String(generatedCount).padStart(2, '0')} / ${String(shots.length).padStart(2, '0')} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
+                  : 'Create and review video clips for each shot.'}
+              </div>
+              <div className="clips-mode-tags">
+                <span className="tag-badge tag-teal">◇ Standard clips</span>
+                <span className="tag-badge tag-outline">○ Muted · song sync</span>
+              </div>
             </div>
-            <div className="flex-row gap-8" style={{ marginTop: '8px' }}>
-              <span className="tag-badge tag-teal">◇ Standard clips</span>
-              <span className="tag-badge tag-outline">○ Muted · song sync</span>
-            </div>
-            {queueSummary && <p className="queue-msg" style={{ marginTop: '6px', marginBottom: 0 }}>{queueSummary}</p>}
-            {generationError && <p className="queue-msg queue-msg--error" style={{ marginTop: '6px', marginBottom: 0 }}>{generationError}</p>}
-          </div>
 
-          <div className="panel-header-right">
-            <select className="select-model" style={{ width: '176px' }} value={modelDraft} onChange={(event) => handleModelDraftChange(event.target.value)} title="Video model">
-              {VIDEO_GENERATION_MODELS.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <div className="flex-row gap-8">
-              <button className="btn-teal" onClick={handleGenerateRemaining} disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}>
+            <div className="clips-header-actions">
+              <select className="select-model" style={{ width: '11rem' }} value={modelDraft} onChange={(event) => handleModelDraftChange(event.target.value)} title="Video model">
+                {VIDEO_GENERATION_MODELS.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <button className="btn-primary" onClick={handleGenerateRemaining} disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}>
                 {isGeneratingAll ? (
                   <><Loader2 size={14} className="spin" /> Generating {generatingIndex !== null ? `${generatingIndex + 1}/${shots.length}` : 'Videos'}</>
                 ) : (
@@ -682,17 +681,22 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
               <button className="btn-outline" onClick={handleGenerateAll} disabled={!shots.length || isGeneratingAll || generatingIndex !== null} title="Regenerate every shot, including completed videos">
                 <RotateCcw size={14} /> Regenerate All
               </button>
-              <button className="btn-teal" onClick={handleApproveAll} disabled={isApproving}>
+              <button className="btn-confirm" onClick={handleApproveAll} disabled={isApproving}>
                 {isApproving ? 'Saving...' : <><Check size={14} /> Approve All</>}
               </button>
             </div>
           </div>
+
+          <div className="clips-header-status">
+            {queueSummary && <p className="queue-msg">{queueSummary}</p>}
+            {generationError && <p className="queue-msg queue-msg--error">{generationError}</p>}
+          </div>
         </div>
 
-        {/* Video Gallery */}
-        <div id="vidList" className="video-gallery">
+        {/* Gallery — flex:1 + overflow-y:auto fills remaining height, width follows parent */}
+        <div id="vidList" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '1rem 1.5rem 3.5rem' }}>
           {shots.length > 0 ? (
-            <div className="video-gallery-grid">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(22rem, 1fr))', gap: '1rem', alignContent: 'start', width: '100%' }}>
               {shots.map((shot, i) => (
                 <div
                   key={`${shot.n}-${i}`}
@@ -704,7 +708,8 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEditor(i); }
                   }}
                 >
-                  <div className="video-gallery-frame">
+                  {/* Frame — aspect ratio drives card height */}
+                  <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: 'var(--ink-950)', overflow: 'hidden' }}>
                     {shot.video_url ? (
                       <video src={shot.video_url} poster={shot.image_url || undefined} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     ) : shot.image_url ? (
@@ -713,38 +718,38 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                       <canvas ref={(el) => (canvasRefs.current[i] = el)} width={640} height={360} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     )}
 
-                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, transparent 40%, rgba(0,0,0,0.8) 100%)', pointerEvents: 'none' }} />
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(var(--ink-950-rgb), 0.1) 0%, transparent 40%, rgba(var(--ink-950-rgb), 0.8) 100%)', pointerEvents: 'none' }} />
 
-                    <div style={{ position: 'absolute', left: '12px', right: '12px', bottom: '10px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+                    <div style={{ position: 'absolute', left: '0.75rem', right: '0.75rem', bottom: '0.625rem', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 1px 8px rgba(0,0,0,0.9)' }}>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.875rem', fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 1px 8px rgba(var(--ink-950-rgb), 0.9)' }}>
                           {i + 1}. {shot.n || shot.title || `Shot ${i + 1}`}
                         </div>
-                        <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.65)', marginTop: '2px' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'rgba(var(--cyan-300-rgb), 0.78)', marginTop: '0.125rem' }}>
                           {shot.video_url ? 'Clip ready' : shot.video_error ? 'Try again' : 'Ready to generate'}
                         </div>
                       </div>
-                      <div className="flex-center" style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', flexShrink: 0 }}>
-                        <Play size={10} fill="white" />
+                      <div className="flex-center" style={{ width: '1.75rem', height: '1.75rem', borderRadius: '50%', background: 'rgba(var(--ink-950-rgb), 0.72)', border: '1px solid rgba(var(--cyan-300-rgb), 0.28)', color: 'var(--text)', flexShrink: 0 }}>
+                        <Play size={11} fill="var(--text)" />
                       </div>
                     </div>
 
                     <button
                       type="button"
                       onClick={(event) => { event.stopPropagation(); openEditor(i); }}
-                      style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.65)', border: editModalIndex === i ? '1px solid var(--cyan-border)' : '1px solid rgba(255,255,255,0.2)', borderRadius: 'var(--radius)', padding: '5px 9px', color: editModalIndex === i ? 'var(--cyan)' : '#fff', fontSize: '10px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)' }}
+                      style={{ position: 'absolute', top: '0.625rem', right: '0.625rem', background: editModalIndex === i ? 'rgba(var(--cyan-rgb), 0.24)' : 'rgba(var(--ink-950-rgb), 0.78)', border: editModalIndex === i ? '1px solid rgba(var(--cyan-rgb), 0.64)' : '1px solid rgba(var(--cyan-300-rgb), 0.28)', borderRadius: 'var(--radius)', padding: '0.375rem 0.625rem', color: editModalIndex === i ? 'var(--text)' : 'var(--text-soft)', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.01em', cursor: 'pointer', fontFamily: 'var(--font-body)', boxShadow: '0 2px 10px rgba(var(--ink-950-rgb), 0.4)' }}
                     >
                       {editModalIndex === i ? 'Editing' : shot.video_url ? 'Edit' : shot.video_error ? 'Retry' : 'Generate'}
                     </button>
 
                     {generatingIndex === i && (
-                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', color: 'var(--cyan)', fontSize: '11px', fontWeight: 700 }}>
+                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.7)', color: 'var(--cyan)', fontSize: '0.75rem', fontWeight: 700 }}>
                         <Loader2 size={14} className="spin" /> Generating...
                       </div>
                     )}
 
                     {!shot.video_url && shot.video_error && generatingIndex !== i && (
-                      <div className="flex-row gap-6" style={{ position: 'absolute', left: '10px', top: '10px', background: 'rgba(60,0,0,0.8)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: '999px', padding: '4px 8px', alignItems: 'center', color: 'var(--error)', fontSize: '10px', fontWeight: 700 }}>
+                      <div className="flex-row gap-6" style={{ position: 'absolute', left: '0.625rem', top: '0.625rem', background: 'rgba(var(--violet-rgb), 0.8)', border: '1px solid rgba(var(--violet-rgb), 0.3)', borderRadius: '62.5rem', padding: '0.25rem 0.5rem', alignItems: 'center', color: 'var(--error)', fontSize: '0.6875rem', fontWeight: 700 }}>
                         <AlertTriangle size={10} /> Retry
                       </div>
                     )}
@@ -753,27 +758,37 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
               ))}
             </div>
           ) : (
-            <div className="flex-col flex-center gap-16" style={{ padding: '80px 40px' }}>
-              <div className="icon-box-lg" style={{ width: '52px', height: '52px' }}>
+            <div className="flex-col flex-center gap-16" style={{ padding: '5rem 2.5rem' }}>
+              <div className="icon-box-lg" style={{ width: '3.25rem', height: '3.25rem' }}>
                 <Video size={22} />
               </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', textAlign: 'center' }}>
                 No shots to display. Please add shots in the Shot List step first.
               </div>
-              <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '12px' }}>Back to Shots</button>
+              <button className="btn-outline" onClick={() => onNavigate(8)}>Back to Shots</button>
             </div>
           )}
         </div>
       </div>
 
-      {/* RIGHT PANEL — Edit panel */}
-      {editModalIndex !== null && selectedShot && (
-        <div className="edit-side-panel" style={{ animation: 'slideInRight 0.22s cubic-bezier(0.2,0,0,1)' }}>
+      {/* ── Edit panel (right) — always mounted so width can transition smoothly ── */}
+      <div
+        style={{
+          flexShrink: 0,
+          width: editModalIndex !== null ? '27.5rem' : '0rem',
+          transition: 'width 0.32s cubic-bezier(0.2, 0, 0, 1)',
+          overflow: 'hidden',
+          height: '100%',
+        }}
+      >
+        <div className="edit-side-panel clip-edit-panel">
+          {editModalIndex !== null && selectedShot && (
+          <div style={{ animation: 'editPanelContentIn 0.22s 0.18s cubic-bezier(0.2,0,0,1) both' }}>
 
-          <div className="flex-between" style={{ marginBottom: '20px' }}>
+          <div className="flex-between" style={{ marginBottom: '1.25rem' }}>
             <div>
               <div className="sidebar-header-kicker">▪ Edit Clip</div>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', margin: 0 }}>Clip.</h3>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', margin: 0 }}>Clip.</h3>
             </div>
             <button className="modal-close-btn" onClick={() => setEditModalIndex(null)} style={{ borderRadius: '50%' }}>
               <X size={13} />
@@ -784,7 +799,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
 
             {/* Current clip preview */}
             <div>
-              <div className="panel-meta-label" style={{ marginBottom: '6px' }}>Current</div>
+              <div className="panel-meta-label" style={{ marginBottom: '0.375rem' }}>Current</div>
               <div className="panel-inset" style={{ aspectRatio: '16/9', padding: 0, flex: 'none', overflow: 'hidden', position: 'relative' }}>
                 {selectedShot.video_url ? (
                   <video src={selectedShot.video_url} poster={selectedShot.image_url || undefined} controls muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -795,14 +810,14 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 )}
                 {!selectedShot.video_url && (
                   <div className="flex-center" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-                    <span style={{ background: 'rgba(0,0,0,0.6)', padding: '6px 10px', borderRadius: '6px', fontSize: '10px', fontWeight: 700, color: 'var(--cyan)' }}>
+                    <span style={{ background: 'rgba(var(--ink-950-rgb), 0.6)', padding: '0.375rem 0.625rem', borderRadius: '0.375rem', fontSize: '0.6875rem', fontWeight: 700, color: 'var(--cyan)' }}>
                       {selectedShot.image_url ? 'Source image ready' : 'Not generated yet'}
                     </span>
                   </div>
                 )}
               </div>
               {!selectedShot.video_url && selectedShot.video_error && (
-                <div style={{ marginTop: '8px', color: 'var(--error)', fontSize: '12px', lineHeight: 1.45 }}>
+                <div style={{ marginTop: '0.5rem', color: 'var(--error)', fontSize: '0.8125rem', lineHeight: 1.45 }}>
                   {selectedShot.video_error.message}
                 </div>
               )}
@@ -811,7 +826,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
             <div style={{ height: '1px', background: 'var(--border)' }} />
             <div className="replace-heading">Replace With</div>
 
-            {/* Section 1: Upload */}
+            {/* Upload */}
             <div>
               <div className="edit-section-title">1. Upload Your Own</div>
               <input ref={fileInputRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/*" onChange={handleUploadOwn} style={{ display: 'none' }} />
@@ -824,15 +839,15 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 onDrop={handleVideoDrop}
                 disabled={isUploading || generatingIndex !== null}
                 style={{
-                  background: isDraggingVideo ? 'rgba(0,210,200,0.04)' : 'var(--bg-deep)',
+                  background: isDraggingVideo ? 'rgba(var(--cyan-rgb), 0.04)' : 'var(--bg-deep)',
                   boxShadow: 'var(--neo-inset)',
                   border: isDraggingVideo ? '1.5px dashed var(--cyan-border)' : '1.5px dashed var(--border-mid)',
                   borderRadius: 'var(--radius)',
-                  padding: '18px',
+                  padding: '1.125rem',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '8px',
+                  gap: '0.5rem',
                   width: '100%',
                   cursor: isUploading || generatingIndex !== null ? 'wait' : 'pointer',
                   opacity: isUploading || generatingIndex !== null ? 0.55 : 1,
@@ -845,13 +860,13 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                   ? <Loader2 size={20} color="var(--cyan)" className="spin" />
                   : <Upload size={20} color={generatingIndex !== null ? 'var(--text-muted)' : 'var(--cyan)'} />
                 }
-                <span style={{ fontSize: '12px', fontWeight: 600, fontFamily: 'var(--font-body)' }}>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 650, fontFamily: 'var(--font-body)' }}>
                   {isUploading ? 'Uploading...' : 'Browse Files'}
                 </span>
               </button>
             </div>
 
-            {/* Section 2: Generate */}
+            {/* Generate */}
             <div>
               <div className="edit-section-title">2. Generate with Prompt</div>
               <textarea
@@ -860,16 +875,16 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 onChange={(e) => setPromptDraft(e.target.value)}
                 onFocus={(e) => { e.target.style.borderColor = 'var(--cyan)'; }}
                 onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
-                style={{ minHeight: '120px', fontSize: '13px', padding: '12px', lineHeight: 1.45, transition: 'border-color 0.15s' }}
+                style={{ minHeight: '7.5rem', fontSize: '0.8125rem', padding: '0.75rem', lineHeight: 1.45, transition: 'border-color 0.15s' }}
               />
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 96px', gap: '8px', marginTop: '8px' }}>
-                <select className="select-std" value={modelDraft} onChange={(event) => handleModelDraftChange(event.target.value)} title="Video model" style={{ height: '38px', padding: '8px 10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 6rem', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <select className="select-std" value={modelDraft} onChange={(event) => handleModelDraftChange(event.target.value)} title="Video model" style={{ height: '2.375rem', padding: '0.5rem 0.625rem' }}>
                   {VIDEO_GENERATION_MODELS.map(option => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
-                <select className="select-std" value={durationDraft} onChange={(e) => setDurationDraft(e.target.value)} style={{ height: '38px', padding: '8px 10px' }}>
+                <select className="select-std" value={durationDraft} onChange={(e) => setDurationDraft(e.target.value)} style={{ height: '2.375rem', padding: '0.5rem 0.625rem' }}>
                   {durationOptions.map(seconds => (
                     <option key={seconds} value={String(seconds)}>{seconds}s</option>
                   ))}
@@ -898,8 +913,10 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
               )}
             </div>
           </div>
+          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

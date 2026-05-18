@@ -10,12 +10,12 @@ import { modalOverlay, modalContent, listItemStagger, listItem } from '@/lib/mot
 import { Plus, X, Film, Clock } from 'lucide-react';
 
 const PROJECT_COLORS = [
-  ['#0a1628', '#0f2240'],
-  ['#0d1a0d', '#162916'],
-  ['#1a0d28', '#28144a'],
-  ['#1a1a0a', '#2a2a10'],
-  ['#0d1a28', '#102840'],
-  ['#1a0d0d', '#2a1414'],
+  ['var(--ink-900)', 'var(--ink-800)'],
+  ['var(--ink-950)', 'var(--ink-800)'],
+  ['var(--violet-500)', 'var(--ink-800)'],
+  ['var(--ink-800)', 'var(--ink-900)'],
+  ['var(--ink-900)', 'var(--violet-500)'],
+  ['var(--ink-950)', 'var(--violet-400)'],
 ];
 
 export default function DashboardScreen() {
@@ -27,6 +27,12 @@ export default function DashboardScreen() {
   const [userName, setUserName]               = useState('');
   const supabase                              = useMemo(() => createClient(), []);
   const router                                = useRouter();
+  const projectGridStyle = useMemo(() => ({
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+    gap: '18px',
+    alignItems: 'start',
+  }), []);
 
   const fetchProjects = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -42,6 +48,7 @@ export default function DashboardScreen() {
     setIsLoading(false);
   }, [supabase]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void fetchProjects(); }, [fetchProjects]);
 
   const handleDelete = async (e, projectId) => {
@@ -86,7 +93,7 @@ export default function DashboardScreen() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
       <DashboardNav />
 
-      <main style={{ flex: 1, padding: '48px 40px 80px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+      <main style={{ flex: 1, padding: '48px 40px 80px', maxWidth: '1460px', margin: '0 auto', width: '100%' }}>
 
         {/* Asymmetric hero — title left, action right but offset down */}
         <header style={{
@@ -99,7 +106,7 @@ export default function DashboardScreen() {
           <div>
             <div style={{
               fontFamily: 'var(--font-mono)',
-              fontSize: '10px',
+              fontSize: '11px',
               fontWeight: '700',
               letterSpacing: '0.16em',
               textTransform: 'uppercase',
@@ -121,8 +128,8 @@ export default function DashboardScreen() {
             </h1>
             <p style={{
               fontFamily: 'var(--font-body)',
-              fontSize: '14px',
-              color: 'var(--text-muted)',
+              fontSize: '14.5px',
+              color: 'var(--text-soft)',
               lineHeight: 1.65,
               maxWidth: '460px',
             }}>
@@ -133,6 +140,7 @@ export default function DashboardScreen() {
           {/* New project button — offset lower for asymmetry */}
           <div style={{ paddingTop: '48px' }}>
             <button
+              className="btn-primary"
               onClick={() => setShowModal(true)}
               disabled={isCreating}
               style={{
@@ -140,16 +148,6 @@ export default function DashboardScreen() {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '10px 18px',
-                background: 'var(--surface-2)',
-                border: '1px solid var(--cyan-border)',
-                borderRadius: 'var(--radius)',
-                boxShadow: 'var(--neo-raised)',
-                color: 'var(--cyan)',
-                fontFamily: 'var(--font-body)',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'box-shadow 160ms ease-out, border-color 160ms ease-out',
               }}
             >
               <Plus size={14} />
@@ -169,11 +167,11 @@ export default function DashboardScreen() {
         }}>
           <span style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: '10px',
+            fontSize: '11px',
             fontWeight: '700',
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: 'var(--text-muted)',
+            color: 'var(--text-soft)',
           }}>
             {isLoading
               ? 'Loading…'
@@ -181,8 +179,8 @@ export default function DashboardScreen() {
           </span>
           <span style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: '10px',
-            color: 'var(--text-muted)',
+            fontSize: '11px',
+            color: 'var(--text-soft)',
             letterSpacing: '0.08em',
           }}>
             Library
@@ -191,15 +189,13 @@ export default function DashboardScreen() {
 
         {/* Skeleton loaders */}
         {isLoading && (
-          <div style={{ columns: 3, columnGap: '18px' }}>
+          <div style={projectGridStyle}>
             {[180, 220, 160, 200, 180].map((h, i) => (
               <div key={i} style={{
                 height: `${h}px`,
                 background: 'var(--surface-2)',
                 boxShadow: 'var(--neo-flat)',
                 borderRadius: 'var(--radius-lg)',
-                marginBottom: '18px',
-                breakInside: 'avoid',
                 opacity: 0.5,
                 animation: `pulse 1.8s ease-in-out ${i * 120}ms infinite`,
               }} />
@@ -213,7 +209,7 @@ export default function DashboardScreen() {
             variants={listItemStagger}
             initial="hidden"
             animate="visible"
-            style={{ columns: 3, columnGap: '18px' }}
+            style={projectGridStyle}
           >
             {projects.map((project, idx) => {
               const [bg1, bg2] = PROJECT_COLORS[idx % PROJECT_COLORS.length];
@@ -221,7 +217,7 @@ export default function DashboardScreen() {
                 <motion.div
                   key={project.id}
                   variants={listItem}
-                  style={{ breakInside: 'avoid', marginBottom: '18px', position: 'relative' }}
+                  style={{ position: 'relative' }}
                   onMouseEnter={e => {
                     const btn = e.currentTarget.querySelector('[data-delete]');
                     if (btn) btn.style.opacity = '1';
@@ -263,7 +259,7 @@ export default function DashboardScreen() {
                         <div style={{
                           position: 'absolute',
                           inset: 0,
-                          backgroundImage: 'radial-gradient(circle, rgba(103,232,249,0.06) 1px, transparent 1px)',
+                          backgroundImage: 'radial-gradient(circle, rgba(var(--cyan-rgb), 0.06) 1px, transparent 1px)',
                           backgroundSize: '20px 20px',
                         }} />
                         <div style={{
@@ -274,7 +270,7 @@ export default function DashboardScreen() {
                           alignItems: 'center',
                           gap: '5px',
                           fontFamily: 'var(--font-mono)',
-                          fontSize: '9px',
+                          fontSize: '11px',
                           fontWeight: '700',
                           letterSpacing: '0.1em',
                           textTransform: 'uppercase',
@@ -286,7 +282,7 @@ export default function DashboardScreen() {
                           }} />
                           {project.status === 'completed' ? 'Complete' : 'In progress'}
                         </div>
-                        <Film size={20} color="rgba(103,232,249,0.12)" style={{
+                        <Film size={20} color="rgba(var(--cyan-rgb), 0.12)" style={{
                           position: 'absolute', top: '12px', right: '12px',
                         }} />
                       </div>
@@ -309,8 +305,8 @@ export default function DashboardScreen() {
                           alignItems: 'center',
                           gap: '5px',
                           fontFamily: 'var(--font-mono)',
-                          fontSize: '10px',
-                          color: 'var(--text-muted)',
+                          fontSize: '11px',
+                          color: 'var(--text-soft)',
                           letterSpacing: '0.04em',
                         }}>
                           <Clock size={10} />
@@ -333,9 +329,9 @@ export default function DashboardScreen() {
                       width: '26px',
                       height: '26px',
                       borderRadius: '50%',
-                      background: 'rgba(248,113,113,0.9)',
+                      background: 'rgba(var(--violet-rgb), 0.9)',
                       border: 'none',
-                      color: '#fff',
+                      color: 'var(--text)',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -392,8 +388,8 @@ export default function DashboardScreen() {
                 Nothing here yet.
               </div>
               <p style={{
-                fontSize: '13px',
-                color: 'var(--text-muted)',
+                fontSize: '14px',
+                color: 'var(--text-soft)',
                 lineHeight: 1.6,
                 maxWidth: '340px',
               }}>
@@ -401,21 +397,13 @@ export default function DashboardScreen() {
               </p>
             </div>
             <button
+              className="btn-primary"
               onClick={() => setShowModal(true)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
                 padding: '10px 20px',
-                background: 'var(--surface)',
-                border: '1px solid var(--cyan-border)',
-                borderRadius: 'var(--radius)',
-                boxShadow: 'var(--neo-raised)',
-                color: 'var(--cyan)',
-                fontFamily: 'var(--font-body)',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'pointer',
               }}
             >
               <Plus size={14} />
@@ -438,7 +426,7 @@ export default function DashboardScreen() {
             style={{
               position: 'fixed',
               inset: 0,
-              background: 'rgba(8,8,10,0.7)',
+              background: 'rgba(var(--ink-950-rgb), 0.7)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -472,7 +460,7 @@ export default function DashboardScreen() {
                   background: 'var(--surface)',
                   border: '1px solid var(--border)',
                   boxShadow: 'var(--neo-flat)',
-                  color: 'var(--text-muted)',
+                  color: 'var(--text-soft)',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -484,7 +472,7 @@ export default function DashboardScreen() {
 
               <div style={{
                 fontFamily: 'var(--font-mono)',
-                fontSize: '10px',
+                fontSize: '11px',
                 fontWeight: '700',
                 letterSpacing: '0.14em',
                 textTransform: 'uppercase',
@@ -508,9 +496,9 @@ export default function DashboardScreen() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <label style={{
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '10px',
+                  fontSize: '11px',
                   fontWeight: '700',
-                  color: 'var(--text-muted)',
+                  color: 'var(--text-soft)',
                   letterSpacing: '0.14em',
                   textTransform: 'uppercase',
                   display: 'block',
@@ -544,19 +532,12 @@ export default function DashboardScreen() {
                   onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
                 />
                 <button
+                  className="btn-primary"
                   onClick={startNewProject}
                   disabled={isCreating || !newProjectTitle.trim()}
                   style={{
                     padding: '13px',
                     width: '100%',
-                    background: 'var(--surface)',
-                    border: '1px solid var(--cyan-border)',
-                    borderRadius: 'var(--radius)',
-                    boxShadow: 'var(--neo-raised)',
-                    color: 'var(--cyan)',
-                    fontFamily: 'var(--font-body)',
-                    fontSize: '14px',
-                    fontWeight: '600',
                     cursor: isCreating || !newProjectTitle.trim() ? 'not-allowed' : 'pointer',
                     opacity: isCreating || !newProjectTitle.trim() ? 0.5 : 1,
                     transition: 'opacity 160ms ease-out',

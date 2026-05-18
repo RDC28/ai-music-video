@@ -68,9 +68,15 @@ Desktop.ini
 !.env.example
 
 # Project specific
-/graphify-out/
 /scratch/
 pass.txt
 concept_ui.pdf
 music_video_app_full_shell.html
 test-gemini-api.js
+
+# Obsidian vault
+obsidian/.obsidian/workspace.json
+obsidian/.obsidian/workspace-mobile.json
+obsidian/.obsidian/cache
+obsidian/.obsidian/plugins
+obsidian/.trash

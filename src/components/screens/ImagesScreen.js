@@ -651,12 +651,12 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                       <canvas ref={(el) => (canvasRefs.current[i] = el)} width={220} height={128} style={{ display: 'block' }} />
                     )}
                     {generatingIndex === i && (
-                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', color: 'var(--cyan)', fontSize: '11px', fontWeight: 700 }}>
+                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.7)', color: 'var(--cyan)', fontSize: '11px', fontWeight: 700 }}>
                         <Loader2 size={13} className="spin" /> Generating...
                       </div>
                     )}
                     {!shot.image_url && shot.image_error && generatingIndex !== i && (
-                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', color: 'var(--error)', fontSize: '11px', fontWeight: 700 }}>
+                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.7)', color: 'var(--error)', fontSize: '11px', fontWeight: 700 }}>
                         Try again
                       </div>
                     )}
@@ -697,7 +697,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
             animate="visible"
             exit="exit"
             className="flex-col scroll-y"
-            style={{ position: 'sticky', top: 0, width: '440px', height: '100%', background: 'var(--surface-2)', boxShadow: '-4px 0 20px rgba(0,0,0,0.4)', borderLeft: '1px solid var(--border-mid)', padding: '24px', flexShrink: 0 }}
+            style={{ position: 'sticky', top: 0, width: '440px', height: '100%', background: 'var(--surface-2)', boxShadow: '-4px 0 20px rgba(var(--ink-950-rgb), 0.4)', borderLeft: '1px solid var(--border-mid)', padding: '24px', flexShrink: 0 }}
           >
             {/* Panel header */}
             <div className="flex-between" style={{ marginBottom: '20px' }}>

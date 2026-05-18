@@ -61,9 +61,9 @@ export default function PaymentScreen() {
                   padding: '48px 32px',
                   textAlign: 'center',
                   background:
-                    'radial-gradient(ellipse 70% 60% at 50% 30%, rgba(0,229,255,0.06), transparent 64%), rgba(255,255,255,0.022)',
+                    'radial-gradient(ellipse 70% 60% at 50% 30%, rgba(var(--cyan-rgb), 0.06), transparent 64%), rgba(var(--cyan-300-rgb), 0.022)',
                   borderRadius: 'var(--radius-xl)',
-                  border: '1px dashed rgba(0,229,255,0.18)',
+                  border: '1px dashed rgba(var(--cyan-rgb), 0.18)',
                 }}
               >
                 <div
@@ -75,9 +75,9 @@ export default function PaymentScreen() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: 'linear-gradient(135deg, rgba(0,229,255,0.16), rgba(0,184,212,0.04))',
-                    border: '1px solid rgba(0,229,255,0.28)',
-                    boxShadow: '0 14px 36px rgba(0,229,255,0.18), inset 0 1px 0 rgba(255,255,255,0.1)',
+                    background: 'linear-gradient(135deg, rgba(var(--cyan-rgb), 0.16), rgba(var(--cyan-rgb), 0.04))',
+                    border: '1px solid rgba(var(--cyan-rgb), 0.28)',
+                    boxShadow: '0 14px 36px rgba(var(--cyan-rgb), 0.18), inset 0 1px 0 rgba(var(--cyan-300-rgb), 0.1)',
                     color: 'var(--orange)',
                   }}
                 >

@@ -8,9 +8,9 @@ import ProgressBar from '../ProgressBar';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MODAL_BTN = {
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  color: '#bbb',
+  background: 'rgba(var(--cyan-300-rgb), 0.06)',
+  border: '1px solid rgba(var(--cyan-300-rgb), 0.08)',
+  color: 'var(--text-soft)',
   padding: '7px 12px',
   borderRadius: '6px',
   fontSize: '11px',
@@ -522,24 +522,24 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.97)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(var(--ink-950-rgb), 0.97)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px' }}
       onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
     >
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <span style={{ color: '#444', fontSize: '10px', fontWeight: 700, letterSpacing: '0.12em', marginRight: '4px' }}>{label?.toUpperCase()}</span>
-        <span style={{ color: '#333', fontSize: '11px', marginRight: '4px' }}>Scroll to zoom · Drag to pan</span>
-        <div style={{ width: '1px', height: '18px', background: '#222' }} />
+        <span style={{ color: 'var(--ink-800)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.12em', marginRight: '4px' }}>{label?.toUpperCase()}</span>
+        <span style={{ color: 'var(--ink-800)', fontSize: '11px', marginRight: '4px' }}>Scroll to zoom · Drag to pan</span>
+        <div style={{ width: '1px', height: '18px', background: 'var(--ink-800)' }} />
         {recropUrl && (
           viewingRecropSource ? (
             <button onClick={openCurrentImage} style={MODAL_BTN}>View Image</button>
           ) : (
-            <button onClick={openRecropSource} style={{ ...MODAL_BTN, background: 'var(--teal)', color: '#000', border: '1px solid var(--teal)' }}>
+            <button onClick={openRecropSource} style={{ ...MODAL_BTN, background: 'var(--teal)', color: 'var(--ink-950)', border: '1px solid var(--teal)' }}>
               Re-crop
             </button>
           )
         )}
-        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={cropMode ? { ...MODAL_BTN, background: '#7C3AED', color: '#000', border: '1px solid #7C3AED' } : MODAL_BTN}>
+        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={cropMode ? { ...MODAL_BTN, background: 'var(--violet-500)', color: 'var(--ink-950)', border: '1px solid var(--violet-500)' } : MODAL_BTN}>
           {cropMode ? 'Draw New Selection' : 'Crop Mode'}
         </button>
         {canApply && showEditorLabel && (
@@ -548,27 +548,27 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
             onChange={e => setLabelInput(e.target.value)}
             placeholder="Label (e.g. AERIAL VIEW)"
             onClick={e => e.stopPropagation()}
-            style={{ ...MODAL_BTN, width: '160px', outline: 'none', caretColor: '#fff', background: 'rgba(255,255,255,0.04)', color: '#fff' }}
+            style={{ ...MODAL_BTN, width: '160px', outline: 'none', caretColor: 'var(--text)', background: 'rgba(var(--cyan-300-rgb), 0.04)', color: 'var(--text)' }}
           />
         )}
         {canApply && (
-          <button onClick={applyCrop} disabled={applying} style={{ ...MODAL_BTN, background: 'var(--orange)', color: '#000', border: 'none' }}>
+          <button onClick={applyCrop} disabled={applying} style={{ ...MODAL_BTN, background: 'var(--orange)', color: 'var(--ink-950)', border: 'none' }}>
             {applying ? 'Saving...' : 'Save Crop'}
           </button>
         )}
-        <div style={{ width: '1px', height: '18px', background: '#222' }} />
+        <div style={{ width: '1px', height: '18px', background: 'var(--ink-800)' }} />
         {onDelete && (
-          <button onClick={onDelete} style={{ ...MODAL_BTN, color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>
+          <button onClick={onDelete} style={{ ...MODAL_BTN, color: 'var(--violet-400)', border: '1px solid rgba(var(--violet-rgb), 0.3)' }}>
             Delete Image
           </button>
         )}
-        <button onClick={onClose} style={{ ...MODAL_BTN, color: '#bbb', border: '1px solid rgba(255,255,255,0.1)' }}>Close</button>
+        <button onClick={onClose} style={{ ...MODAL_BTN, color: 'var(--text-soft)', border: '1px solid rgba(var(--cyan-300-rgb), 0.1)' }}>Close</button>
       </div>
 
       {/* Viewport */}
       <div
         ref={containerRef}
-        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: '#0c0c0c', borderRadius: '12px', border: '1px solid var(--border-mid)', cursor: cropMode ? 'crosshair' : drag?.type === 'pan' ? 'grabbing' : 'grab' }}
+        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: 'var(--ink-950)', borderRadius: '12px', border: '1px solid var(--border-mid)', cursor: cropMode ? 'crosshair' : drag?.type === 'pan' ? 'grabbing' : 'grab' }}
         onMouseDown={onMouseDown}
         onWheel={onWheel}
       >
@@ -577,9 +577,9 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
           style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'center center', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
         />
         {cropBox && cropBox.w > 0 && (
-          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '1px solid #7C3AED', background: 'rgba(124,58,237,0.08)', pointerEvents: 'none', boxSizing: 'border-box' }} />
+          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '1px solid var(--violet-500)', background: 'rgba(var(--violet-rgb), 0.08)', pointerEvents: 'none', boxSizing: 'border-box' }} />
         )}
-        <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: '#2a2a2a', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
+        <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: 'var(--ink-800)', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
           {cropMode
             ? 'Drag to select the zone · Draw a new box to change selection'
             : 'Scroll to zoom · Drag to pan · Enable Crop Mode to select zone'}
@@ -1342,7 +1342,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
             )}
           </div>
 
-          <div style={{ padding: '24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ padding: '24px', borderTop: '1px solid rgba(var(--cyan-300-rgb), 0.05)' }}>
             <button
               onClick={handleContinueToWardrobe}
               disabled={busy}
@@ -1357,7 +1357,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         {/* Content Area */}
         <div className="main-content" style={{ background: 'var(--bg)' }}>
           {/* Header row with tabs */}
-          <div style={{ height: '64px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 24px', background: 'rgba(17,17,20,0.95)', backdropFilter: 'blur(12px)' }}>
+          <div style={{ height: '64px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 24px', background: 'rgba(var(--ink-900-rgb), 0.95)', backdropFilter: 'blur(12px)' }}>
             <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingRight: '20px', scrollbarWidth: 'none' }}>
               {displayedLocations.map((loc, i) => (
                 <button
@@ -1378,7 +1378,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                 >
                   {loc.name}
                   {(loc.isGeneratingReference || loc.id === 'generating') && (
-                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--teal)', animation: 'pulse 1.5s infinite', boxShadow: '0 0 10px rgba(124,58,237,0.7)' }} />
+                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--teal)', animation: 'pulse 1.5s infinite', boxShadow: '0 0 10px rgba(var(--violet-rgb), 0.7)' }} />
                   )}
                 </button>
               ))}
@@ -1391,8 +1391,8 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                     height: '32px',
                     flexShrink: 0,
                     color: 'var(--orange)',
-                    background: 'rgba(124,58,237,0.06)',
-                    borderColor: 'rgba(124,58,237,0.22)',
+                    background: 'rgba(var(--violet-rgb), 0.06)',
+                    borderColor: 'rgba(var(--violet-rgb), 0.22)',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
@@ -1422,10 +1422,10 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                         fontSize: '9.5px',
                         fontWeight: 500,
                         color: activeCategory === 'project' ? 'var(--teal)' : 'var(--orange)',
-                        background: activeCategory === 'project' ? 'rgba(124,58,237,0.1)' : 'rgba(124,58,237,0.1)',
+                        background: activeCategory === 'project' ? 'rgba(var(--violet-rgb), 0.1)' : 'rgba(var(--violet-rgb), 0.1)',
                         padding: '4px 10px',
                         borderRadius: '999px',
-                        border: `1px solid ${activeCategory === 'project' ? 'rgba(124,58,237,0.22)' : 'rgba(124,58,237,0.22)'}`,
+                        border: `1px solid ${activeCategory === 'project' ? 'rgba(var(--violet-rgb), 0.22)' : 'rgba(var(--violet-rgb), 0.22)'}`,
                         letterSpacing: '0.18em',
                       }}
                     >
@@ -1437,7 +1437,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                   {truncateLocationDescription(activeLoc?.description) || 'Select or add a location to get started.'}
                 </p>
                 {activeLoc?.warning && (
-                  <div style={{ marginTop: '10px', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '7px', padding: '7px 10px', fontSize: '11px', fontWeight: 600, maxWidth: '720px' }}>
+                  <div style={{ marginTop: '10px', color: 'var(--violet-400)', background: 'rgba(var(--violet-rgb), 0.08)', border: '1px solid rgba(var(--violet-rgb), 0.18)', borderRadius: '7px', padding: '7px 10px', fontSize: '11px', fontWeight: 600, maxWidth: '720px' }}>
                     {activeLoc.warning}
                   </div>
                 )}
@@ -1447,7 +1447,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <button onClick={handleAddHistoryToProject} className="btn-teal" style={{ fontSize: '11px', padding: '8px 14px' }}>Add to project</button>
                   <button onClick={() => { setEditName(activeLoc.name); setEditDesc(activeLoc.description || ''); setShowEditModal(true); }} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px' }}>Rename</button>
-                  <button onClick={handleDelete} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px', color: '#ef4444', border: '1px solid rgba(239,68,68,0.15)' }}>Delete from history</button>
+                  <button onClick={handleDelete} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px', color: 'var(--violet-400)', border: '1px solid rgba(var(--violet-rgb), 0.15)' }}>Delete from history</button>
                 </div>
               )}
               {!isGeneratingActive && activeLoc && activeCategory === 'project' && (
@@ -1456,7 +1456,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                     <button onClick={() => setZoomCropTarget({ locIdx: activeTab, imgIdx: null, url: activeLoc.sheetUrl, label: 'NEW VIEW', showLabelInput: true })} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px' }}>+ Add from Sheet</button>
                   )}
                   <button onClick={() => { setEditName(activeLoc.name); setEditDesc(activeLoc.description); setShowEditModal(true); }} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px' }}>Edit</button>
-                  <button onClick={handleDelete} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px', color: '#ef4444', border: '1px solid rgba(239,68,68,0.15)' }}>Delete</button>
+                  <button onClick={handleDelete} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px', color: 'var(--violet-400)', border: '1px solid rgba(var(--violet-rgb), 0.15)' }}>Delete</button>
                 </div>
               )}
             </div>
@@ -1497,16 +1497,16 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                     height: `${boardHeight}px`,
                     position: 'relative',
                     overflow: 'hidden',
-                    border: `${Math.max(2, 4 * boardScale)}px solid #1a1a1a`,
+                    border: `${Math.max(2, 4 * boardScale)}px solid var(--ink-800)`,
                     borderRadius: `${Math.max(6, 12 * boardScale)}px`,
-                    backgroundColor: '#050505',
-                    backgroundImage: 'radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)',
+                    backgroundColor: 'var(--ink-950)',
+                    backgroundImage: 'radial-gradient(rgba(var(--cyan-300-rgb), 0.04) 1px, transparent 1px)',
                     backgroundPosition: '0 0',
                     backgroundSize: `${Math.max(10, 20 * boardScale)}px ${Math.max(10, 20 * boardScale)}px`,
-                    boxShadow: '0 28px 80px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(255,255,255,0.02)',
+                    boxShadow: '0 28px 80px rgba(var(--ink-950-rgb), 0.8), inset 0 0 0 1px rgba(var(--cyan-300-rgb), 0.02)',
                     boxSizing: 'border-box',
                   }}>
-                    <div style={{ position: 'absolute', inset: `${18 * boardScale}px`, border: '1px solid rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
+                    <div style={{ position: 'absolute', inset: `${18 * boardScale}px`, border: '1px solid rgba(var(--cyan-300-rgb), 0.06)', pointerEvents: 'none' }} />
                     {boxes.map(item => {
                       const cardPadding = Math.max(1, 2 * boardScale);
                       return (
@@ -1526,9 +1526,9 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                             });
                           }}
                           style={{
-                          background: 'rgba(255,255,255,0.9)',
+                          background: 'rgba(var(--cyan-300-rgb), 0.9)',
                           borderRadius: `${Math.max(2, 3 * boardScale)}px`,
-                          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                          boxShadow: '0 8px 24px rgba(var(--ink-950-rgb), 0.5)',
                           overflow: 'hidden',
                           position: 'absolute',
                           left: `${item.x * boardScale}px`,
@@ -1549,7 +1549,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                                 key={item.src}
                                 src={item.src}
                                 alt={item.label}
-                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#f7f7f7' }}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: 'var(--cyan-300)' }}
                                 onLoad={e => {
                                   const ratio = e.currentTarget.naturalWidth / e.currentTarget.naturalHeight;
                                   setImgRatios(prev => prev[item.src] === ratio ? prev : { ...prev, [item.src]: ratio });
@@ -1568,7 +1568,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                                   if (e.key === 'Escape') setRenamingPanel(null);
                                 }}
                                 onClick={e => e.stopPropagation()}
-                                style={{ background: 'rgba(0,0,0,0.92)', border: '1px solid var(--teal)', color: '#fff', borderRadius: '4px', padding: '2px 7px', fontSize: '8px', fontWeight: 700, outline: 'none', width: '100px', maxWidth: '100%', letterSpacing: '0.05em' }}
+                                style={{ background: 'rgba(var(--ink-950-rgb), 0.92)', border: '1px solid var(--teal)', color: 'var(--text)', borderRadius: '4px', padding: '2px 7px', fontSize: '8px', fontWeight: 700, outline: 'none', width: '100px', maxWidth: '100%', letterSpacing: '0.05em' }}
                               />
                             ) : (
                               <div
@@ -1579,7 +1579,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                                   }
                                 }}
                                 title={locIdx >= 0 ? 'Click to rename' : ''}
-                                style={{ padding: '2px 7px', background: 'rgba(0,0,0,0.75)', borderRadius: '3px', fontSize: '8px', color: item.loading ? '#222' : '#ddd', backdropFilter: 'blur(8px)', fontWeight: 700, cursor: locIdx >= 0 ? 'text' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'var(--font-display)' }}
+                                style={{ padding: '2px 7px', background: 'rgba(var(--ink-950-rgb), 0.75)', borderRadius: '3px', fontSize: '8px', color: item.loading ? 'var(--ink-800)' : 'var(--text-soft)', backdropFilter: 'blur(8px)', fontWeight: 700, cursor: locIdx >= 0 ? 'text' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'var(--font-display)' }}
                               >
                                 {item.label.toUpperCase()}
                               </div>
@@ -1608,17 +1608,17 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       {showSheetCropModal && (
         <div className="modal-overlay">
           <div className="modal-panel" style={{ maxWidth: '560px', textAlign: 'center' }}>
-            <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: '0 0 12px' }}>Choose Crop Method</h3>
-            <p style={{ color: isProcessingSheet ? 'var(--cyan)' : '#666', fontSize: '13px', margin: '0 0 24px' }}>
+            <h3 style={{ color: 'var(--text)', fontSize: '20px', fontWeight: 600, margin: '0 0 12px' }}>Choose Crop Method</h3>
+            <p style={{ color: isProcessingSheet ? 'var(--cyan)' : 'var(--text-muted)', fontSize: '13px', margin: '0 0 24px' }}>
               {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Automatically detect and crop each view from your sheet.'}
             </p>
             {sheetWarning && (
-              <div style={{ marginBottom: '16px', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.18)', borderRadius: '10px', padding: '10px 12px', fontSize: '12px', lineHeight: 1.5, textAlign: 'left' }}>
+              <div style={{ marginBottom: '16px', color: 'var(--violet-400)', background: 'rgba(var(--violet-rgb), 0.08)', border: '1px solid rgba(var(--violet-rgb), 0.18)', borderRadius: '10px', padding: '10px 12px', fontSize: '12px', lineHeight: 1.5, textAlign: 'left' }}>
                 {sheetWarning}
               </div>
             )}
             {sheetPreviewUrl && (
-              <img src={sheetPreviewUrl} alt="Preview" style={{ width: '100%', height: '200px', objectFit: 'contain', background: '#050505', borderRadius: '12px', marginBottom: '24px', border: '1px solid rgba(255,255,255,0.05)' }} />
+              <img src={sheetPreviewUrl} alt="Preview" style={{ width: '100%', height: '200px', objectFit: 'contain', background: 'var(--ink-950)', borderRadius: '12px', marginBottom: '24px', border: '1px solid rgba(var(--cyan-300-rgb), 0.05)' }} />
             )}
             <div className="flex-row gap-12">
               <button
@@ -1641,7 +1641,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         <div className="modal-overlay">
           <div className="modal-panel" style={{ maxWidth: '500px' }}>
             <div className="modal-header">
-              <h3 style={{ color: '#fff', fontSize: '20px', fontWeight: 600, margin: 0 }}>Create New</h3>
+              <h3 style={{ color: 'var(--text)', fontSize: '20px', fontWeight: 600, margin: 0 }}>Create New</h3>
               <button className="modal-close-btn" onClick={() => setShowCreateModal(false)}>×</button>
             </div>
 
@@ -1659,13 +1659,13 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                 <label className="panel-meta-label" style={{ display: 'block', marginBottom: '10px' }}>REFERENCE IMAGE (OPTIONAL)</label>
                 <input type="file" ref={refFileInputRef} onChange={handleRefImageSelect} style={{ display: 'none' }} accept="image/*" />
                 {createRefImage ? (
-                  <div className="flex-row gap-12" style={{ padding: '10px', background: 'var(--bg-deep)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', alignItems: 'center' }}>
-                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: '#050505', borderRadius: '6px', flexShrink: 0 }} />
+                  <div className="flex-row gap-12" style={{ padding: '10px', background: 'var(--bg-deep)', border: '1px solid rgba(var(--cyan-300-rgb), 0.07)', borderRadius: '8px', alignItems: 'center' }}>
+                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: 'var(--ink-950)', borderRadius: '6px', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: '#bbb', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
-                      <div style={{ color: '#777', fontSize: '10px', marginTop: '2px' }}>Consistency will match this scene</div>
+                      <div style={{ color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '10px', marginTop: '2px' }}>Consistency will match this scene</div>
                     </div>
-                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '16px', cursor: 'pointer' }}>×</button>
+                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'transparent', border: 'none', color: 'var(--violet-400)', fontSize: '16px', cursor: 'pointer' }}>×</button>
                   </div>
                 ) : (
                   <button
@@ -1674,7 +1674,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                     onDragEnter={(e) => { e.preventDefault(); setIsDraggingRef(true); }}
                     onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingRef(false); }}
                     onDrop={handleRefDrop}
-                    style={{ width: '100%', padding: '12px', background: isDraggingRef ? 'rgba(0,210,200,0.06)' : 'rgba(255,255,255,0.04)', border: isDraggingRef ? '1px dashed var(--cyan-border)' : '1px dashed rgba(255,255,255,0.22)', borderRadius: '8px', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'border-color 120ms ease-out, background 120ms ease-out' }}>
+                    style={{ width: '100%', padding: '12px', background: isDraggingRef ? 'rgba(var(--cyan-rgb), 0.06)' : 'rgba(var(--cyan-300-rgb), 0.04)', border: isDraggingRef ? '1px dashed var(--cyan-border)' : '1px dashed rgba(var(--cyan-300-rgb), 0.22)', borderRadius: '8px', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'border-color 120ms ease-out, background 120ms ease-out' }}>
                     {isDraggingRef ? 'Drop image here' : 'Upload Reference View'}
                   </button>
                 )}
@@ -1701,7 +1701,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       {showEditModal && (
         <div className="modal-overlay">
           <div className="modal-panel" style={{ maxWidth: '460px' }}>
-            <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 600, margin: '0 0 24px' }}>
+            <h3 style={{ color: 'var(--text)', fontSize: '18px', fontWeight: 600, margin: '0 0 24px' }}>
               {activeCategory === 'history' ? 'Rename Location' : 'Edit Location'}
             </h3>
             <div className="flex-col gap-16">
@@ -1718,7 +1718,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                   setSheetReplaceTarget({ index: activeTab, name: (editName || activeLoc?.name || '').trim().toUpperCase(), description: editDesc.trim() });
                   setShowEditModal(false);
                   fileInputRef.current?.click();
-                }} style={{ padding: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: '8px', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                }} style={{ padding: '12px', background: 'rgba(var(--cyan-300-rgb), 0.04)', border: '1px solid rgba(var(--cyan-300-rgb), 0.14)', borderRadius: '8px', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
                   Upload New Location Sheet
                 </button>
               )}
@@ -1769,10 +1769,10 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       )}
 
       {busy && (
-        <div className="flex-row gap-16" style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: '#000', border: '1px solid var(--cyan)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', alignItems: 'center' }}>
+        <div className="flex-row gap-16" style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: 'var(--ink-950)', border: '1px solid var(--cyan)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(var(--ink-950-rgb), 0.5)', alignItems: 'center' }}>
           <Loader2 size={24} className="spin" style={{ color: 'var(--cyan)' }} />
           <div>
-            <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>
+            <div style={{ color: 'var(--text)', fontSize: '13px', fontWeight: 600 }}>
               {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : isLockingStyle ? 'Locking visual style...' : 'Creating references...'}
             </div>
             <div style={{ color: 'var(--cyan)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>

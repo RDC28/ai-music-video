@@ -4,12 +4,16 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-## graphify
+## obsidian-memory
 
-This project has a graphify knowledge graph at graphify-out/.
+This project uses Obsidian as the architecture and knowledge memory source at `obsidian/`.
 
 Rules:
-- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
-- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
-- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+- Before answering architecture or codebase questions, read:
+  - `obsidian/50_Engineering/Architecture.md`
+  - `obsidian/30_Resources/Codebase-Graph-Snapshot/Codebase Graph Snapshot - 2026-05-15.md`
+- For cross-module "how does X relate to Y" questions, prefer:
+  - architecture note links
+  - ADRs in `obsidian/50_Engineering/ADRs/`
+  - RFCs in `obsidian/50_Engineering/RFCs/`
+- After modifying code files, update `obsidian/50_Engineering/Architecture.md` if module boundaries, critical paths, or bridge utilities changed.

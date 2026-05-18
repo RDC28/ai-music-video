@@ -117,9 +117,9 @@ export default function ProfileScreen() {
                     fontStyle: 'italic',
                     fontWeight: 600,
                     fontSize: '32px',
-                    color: '#04060A',
+                    color: 'var(--ink-950)',
                     flexShrink: 0,
-                    boxShadow: '0 16px 40px rgba(0,229,255,0.32), inset 0 2px 0 rgba(255,255,255,0.4)',
+                    boxShadow: '0 16px 40px rgba(var(--cyan-rgb), 0.32), inset 0 2px 0 rgba(var(--cyan-300-rgb), 0.4)',
                     letterSpacing: '-0.025em',
                   }}
                 >
@@ -135,19 +135,19 @@ export default function ProfileScreen() {
                         onChange={(e) => setEditName(e.target.value)}
                         style={{
                           padding: '12px 16px',
-                          border: '1px solid rgba(0,229,255,0.5)',
+                          border: '1px solid rgba(var(--cyan-rgb), 0.5)',
                           borderRadius: 'var(--radius-sm)',
                           fontFamily: 'var(--font-display)',
                           fontStyle: 'italic',
                           fontSize: '20px',
                           fontWeight: 500,
                           outline: 'none',
-                          background: 'rgba(255,255,255,0.04)',
+                          background: 'rgba(var(--cyan-300-rgb), 0.04)',
                           color: 'var(--dark)',
                           width: '100%',
                           boxSizing: 'border-box',
                           letterSpacing: '-0.022em',
-                          boxShadow: '0 0 0 4px rgba(0,229,255,0.08)',
+                          boxShadow: '0 0 0 4px rgba(var(--cyan-rgb), 0.08)',
                         }}
                         autoFocus
                       />

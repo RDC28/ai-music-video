@@ -134,17 +134,17 @@ export default function Home() {
             textAlign: 'center',
             padding: '48px 40px',
             position: 'relative',
-            background: 'rgba(12,12,18,0.7)',
-            border: '1px solid rgba(255,255,255,0.07)',
+            background: 'rgba(var(--ink-900-rgb), 0.7)',
+            border: '1px solid rgba(var(--cyan-300-rgb), 0.07)',
             borderRadius: '24px',
             backdropFilter: 'blur(16px)',
-            boxShadow: '0 0 80px rgba(124,58,237,0.08)',
+            boxShadow: '0 0 80px rgba(var(--violet-rgb), 0.08)',
           }}
         >
           <div
             style={{
               fontFamily: 'var(--font-mono)',
-              fontSize: '10px',
+              fontSize: '11px',
               fontWeight: 500,
               letterSpacing: '0.18em',
               textTransform: 'uppercase',
@@ -165,9 +165,9 @@ export default function Home() {
               letterSpacing: '-0.02em',
             }}
           >
-            "We made a studio for the moment a song asks
+            &ldquo;We made a studio for the moment a song asks
             to <span style={{ background: 'linear-gradient(135deg, var(--violet), var(--rose))', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>become a picture</span> —
-            no dashboards, no jargon."
+            no dashboards, no jargon.&rdquo;
           </p>
         </section>
       </main>
@@ -192,7 +192,7 @@ export default function Home() {
             </div>
 
             {error && (
-              <div style={{ color: '#f87171', fontSize: '12px', marginBottom: '16px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.18)', fontFamily: 'var(--font-body)' }}>
+              <div style={{ color: 'var(--violet-400)', fontSize: '12px', marginBottom: '16px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(var(--violet-rgb), 0.06)', border: '1px solid rgba(var(--violet-rgb), 0.18)', fontFamily: 'var(--font-body)' }}>
                 {error}
               </div>
             )}

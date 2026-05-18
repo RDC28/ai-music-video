@@ -376,7 +376,7 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
                 justifyContent: 'center',
                 gap: '20px',
                 padding: '48px',
-                background: isDragging ? 'rgba(0,210,200,0.04)' : 'var(--bg-deep)',
+                background: isDragging ? 'rgba(var(--cyan-rgb), 0.04)' : 'var(--bg-deep)',
                 boxShadow: 'var(--neo-inset)',
                 borderRadius: 'var(--radius-xl)',
                 margin: '16px',

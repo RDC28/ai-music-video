@@ -404,12 +404,12 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
 
             {(error || missingContext.length > 0) && (
               <div style={{
-                background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)',
+                background: 'rgba(var(--violet-rgb), 0.06)', border: '1px solid rgba(var(--violet-rgb), 0.2)',
                 borderRadius: 'var(--radius)', padding: '10px 12px',
                 display: 'flex', gap: '8px', alignItems: 'flex-start',
               }}>
-                <AlertCircle size={13} color="#F87171" style={{ flexShrink: 0, marginTop: '1px' }} />
-                <span style={{ fontSize: '12px', color: '#F87171', lineHeight: 1.5 }}>
+                <AlertCircle size={13} color="var(--violet-400)" style={{ flexShrink: 0, marginTop: '1px' }} />
+                <span style={{ fontSize: '12px', color: 'var(--violet-400)', lineHeight: 1.5 }}>
                   {error || `Missing: ${missingContext.join(', ')}. You can still generate with what's available.`}
                 </span>
               </div>
@@ -483,7 +483,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
                 borderBottom: '1px solid var(--border)',
                 flexShrink: 0,
                 gap: '12px',
-                background: 'rgba(17,17,20,0.8)',
+                background: 'rgba(var(--ink-900-rgb), 0.8)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--cyan)', letterSpacing: '0.14em', textTransform: 'uppercase', flexShrink: 0 }}>

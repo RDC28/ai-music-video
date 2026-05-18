@@ -1,15 +1,23 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   CheckCircle2,
   Copy,
+  ImagePlus,
+  Loader2,
   Plus,
+  RotateCcw,
   SlidersHorizontal,
   Trash2,
+  Wand2,
 } from 'lucide-react';
+import { drawClubScene } from '@/utils/drawClubScene';
+import { DEFAULT_IMAGE_MODEL, IMAGE_GENERATION_MODELS, resolveImageModelOption } from '@/utils/generationModels';
 import { getPlannedVideoDuration, getProjectAudioDuration, getShotTimingLabel, normalizeShot, normalizeShotListForVeo } from '@/utils/shotList';
 
 // Styles moved to components.css as .input-inset, .form-label, .icon-btn
@@ -19,7 +27,39 @@ const splitTags = (value) => value
   .map(item => item.trim())
   .filter(Boolean);
 
-export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }) {
+const CLIENT_REQUEST_TIMEOUT_MS = 130000;
+
+function getFrameErrorMessage(error) {
+  const message = String(error?.message || '').toLowerCase();
+  const status = Number(error?.status);
+  if (error?.name === 'AbortError' || status === 408 || message.includes('timeout')) {
+    return 'This frame took too long. Try again.';
+  }
+  if (message.includes('temporarily unavailable') || status >= 500) {
+    return 'Frame creation is temporarily unavailable. Try again soon.';
+  }
+  return 'Frame could not be created. Please try again.';
+}
+
+async function readJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text };
+  }
+}
+
+export default function ShotListScreen({
+  onNavigate,
+  projectId,
+  isActive,
+  projectData,
+  onDataUpdate,
+  onContinueToFrames,
+  continueLabel = 'Continue to Clips',
+}) {
   const audioDuration = useMemo(() => getProjectAudioDuration(projectData), [projectData]);
   const shots = useMemo(
     () => normalizeShotListForVeo(projectData?.shot_list || [], { audioDuration }),
@@ -27,6 +67,13 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
   );
   const [editingIndex, setEditingIndex] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
+  const [modelDraft, setModelDraft] = useState(DEFAULT_IMAGE_MODEL);
+  const [generatingIndex, setGeneratingIndex] = useState(null);
+  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+  const [generationError, setGenerationError] = useState('');
+  const [queueSummary, setQueueSummary] = useState('');
+  const canvasRefs = useRef([]);
+  const modalCanvasRef = useRef(null);
   const hasActiveEdit = editingIndex !== null && Boolean(shots[editingIndex]) && Boolean(editDraft);
 
   const commitShots = async (nextShots, extra = {}) => {
@@ -38,6 +85,9 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
 
   const startEditing = (index) => {
     setEditingIndex(index);
+    setModelDraft(resolveImageModelOption(shots[index]?.image_model || modelDraft || DEFAULT_IMAGE_MODEL).value);
+    setGenerationError('');
+    setQueueSummary('');
     setEditDraft({
       ...shots[index],
       charactersText: (shots[index].characters || []).join(', '),
@@ -49,6 +99,22 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
     setEditingIndex(null);
     setEditDraft(null);
   };
+
+  useEffect(() => {
+    if (!isActive) return;
+    const timer = setTimeout(() => {
+      canvasRefs.current.forEach((canvas, index) => {
+        if (canvas && !shots[index]?.image_url) drawClubScene(canvas, index * 3 + 7);
+      });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [isActive, shots]);
+
+  useEffect(() => {
+    if (editingIndex !== null && modalCanvasRef.current && !shots[editingIndex]?.image_url) {
+      drawClubScene(modalCanvasRef.current, editingIndex * 3 + 7);
+    }
+  }, [editingIndex, shots]);
 
   const handleMove = async (index, direction) => {
     const target = index + direction;
@@ -119,6 +185,7 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
     next[editingIndex] = normalizeShot({
       ...shots[editingIndex],
       ...draftFields,
+      image_model: modelDraft || draftFields.image_model || shots[editingIndex].image_model,
       start: Number.isFinite(start) ? start : undefined,
       end: Number.isFinite(start) ? Number((start + duration).toFixed(2)) : (Number.isFinite(end) ? end : undefined),
       duration: Number.isFinite(duration) ? duration : 6,
@@ -130,68 +197,216 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
     closeEditing();
   };
 
+  const requestShotImage = async (index, promptOverride = null, sourceShots = shots) => {
+    if (!projectId) throw new Error('Missing project id');
+    const shot = sourceShots[index];
+    if (!shot) throw new Error('Shot not found');
+
+    setGeneratingIndex(index);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CLIENT_REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch('/api/generate-shot-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          projectId,
+          shot,
+          shotIndex: index,
+          projectState: projectData || {},
+          promptOverride: promptOverride || undefined,
+          model: modelDraft || DEFAULT_IMAGE_MODEL,
+          previousShotImageUrl: sourceShots[index - 1]?.image_url || null,
+        }),
+      });
+      const result = await readJsonResponse(response);
+      if (!response.ok || result.error) {
+        const error = new Error(result.error || `Request failed with ${response.status}`);
+        error.status = result.status || response.status;
+        throw error;
+      }
+
+      const updatedShot = result.shot || {
+        ...shot,
+        image_url: result.image_url,
+        image_path: result.image_path,
+        image_prompt: promptOverride || shot.image_prompt || shot.p,
+        image_model: modelDraft || DEFAULT_IMAGE_MODEL,
+        image_generated_at: new Date().toISOString(),
+        image_error: null,
+      };
+      return sourceShots.map((item, shotIndex) => (shotIndex === index ? updatedShot : item));
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const runGenerationQueue = async (indices, { promptOverrides = {}, label = 'Frame generation' } = {}) => {
+    if (!indices.length || !projectId) return;
+    setGenerationError('');
+    setQueueSummary(`${label} started for ${indices.length} shot${indices.length === 1 ? '' : 's'}.`);
+    setIsGeneratingAll(indices.length > 1);
+
+    let nextShots = [...shots];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const index of indices) {
+      try {
+        nextShots = await requestShotImage(index, promptOverrides[index], nextShots);
+        successCount += 1;
+      } catch (error) {
+        failureCount += 1;
+        nextShots = nextShots.map((item, shotIndex) => (
+          shotIndex === index
+            ? {
+                ...item,
+                image_error: {
+                  message: getFrameErrorMessage(error),
+                  status: error?.status || null,
+                  failed_at: new Date().toISOString(),
+                },
+              }
+            : item
+        ));
+      }
+    }
+
+    await commitShots(nextShots);
+    if (editingIndex !== null && nextShots[editingIndex]) {
+      setEditDraft((prev) => prev ? ({
+        ...nextShots[editingIndex],
+        charactersText: (nextShots[editingIndex].characters || []).join(', '),
+        locationsText: (nextShots[editingIndex].locations || []).join(', '),
+      }) : prev);
+    }
+
+    setGeneratingIndex(null);
+    setIsGeneratingAll(false);
+    setQueueSummary(`${successCount} ready, ${failureCount} need retry, ${nextShots.filter(shot => !shot.image_url).length} remaining.`);
+    if (failureCount) {
+      setGenerationError(`${failureCount} shot${failureCount === 1 ? '' : 's'} need another try.`);
+    }
+  };
+
+  const handleGenerateOne = async () => {
+    if (editingIndex === null || !editDraft) return;
+    await runGenerationQueue([editingIndex], {
+      promptOverrides: { [editingIndex]: editDraft.image_prompt || editDraft.p || '' },
+      label: `Shot ${editingIndex + 1}`,
+    });
+  };
+
+  const handleGenerateAll = async () => {
+    if (!shots.length || isGeneratingAll) return;
+    await runGenerationQueue(shots.map((_, index) => index), { label: 'Generate all frames' });
+  };
+
+  const handleGenerateRemaining = async () => {
+    if (!shots.length || isGeneratingAll) return;
+    const remainingIndices = shots
+      .map((shot, index) => ({ shot, index }))
+      .filter(({ shot }) => !shot.image_url)
+      .map(({ index }) => index);
+    await runGenerationQueue(remainingIndices, { label: 'Generate remaining frames' });
+  };
+
   const handleContinue = async () => {
     await commitShots(shots, { shots_arranged: true, current_step: 9 });
+    if (typeof onContinueToFrames === 'function') {
+      onContinueToFrames();
+      return;
+    }
     onNavigate(9);
   };
 
+  const generatedCount = shots.filter((shot) => shot.image_url).length;
+  const remainingCount = Math.max(shots.length - generatedCount, 0);
+  const failedCount = shots.filter((shot) => !shot.image_url && shot.image_error).length;
+
   return (
-    <div className="screen active screen-row" id="s8">
+    <div className={`screen active screen-row${hasActiveEdit ? ' shot-edit-open' : ''}`} id="s8">
 
       {/* LEFT PANEL */}
       <div className="layout-main">
 
         {/* Header */}
-        <div className="panel-header" style={{ gap: '18px' }}>
-          <div>
-            <div className="sidebar-header-kicker">▪ Shots · Sequence</div>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '34px', fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--text)', margin: 0, lineHeight: 1.1, marginBottom: shots.length > 0 ? '8px' : 0 }}>
-              Arrange the cuts.
-            </h1>
-            {shots.length > 0 && (
-              <p className="body-sm" style={{ margin: 0 }}>
-                {`${shots.length} approved shots ready to reorder, edit, and send to image generation.`}
-              </p>
-            )}
+        <div className="panel-header shot-header">
+          <div className="shot-header-top">
+            <div className="shot-header-copy">
+              <div className="sidebar-header-kicker">▪ Shots · Sequence</div>
+              <h1 className="shot-screen-title">
+                Arrange the cuts.
+              </h1>
+              {shots.length > 0 && (
+                <p className="body-sm shot-screen-subtitle">
+                  {`${shots.length} approved shots ready to reorder, edit, and generate frames.`}
+                </p>
+              )}
+            </div>
           </div>
 
-          <div className="flex-row gap-8" style={{ alignItems: 'center', flexShrink: 0, flexWrap: 'wrap', paddingTop: '4px' }}>
-            <button className="btn-outline" onClick={() => onNavigate(7)} style={{ fontSize: '12px' }}>← Shot Plan</button>
-            <button className="btn-outline" onClick={handleAddShot} style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <div className="shot-header-actions">
+            <button className="btn-outline" onClick={() => onNavigate(7)} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>← Shot Plan</button>
+            <button className="btn-outline" onClick={handleAddShot} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
               <Plus size={14} /> + Add shot
             </button>
-            <button className="btn-orange" onClick={handleContinue} disabled={!shots.length} style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
-              Continue to Frames <CheckCircle2 size={14} />
+            <select className="select-model" value={modelDraft} onChange={(event) => setModelDraft(event.target.value)} title="Image model">
+              {IMAGE_GENERATION_MODELS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <button
+              className="btn-teal"
+              onClick={handleGenerateRemaining}
+              disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+            >
+              {isGeneratingAll ? <><Loader2 size={14} className="spin" /> Generating</> : <><Wand2 size={14} /> {remainingCount === shots.length ? 'Generate Frames' : `Generate Remaining (${remainingCount})`}</>}
             </button>
+            <button
+              className="btn-outline"
+              onClick={handleGenerateAll}
+              disabled={!shots.length || isGeneratingAll || generatingIndex !== null}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <RotateCcw size={14} /> Regenerate All
+            </button>
+            <button className="btn-orange" onClick={handleContinue} disabled={!shots.length} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+              {continueLabel} <CheckCircle2 size={14} />
+            </button>
+          </div>
+
+          <div className="shot-header-status">
+            <div className="panel-meta-label shot-screen-progress">
+              {`${generatedCount}/${shots.length} frames ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`}
+            </div>
+            {queueSummary && <p className="queue-msg shot-screen-feedback">{queueSummary}</p>}
+            {generationError && <p className="queue-msg queue-msg--error shot-screen-feedback">{generationError}</p>}
           </div>
         </div>
 
         {/* Coverage notes */}
         {projectData?.shot_list_meta?.coverage_notes && (
-          <div style={{
-            padding: '10px 28px',
-            borderBottom: '1px solid var(--border)',
-            color: 'var(--text-muted)',
-            fontSize: '12px',
-            lineHeight: 1.5,
-            flexShrink: 0,
-          }}>
-            {projectData.shot_list_meta.coverage_notes}
+          <div className="shot-coverage-notes">
+            <p>{projectData.shot_list_meta.coverage_notes}</p>
           </div>
         )}
 
         {/* Shots list */}
-        <div id="shotListItems" style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        <div id="shotListItems" className="shot-list-viewport" style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {shots.length > 0 ? (
             shots.map((shot, index) => (
               <div
                 key={`${shot.n}-${index}`}
                 style={{
-                  padding: '12px 28px',
+                  padding: '12px 24px',
                   borderBottom: '1px solid var(--border)',
                   display: 'grid',
-                  gridTemplateColumns: '44px 88px 1fr auto',
-                  gap: '14px',
+                  gridTemplateColumns: '42px 84px minmax(0, 1fr) 228px',
+                  gap: '12px',
                   alignItems: 'start',
                   background: editingIndex === index ? 'var(--cyan-dim)' : 'transparent',
                   borderLeft: `3px solid ${editingIndex === index ? 'var(--cyan)' : 'transparent'}`,
@@ -210,8 +425,8 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   boxShadow: editingIndex === index ? 'var(--neo-active)' : 'var(--neo-flat)',
                   border: editingIndex === index ? '1px solid var(--cyan-border)' : '1px solid var(--border)',
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '11px',
-                  color: editingIndex === index ? 'var(--cyan)' : 'var(--text-muted)',
+                  fontSize: '12px',
+                  color: editingIndex === index ? 'var(--cyan)' : 'var(--text-soft)',
                   letterSpacing: '0.04em',
                   flexShrink: 0,
                 }}>
@@ -221,8 +436,8 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                 {/* Col 2: Timing */}
                 <div style={{
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '10px',
-                  color: 'var(--cyan)',
+                  fontSize: '12px',
+                  color: 'var(--cyan-400)',
                   paddingTop: '8px',
                   letterSpacing: '0.06em',
                 }}>
@@ -244,8 +459,8 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   </div>
                   <div style={{
                     fontFamily: 'var(--font-body)',
-                    fontSize: '12px',
-                    color: 'var(--text-muted)',
+                    fontSize: '13px',
+                    color: 'var(--text-soft)',
                     lineHeight: 1.55,
                     overflow: 'hidden',
                     display: '-webkit-box',
@@ -262,7 +477,6 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                         <span
                           key={tag}
                           className="tag-badge"
-                          style={{ fontSize: '9.5px' }}
                         >
                           {tag}
                         </span>
@@ -270,36 +484,67 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   </div>
                 </div>
 
-                {/* Col 4: Actions */}
-                <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
-                  <button className="icon-btn" style={{ opacity: index === 0 ? 0.25 : 1 }} onClick={() => handleMove(index, -1)} disabled={index === 0} title="Move up">
-                    <ArrowUp size={13} />
-                  </button>
-                  <button className="icon-btn" style={{ opacity: index === shots.length - 1 ? 0.25 : 1 }} onClick={() => handleMove(index, 1)} disabled={index === shots.length - 1} title="Move down">
-                    <ArrowDown size={13} />
-                  </button>
-                  <button className="icon-btn" onClick={() => handleDuplicate(index)} title="Duplicate">
-                    <Copy size={13} />
-                  </button>
-                  <button
-                    onClick={() => startEditing(index)}
-                    style={{
-                      background: 'var(--surface-2)',
-                      boxShadow: editingIndex === index ? 'var(--neo-inset)' : 'var(--neo-flat)',
-                      border: editingIndex === index ? '1px solid var(--cyan-border)' : '1px solid var(--border)',
-                      color: editingIndex === index ? 'var(--cyan)' : 'var(--text-muted)',
-                      fontSize: '11px',
-                      padding: '6px 12px',
-                      borderRadius: 'var(--radius)',
-                      cursor: 'pointer',
-                      fontFamily: 'var(--font-body)',
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button className="icon-btn" style={{ color: 'var(--error)' }} onClick={() => handleDelete(index)} title="Delete">
-                    <Trash2 size={13} />
-                  </button>
+                {/* Col 4: Frame preview */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
+                  <div className="shot-thumb neo-flat" style={{ width: '208px', height: '118px', border: '1px solid var(--border)', position: 'relative' }}>
+                    {shot.image_url ? (
+                      <Image
+                        src={shot.image_url}
+                        alt={shot.n || `Shot ${index + 1}`}
+                        fill
+                        sizes="208px"
+                        style={{ objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : (
+                      <canvas ref={(el) => (canvasRefs.current[index] = el)} width={208} height={118} style={{ display: 'block' }} />
+                    )}
+                    {generatingIndex === index && (
+                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.68)', color: 'var(--cyan)', fontSize: '12px', fontWeight: 700 }}>
+                        <Loader2 size={13} className="spin" /> Generating...
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '12px', color: shot.image_url ? 'var(--cyan)' : 'var(--text-soft)', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+                    {shot.image_url ? 'Frame ready' : 'No frame yet'}
+                  </div>
+                  {!shot.image_url && shot.image_error?.message && (
+                    <div className="flex-row gap-6" style={{ fontSize: '11px', color: 'var(--error)', alignItems: 'center' }}>
+                      <AlertTriangle size={12} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shot.image_error.message}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '2px' }}>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <button className="icon-btn" style={{ opacity: index === 0 ? 0.46 : 1 }} onClick={() => handleMove(index, -1)} disabled={index === 0} title="Move up">
+                        <ArrowUp size={13} />
+                      </button>
+                      <button className="icon-btn" style={{ opacity: index === shots.length - 1 ? 0.46 : 1 }} onClick={() => handleMove(index, 1)} disabled={index === shots.length - 1} title="Move down">
+                        <ArrowDown size={13} />
+                      </button>
+                      <button className="icon-btn" onClick={() => handleDuplicate(index)} title="Duplicate">
+                        <Copy size={13} />
+                      </button>
+                      <button className="icon-btn" style={{ color: 'var(--error)' }} onClick={() => handleDelete(index)} title="Delete">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                    <button
+                      className={editingIndex === index ? 'btn-primary' : 'btn-outline'}
+                      onClick={() => startEditing(index)}
+                      style={{
+                        fontSize: '12.5px',
+                        fontWeight: 700,
+                        padding: '7px 14px',
+                        minHeight: '32px',
+                        borderRadius: 'var(--radius)',
+                        fontFamily: 'var(--font-body)',
+                        whiteSpace: 'nowrap',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -334,7 +579,7 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
               }}>
                 No approved shots yet.
               </div>
-              <button className="btn-teal" onClick={() => onNavigate(7)} style={{ fontSize: '12px' }}>
+              <button className="btn-teal" onClick={() => onNavigate(7)}>
                 Generate or Import Shot List
               </button>
             </div>
@@ -344,7 +589,7 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
 
       {/* RIGHT PANEL — Edit sidebar */}
       {hasActiveEdit && (
-        <div className="edit-side-panel" style={{ width: '420px', animation: 'slideInRight 0.22s cubic-bezier(0.2, 0, 0, 1)' }}>
+        <div className="edit-side-panel shot-edit-panel" style={{ animation: 'slideInRight 0.22s cubic-bezier(0.2, 0, 0, 1)' }}>
           {/* Sidebar header */}
           <div style={{ position: 'relative', marginBottom: '0' }}>
             <div className="sidebar-header-kicker" style={{ marginBottom: '6px' }}>
@@ -362,8 +607,8 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                 right: 0,
                 borderRadius: '50%',
                 border: '1px solid var(--border)',
-                color: 'var(--text-muted)',
-                fontSize: '14px',
+                color: 'var(--text-soft)',
+                fontSize: '16px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -429,38 +674,37 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                   onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
                   onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
                 />
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                <div className="field-note" style={{ marginTop: '4px' }}>
                   Timeline duration up to 8s. Clip: {getPlannedVideoDuration(editDraft, 6)}s.
                 </div>
               </div>
             </div>
 
-            {/* Characters */}
-            <div>
-              <label className="form-label">Characters</label>
-              <input
-                type="text"
-                value={editDraft.charactersText || ''}
-                placeholder="THE ARTIST, THE MUSE"
-                onChange={(e) => setEditDraft(prev => ({ ...prev, charactersText: e.target.value }))}
-                className="input-inset"
-                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
-                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
-              />
-            </div>
-
-            {/* Locations */}
-            <div>
-              <label className="form-label">Locations</label>
-              <input
-                type="text"
-                value={editDraft.locationsText || ''}
-                placeholder="Winter Desolation"
-                onChange={(e) => setEditDraft(prev => ({ ...prev, locationsText: e.target.value }))}
-                className="input-inset"
-                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
-                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div>
+                <label className="form-label">Characters</label>
+                <input
+                  type="text"
+                  value={editDraft.charactersText || ''}
+                  placeholder="THE ARTIST, THE MUSE"
+                  onChange={(e) => setEditDraft(prev => ({ ...prev, charactersText: e.target.value }))}
+                  className="input-inset"
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+                />
+              </div>
+              <div>
+                <label className="form-label">Locations</label>
+                <input
+                  type="text"
+                  value={editDraft.locationsText || ''}
+                  placeholder="Winter Desolation"
+                  onChange={(e) => setEditDraft(prev => ({ ...prev, locationsText: e.target.value }))}
+                  className="input-inset"
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+                />
+              </div>
             </div>
 
             {/* Shot Size + Movement */}
@@ -489,30 +733,29 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
               </div>
             </div>
 
-            {/* Camera */}
-            <div>
-              <label className="form-label">Camera</label>
-              <input
-                type="text"
-                value={editDraft.camera || ''}
-                onChange={(e) => setEditDraft(prev => ({ ...prev, camera: e.target.value }))}
-                className="input-inset"
-                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
-                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
-              />
-            </div>
-
-            {/* Vocal Cue */}
-            <div>
-              <label className="form-label">Vocal Cue</label>
-              <input
-                type="text"
-                value={editDraft.lyrics || ''}
-                onChange={(e) => setEditDraft(prev => ({ ...prev, lyrics: e.target.value }))}
-                className="input-inset"
-                onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
-                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px' }}>
+              <div>
+                <label className="form-label">Camera</label>
+                <input
+                  type="text"
+                  value={editDraft.camera || ''}
+                  onChange={(e) => setEditDraft(prev => ({ ...prev, camera: e.target.value }))}
+                  className="input-inset"
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+                />
+              </div>
+              <div>
+                <label className="form-label">Vocal Cue</label>
+                <input
+                  type="text"
+                  value={editDraft.lyrics || ''}
+                  onChange={(e) => setEditDraft(prev => ({ ...prev, lyrics: e.target.value }))}
+                  className="input-inset"
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
+                />
+              </div>
             </div>
 
             {/* Textareas */}
@@ -522,10 +765,34 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                 className="textarea-inset"
                 value={editDraft.p || ''}
                 onChange={(e) => setEditDraft(prev => ({ ...prev, p: e.target.value }))}
-                style={{ minHeight: '110px' }}
+                style={{ minHeight: '96px' }}
                 onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
                 onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />
+            </div>
+
+            <div style={{ height: '1px', background: 'var(--border)' }} />
+
+            <div>
+              <div className="panel-meta-label" style={{ marginBottom: '8px' }}>Frame Preview</div>
+              <div className="panel-inset" style={{ aspectRatio: '16/9', padding: 0, overflow: 'hidden', position: 'relative' }}>
+                {shots[editingIndex]?.image_url ? (
+                  <Image
+                    src={shots[editingIndex].image_url}
+                    alt={editDraft.n || 'Frame preview'}
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 360px"
+                    style={{ objectFit: 'cover', display: 'block' }}
+                  />
+                ) : (
+                  <canvas ref={modalCanvasRef} width={560} height={315} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                )}
+                {generatingIndex === editingIndex && (
+                  <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.68)', color: 'var(--cyan)', fontSize: '12px', fontWeight: 700 }}>
+                    <Loader2 size={14} className="spin" /> Generating...
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
@@ -534,10 +801,35 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                 className="textarea-inset"
                 value={editDraft.image_prompt || ''}
                 onChange={(e) => setEditDraft(prev => ({ ...prev, image_prompt: e.target.value }))}
-                style={{ minHeight: '120px' }}
+                style={{ minHeight: '112px' }}
                 onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
                 onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />
+              <select
+                className="select-model"
+                value={modelDraft}
+                onChange={(event) => setModelDraft(event.target.value)}
+                style={{ width: '100%', marginTop: '8px' }}
+                title="Image model"
+              >
+                {IMAGE_GENERATION_MODELS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <button
+                className="btn-teal"
+                onClick={handleGenerateOne}
+                disabled={generatingIndex !== null || !(editDraft.image_prompt || editDraft.p || '').trim()}
+                style={{ width: '100%', marginTop: '8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+              >
+                {generatingIndex === editingIndex ? <><Loader2 size={14} className="spin" /> Generating...</> : <><Wand2 size={14} /> Generate Frame</>}
+              </button>
+              {shots[editingIndex]?.image_error?.message && (
+                <div className="flex-row gap-6" style={{ marginTop: '8px', color: 'var(--error)', fontSize: '11px', alignItems: 'center' }}>
+                  <AlertTriangle size={13} />
+                  <span>{shots[editingIndex].image_error.message}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -546,7 +838,7 @@ export default function ShotListScreen({ onNavigate, projectData, onDataUpdate }
                 className="textarea-inset"
                 value={editDraft.video_prompt || ''}
                 onChange={(e) => setEditDraft(prev => ({ ...prev, video_prompt: e.target.value }))}
-                style={{ minHeight: '140px' }}
+                style={{ minHeight: '112px' }}
                 onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
                 onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />

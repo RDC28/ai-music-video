@@ -16,10 +16,19 @@ const SCREEN_META = {
   6: { name: 'Wardrobe', title: 'Preparing wardrobe' },
   7: { name: 'Shot plan', title: 'Preparing shot plan' },
   8: { name: 'Shots', title: 'Preparing shots' },
-  9: { name: 'Frames', title: 'Preparing frames' },
-  10: { name: 'Clips', title: 'Preparing clips' },
-  11: { name: 'Editor', title: 'Preparing editor' },
+  9: { name: 'Clips', title: 'Preparing clips' },
+  10: { name: 'Editor', title: 'Preparing editor' },
 };
+
+const normalizeLegacyPersistedStep = (rawValue) => {
+  const raw = Number(rawValue) || 1;
+  if (raw === 9) return 8;
+  if (raw === 10) return 9;
+  if (raw === 11) return 10;
+  return Math.min(10, Math.max(1, raw));
+};
+
+const clampWorkflowStep = (rawValue) => Math.min(10, Math.max(1, Number(rawValue) || 1));
 
 const screenFallback = (id) => function ScreenFallback() {
   const meta = SCREEN_META[id] || SCREEN_META[1];
@@ -39,9 +48,8 @@ const LocationsScreen = dynamic(() => import('@/components/screens/LocationsScre
 const WardrobeScreen = dynamic(() => import('@/components/screens/WardrobeScreen'), { loading: screenFallback(6) });
 const GenerateShotListScreen = dynamic(() => import('@/components/screens/GenerateShotListScreen'), { loading: screenFallback(7) });
 const ShotListScreen = dynamic(() => import('@/components/screens/ShotListScreen'), { loading: screenFallback(8) });
-const ImagesScreen = dynamic(() => import('@/components/screens/ImagesScreen'), { loading: screenFallback(9) });
-const VideosScreen = dynamic(() => import('@/components/screens/VideosScreen'), { loading: screenFallback(10) });
-const AssembleScreen = dynamic(() => import('@/components/screens/AssembleScreen'), { loading: screenFallback(11) });
+const VideosScreen = dynamic(() => import('@/components/screens/VideosScreen'), { loading: screenFallback(9) });
+const AssembleScreen = dynamic(() => import('@/components/screens/AssembleScreen'), { loading: screenFallback(10) });
 
 const prefetchScreenModule = (id) => {
   switch (id) {
@@ -53,9 +61,8 @@ const prefetchScreenModule = (id) => {
     case 6: return import('@/components/screens/WardrobeScreen');
     case 7: return import('@/components/screens/GenerateShotListScreen');
     case 8: return import('@/components/screens/ShotListScreen');
-    case 9: return import('@/components/screens/ImagesScreen');
-    case 10: return import('@/components/screens/VideosScreen');
-    case 11: return import('@/components/screens/AssembleScreen');
+    case 9: return import('@/components/screens/VideosScreen');
+    case 10: return import('@/components/screens/AssembleScreen');
     default: return Promise.resolve();
   }
 };
@@ -64,7 +71,12 @@ export default function CreateProject({ params }) {
   const { projectId } = use(params);
   const [activeScreen, setActiveScreen] = useState(() => {
     if (typeof window === 'undefined') return 1;
-    return Number(localStorage.getItem('activeScreen')) || 1;
+    const stored = Number(localStorage.getItem('activeScreen')) || 1;
+    const normalized = normalizeLegacyPersistedStep(stored);
+    if (normalized !== stored) {
+      localStorage.setItem('activeScreen', String(normalized));
+    }
+    return normalized;
   });
   const [projectData, setProjectData] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -117,7 +129,7 @@ export default function CreateProject({ params }) {
     if (isInitialLoading) return;
 
     const nextScreens = [activeScreen + 1, activeScreen + 2]
-      .filter(screen => screen >= 1 && screen <= 11);
+      .filter(screen => screen >= 1 && screen <= 10);
     if (!nextScreens.length) return;
 
     const run = () => {
@@ -142,7 +154,7 @@ export default function CreateProject({ params }) {
   }, [activeScreen, isScreenPreparing]);
 
   const goTo = useCallback((n) => {
-    const nextScreen = Math.min(11, Math.max(1, Number(n) || 1));
+    const nextScreen = clampWorkflowStep(n);
     if (nextScreen === activeScreen) return;
 
     setPreparingTarget(nextScreen);
@@ -244,34 +256,27 @@ export default function CreateProject({ params }) {
         />
       )}
       {activeScreen === 8 && (
-        <ShotListScreen 
+        <ShotListScreen
           onNavigate={goTo} 
+          isActive={activeScreen === 8}
+          projectId={projectId}
           projectData={projectData?.project_state}
           onDataUpdate={updateProjectData}
         />
       )}
       {activeScreen === 9 && (
-        <ImagesScreen 
+        <VideosScreen 
           onNavigate={goTo} 
-          isActive={activeScreen === 9} 
+          isActive={activeScreen === 9}
           projectId={projectId}
           projectData={projectData?.project_state}
           onDataUpdate={updateProjectData}
         />
       )}
       {activeScreen === 10 && (
-        <VideosScreen 
-          onNavigate={goTo} 
-          isActive={activeScreen === 10}
-          projectId={projectId}
-          projectData={projectData?.project_state}
-          onDataUpdate={updateProjectData}
-        />
-      )}
-      {activeScreen === 11 && (
         <AssembleScreen 
           onNavigate={goTo} 
-          isActive={activeScreen === 11} 
+          isActive={activeScreen === 10}
           projectId={projectId}
           audioUrl={projectData?.audio_url}
           projectData={projectData?.project_state}

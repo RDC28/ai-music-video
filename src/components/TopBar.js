@@ -16,9 +16,8 @@ export default function TopBar({ activeScreen, onNavigate, userName, projectName
     { id: 6, name: 'Looks' },
     { id: 7, name: 'Plan' },
     { id: 8, name: 'Shots' },
-    { id: 9, name: 'Frames' },
-    { id: 10, name: 'Clips' },
-    { id: 11, name: 'Editor' },
+    { id: 9, name: 'Clips' },
+    { id: 10, name: 'Editor' },
   ], []);
 
   const activeStep = steps.find(step => step.id === activeScreen) || steps[0];
