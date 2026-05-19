@@ -28,7 +28,46 @@
 - Snapshot source: [[30_Resources/Codebase-Graph-Snapshot/Codebase Graph Snapshot - 2026-05-15]]
 - Snapshot is stale versus current HEAD at migration time; verify inferred edges before using as implementation truth.
 
+## Per-Project Knowledge Base
+
+Every project has a persistent knowledge base stored at `project_state.knowledge_base` (built by the master agent at `POST /api/build-knowledge-base`).
+
+### What it stores
+- **`project.preamble`** — global narrative context paragraph injected into every generation prompt
+- **`characters[NAME].prompt_lock`** — dense 80–130 word visual specification for each character (physique, face, outfit) ready to paste into any prompt
+- **`locations[NAME].prompt_lock`** — dense 60–90 word visual spec for each location
+- **`style.global_lock`** — cinematography + colour + mood paragraph enforcing visual consistency
+
+### How agents consume it
+- `knowledgeBase.js` utility exposes: `getKBContextForShot(kb, shot)`, `getKBContextForShotList(kb)`, `getKBEntityLocksForShot(kb, shot)`, `getStyleLock(kb)`, `isKBUsable(kb)`
+- `geminiAgents.generateShotList` — prepends full KB context block before project JSON
+- `generate-shot-video buildPrompt` — injects shot-scoped character/location/style locks into the prompt
+- `rewrite-shot-prompt` — injects entity locks + style lock into the rewriter prompt
+
+### When to rebuild
+Rebuild after: characters added/updated, locations added/updated, wardrobe assigned, style bible generated. The `KnowledgeBaseStatus` component (rendered in the Shot Plan right panel) shows build age and triggers rebuild.
+
+### Files
+- `src/app/api/build-knowledge-base/route.js` — master agent (multimodal, uses reference images)
+- `src/utils/knowledgeBase.js` — all KB read utilities
+- `src/components/KnowledgeBaseStatus.js` — UI panel with status + rebuild action
+
+## CSS Unit Convention
+**All CSS length values must use `rem` (layout/spacing/typography) or `em` (media query breakpoints). `px` is banned project-wide.**
+- Conversion base: 16px = 1rem. Common: 8px→0.5rem, 12px→0.75rem, 14px→0.875rem, 16px→1rem, 24px→1.5rem.
+- Media queries use `em` (e.g. `max-width: 48em`) not `rem` — browser-default-relative, not root-font-relative.
+- `1px solid` borders: convert to `0.0625rem solid`. No px exceptions.
+- Inline JSX styles: use rem strings (`'0.75rem'` not `'12px'`).
+- Completed 2026-05-19: full codebase refactor — globals.css, components.css, and all screen/component JS files converted.
+
 ## Change Log
+- 2026-05-19: Polished screen 1 (Home) into the shared app shell pattern (StageRail + center workspace + right quick-start panel), keeping format selection behavior unchanged while aligning spacing/interaction patterns with migrated workflow screens.
+- 2026-05-19: Migrated screen 4 (Cast/Characters) and screen 6 (Wardrobe) to the shared `WorkflowThreePaneShell` with `showLeftPanel=false`, keeping StageRail as the only left app rail and moving screen-specific controls into the shell right panel.
+- 2026-05-19: Updated screen 5 (Sets/Locations) to the same 3-column app composition (StageRail + center content + right controls panel), moved controls to the right side, and removed duplicate in-screen navigation CTA.
+- 2026-05-19: Removed redundant in-screen navigation buttons on screens 4/5/6 (`Continue to ...`, `Open cast`, `Open locations`) so progression navigation is owned by StageRail/top strip only.
+- 2026-05-19: Added shared frontend `WorkflowThreePaneShell` foundation component (collapsed-left sidebar with hamburger toggle, draggable panel dividers, persisted widths) and shared `three-pane-*` styling tokens in `components.css` to standardize upcoming screen-level layout migrations.
+- 2026-05-19: Migrated workflow screens 2 (Audio), 3 (Story), 7 (Shot Plan), 8 (Shots), and 9 (Clips) onto the shared 3-pane shell (`WorkflowThreePaneShell`), preserving existing generation/edit handlers while relocating primary action clusters into the shell right pane.
+- 2026-05-19: Converted `StageRail` from hover-to-expand behavior to explicit hamburger click expand/collapse, with rail width now driving `workflow-app` grid column width via `--stage-rail-current-width` so panel 1 behaves as a true layout column.
 - 2026-05-18: Migrated Graphify architecture memory into Obsidian snapshot + normalized architecture map.
 - 2026-05-18: Embedded frame generation directly into the Shots workflow (thumbnail previews + shot+frame editing in one panel) while preserving step 9 for dedicated frame operations.
 - 2026-05-18: Reworked Shots row interaction layout and expanded the edit panel information density (grouped controls, improved action placement) without removing any shot or frame operations.

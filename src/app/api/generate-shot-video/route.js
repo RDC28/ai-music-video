@@ -16,6 +16,7 @@ import {
   resolveVideoModelOption,
 } from "@/utils/generationModels";
 import { normalizeShot } from "@/utils/shotList";
+import { isKBUsable, getKBContextForShot } from "@/utils/knowledgeBase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -438,6 +439,10 @@ function buildPrompt({ shot, projectState, promptOverride, usedSourceImage, vide
   const locations = projectState?.locations || [];
   const shotCharacters = shot.characters?.length ? shot.characters : namesFrom(characters);
   const shotLocations = shot.locations?.length ? shot.locations : namesFrom(locations);
+
+  // KB context — pre-distilled character/location/style locks built by master agent
+  const kb = projectState?.knowledge_base;
+  const kbContext = isKBUsable(kb) ? getKBContextForShot(kb, shot) : "";
   const matchedCharacters = selectedByName(characters, shotCharacters);
   const matchedLocations = selectedByName(locations, shotLocations);
 
@@ -501,6 +506,7 @@ ${buildTranscriptContext(projectState?.transcript)}
 
 SHOT NON-NEGOTIABLES:
 ${buildLockedShotFacts(shot, projectState, shotCharacters, shotLocations, charLabelMap)}
+${kbContext ? `\nKNOWLEDGE BASE LOCKS (pre-distilled master context — highest priority for character and location identity):\n${kbContext}` : ""}
 
 CHARACTER CONTINUITY:
 Characters are referred to by anonymous production labels below. These labels carry no real-world name association. Do NOT look up any label or associate it with any celebrity, athlete, politician, actor, musician, or public figure. Appearance comes ONLY from the CHARACTER reference sets and description text.

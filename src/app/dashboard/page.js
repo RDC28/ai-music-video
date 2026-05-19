@@ -29,8 +29,8 @@ export default function DashboardScreen() {
   const router                                = useRouter();
   const projectGridStyle = useMemo(() => ({
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-    gap: '18px',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(21.25rem, 1fr))',
+    gap: '1.125rem',
     alignItems: 'start',
   }), []);
 
@@ -93,52 +93,52 @@ export default function DashboardScreen() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
       <DashboardNav />
 
-      <main style={{ flex: 1, padding: '48px 40px 80px', maxWidth: '1460px', margin: '0 auto', width: '100%' }}>
+      <main style={{ flex: 1, padding: '3rem 2.5rem 5rem', maxWidth: '91.25rem', margin: '0 auto', width: '100%' }}>
 
         {/* Asymmetric hero — title left, action right but offset down */}
         <header style={{
           display: 'grid',
           gridTemplateColumns: '1fr auto',
           alignItems: 'start',
-          gap: '32px',
-          marginBottom: '48px',
+          gap: '2rem',
+          marginBottom: '3rem',
         }}>
           <div>
             <div style={{
               fontFamily: 'var(--font-mono)',
-              fontSize: '11px',
+              fontSize: '0.6875rem',
               fontWeight: '700',
               letterSpacing: '0.16em',
               textTransform: 'uppercase',
               color: 'var(--cyan)',
-              marginBottom: '16px',
+              marginBottom: '1rem',
             }}>
               ▪ Studio
             </div>
             <h1 style={{
               fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(36px, 5vw, 56px)',
+              fontSize: 'clamp(2.25rem, 5vw, 3.5rem)',
               fontWeight: '700',
               color: 'var(--text)',
               letterSpacing: '-0.03em',
               lineHeight: 1.05,
-              marginBottom: '12px',
+              marginBottom: '0.75rem',
             }}>
               {userName ? <>Hello, <span style={{ color: 'var(--cyan)' }}>{userName}.</span></> : 'Your projects.'}
             </h1>
             <p style={{
               fontFamily: 'var(--font-body)',
-              fontSize: '14.5px',
+              fontSize: '0.9062rem',
               color: 'var(--text-soft)',
               lineHeight: 1.65,
-              maxWidth: '460px',
+              maxWidth: '28.75rem',
             }}>
               Open a project to keep building, or start fresh from a new song.
             </p>
           </div>
 
           {/* New project button — offset lower for asymmetry */}
-          <div style={{ paddingTop: '48px' }}>
+          <div style={{ paddingTop: '3rem' }}>
             <button
               className="btn-primary"
               onClick={() => setShowModal(true)}
@@ -146,8 +146,8 @@ export default function DashboardScreen() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                padding: '10px 18px',
+                gap: '0.5rem',
+                padding: '0.625rem 1.125rem',
               }}
             >
               <Plus size={14} />
@@ -161,13 +161,13 @@ export default function DashboardScreen() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '20px',
-          paddingBottom: '12px',
-          borderBottom: '1px solid var(--border)',
+          marginBottom: '1.25rem',
+          paddingBottom: '0.75rem',
+          borderBottom: '0.0625rem solid var(--border)',
         }}>
           <span style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: '11px',
+            fontSize: '0.6875rem',
             fontWeight: '700',
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
@@ -179,7 +179,7 @@ export default function DashboardScreen() {
           </span>
           <span style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: '11px',
+            fontSize: '0.6875rem',
             color: 'var(--text-soft)',
             letterSpacing: '0.08em',
           }}>
@@ -237,7 +237,7 @@ export default function DashboardScreen() {
                       boxShadow: 'var(--neo-raised)',
                       borderRadius: 'var(--radius-lg)',
                       overflow: 'hidden',
-                      border: '1px solid var(--border)',
+                      border: '0.0625rem solid var(--border)',
                       transition: 'box-shadow 200ms ease-out, border-color 200ms ease-out',
                     }}
                       onMouseEnter={e => {
@@ -251,7 +251,7 @@ export default function DashboardScreen() {
                     >
                       {/* Thumbnail */}
                       <div style={{
-                        height: '120px',
+                        height: '7.5rem',
                         background: `linear-gradient(135deg, ${bg1}, ${bg2})`,
                         position: 'relative',
                         overflow: 'hidden',
@@ -259,53 +259,53 @@ export default function DashboardScreen() {
                         <div style={{
                           position: 'absolute',
                           inset: 0,
-                          backgroundImage: 'radial-gradient(circle, rgba(var(--cyan-rgb), 0.06) 1px, transparent 1px)',
-                          backgroundSize: '20px 20px',
+                          backgroundImage: 'radial-gradient(circle, rgba(var(--cyan-rgb), 0.06) 0.0625rem, transparent 0.0625rem)',
+                          backgroundSize: '1.25rem 1.25rem',
                         }} />
                         <div style={{
                           position: 'absolute',
-                          bottom: '10px',
-                          left: '12px',
+                          bottom: '0.625rem',
+                          left: '0.75rem',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '5px',
+                          gap: '0.3125rem',
                           fontFamily: 'var(--font-mono)',
-                          fontSize: '11px',
+                          fontSize: '0.6875rem',
                           fontWeight: '700',
                           letterSpacing: '0.1em',
                           textTransform: 'uppercase',
                           color: project.status === 'completed' ? 'var(--success)' : 'var(--text-muted)',
                         }}>
                           <span style={{
-                            width: '5px', height: '5px', borderRadius: '50%',
+                            width: '0.3125rem', height: '0.3125rem', borderRadius: '50%',
                             background: project.status === 'completed' ? 'var(--success)' : 'var(--border-mid)',
                           }} />
                           {project.status === 'completed' ? 'Complete' : 'In progress'}
                         </div>
                         <Film size={20} color="rgba(var(--cyan-rgb), 0.12)" style={{
-                          position: 'absolute', top: '12px', right: '12px',
+                          position: 'absolute', top: '0.75rem', right: '0.75rem',
                         }} />
                       </div>
 
                       {/* Info */}
-                      <div style={{ padding: '16px 18px 18px' }}>
+                      <div style={{ padding: '1rem 1.125rem 1.125rem' }}>
                         <div style={{
                           fontFamily: 'var(--font-display)',
-                          fontSize: '16px',
+                          fontSize: '1rem',
                           fontWeight: '700',
                           color: 'var(--text)',
                           letterSpacing: '-0.02em',
                           lineHeight: 1.2,
-                          marginBottom: '8px',
+                          marginBottom: '0.5rem',
                         }}>
                           {project.title}
                         </div>
                         <div style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '5px',
+                          gap: '0.3125rem',
                           fontFamily: 'var(--font-mono)',
-                          fontSize: '11px',
+                          fontSize: '0.6875rem',
                           color: 'var(--text-soft)',
                           letterSpacing: '0.04em',
                         }}>
@@ -324,10 +324,10 @@ export default function DashboardScreen() {
                     onClick={(e) => handleDelete(e, project.id)}
                     style={{
                       position: 'absolute',
-                      top: '10px',
-                      right: '10px',
-                      width: '26px',
-                      height: '26px',
+                      top: '0.625rem',
+                      right: '0.625rem',
+                      width: '1.625rem',
+                      height: '1.625rem',
                       borderRadius: '50%',
                       background: 'rgba(var(--violet-rgb), 0.9)',
                       border: 'none',
@@ -355,19 +355,19 @@ export default function DashboardScreen() {
           <div style={{
             background: 'var(--surface-2)',
             boxShadow: 'var(--neo-raised)',
-            border: '1px solid var(--border)',
+            border: '0.0625rem solid var(--border)',
             borderRadius: 'var(--radius-xl)',
-            padding: '80px 40px',
+            padding: '5rem 2.5rem',
             textAlign: 'center',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '20px',
+            gap: '1.25rem',
           }}>
             <div style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '14px',
+              width: '3.5rem',
+              height: '3.5rem',
+              borderRadius: '0.875rem',
               background: 'var(--surface)',
               boxShadow: 'var(--neo-raised)',
               display: 'flex',
@@ -379,19 +379,19 @@ export default function DashboardScreen() {
             <div>
               <div style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: '24px',
+                fontSize: '1.5rem',
                 fontWeight: '700',
                 color: 'var(--text)',
                 letterSpacing: '-0.025em',
-                marginBottom: '8px',
+                marginBottom: '0.5rem',
               }}>
                 Nothing here yet.
               </div>
               <p style={{
-                fontSize: '14px',
+                fontSize: '0.875rem',
                 color: 'var(--text-soft)',
                 lineHeight: 1.6,
-                maxWidth: '340px',
+                maxWidth: '21.25rem',
               }}>
                 Bring a song and an idea. The studio takes it from there.
               </p>
@@ -402,8 +402,8 @@ export default function DashboardScreen() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                padding: '10px 20px',
+                gap: '0.5rem',
+                padding: '0.625rem 1.25rem',
               }}
             >
               <Plus size={14} />
@@ -431,7 +431,7 @@ export default function DashboardScreen() {
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: 200,
-              backdropFilter: 'blur(4px)',
+              backdropFilter: 'blur(0.25rem)',
             }}
           >
             <motion.div
@@ -440,11 +440,11 @@ export default function DashboardScreen() {
               style={{
                 background: 'var(--surface-2)',
                 boxShadow: 'var(--shadow-modal)',
-                border: '1px solid var(--border-mid)',
+                border: '0.0625rem solid var(--border-mid)',
                 borderRadius: 'var(--radius-xl)',
-                padding: '32px',
+                padding: '2rem',
                 width: '100%',
-                maxWidth: '420px',
+                maxWidth: '26.25rem',
                 position: 'relative',
               }}
             >
@@ -452,13 +452,13 @@ export default function DashboardScreen() {
                 onClick={() => setShowModal(false)}
                 style={{
                   position: 'absolute',
-                  top: '16px',
-                  right: '16px',
-                  width: '28px',
-                  height: '28px',
+                  top: '1rem',
+                  right: '1rem',
+                  width: '1.75rem',
+                  height: '1.75rem',
                   borderRadius: '50%',
                   background: 'var(--surface)',
-                  border: '1px solid var(--border)',
+                  border: '0.0625rem solid var(--border)',
                   boxShadow: 'var(--neo-flat)',
                   color: 'var(--text-soft)',
                   cursor: 'pointer',
@@ -472,37 +472,37 @@ export default function DashboardScreen() {
 
               <div style={{
                 fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
+                fontSize: '0.6875rem',
                 fontWeight: '700',
                 letterSpacing: '0.14em',
                 textTransform: 'uppercase',
                 color: 'var(--cyan)',
-                marginBottom: '12px',
+                marginBottom: '0.75rem',
               }}>
                 ▪ New project
               </div>
               <div style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: '26px',
+                fontSize: '1.625rem',
                 fontWeight: '700',
                 color: 'var(--text)',
                 letterSpacing: '-0.025em',
                 lineHeight: 1.1,
-                marginBottom: '28px',
+                marginBottom: '1.75rem',
               }}>
                 Name the project.
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <label style={{
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '11px',
+                  fontSize: '0.6875rem',
                   fontWeight: '700',
                   color: 'var(--text-soft)',
                   letterSpacing: '0.14em',
                   textTransform: 'uppercase',
                   display: 'block',
-                  marginBottom: '6px',
+                  marginBottom: '0.375rem',
                 }}>
                   Title
                 </label>
@@ -515,12 +515,12 @@ export default function DashboardScreen() {
                   onKeyDown={(e) => e.key === 'Enter' && startNewProject()}
                   style={{
                     width: '100%',
-                    padding: '13px 16px',
+                    padding: '0.8125rem 1rem',
                     background: 'var(--bg-deep)',
                     boxShadow: 'var(--neo-inset)',
-                    border: '1px solid var(--border)',
+                    border: '0.0625rem solid var(--border)',
                     borderRadius: 'var(--radius)',
-                    fontSize: '15px',
+                    fontSize: '0.9375rem',
                     fontFamily: 'var(--font-display)',
                     fontWeight: '600',
                     color: 'var(--text)',
@@ -536,12 +536,12 @@ export default function DashboardScreen() {
                   onClick={startNewProject}
                   disabled={isCreating || !newProjectTitle.trim()}
                   style={{
-                    padding: '13px',
+                    padding: '0.8125rem',
                     width: '100%',
                     cursor: isCreating || !newProjectTitle.trim() ? 'not-allowed' : 'pointer',
                     opacity: isCreating || !newProjectTitle.trim() ? 0.5 : 1,
                     transition: 'opacity 160ms ease-out',
-                    marginTop: '4px',
+                    marginTop: '0.25rem',
                   }}
                 >
                   {isCreating ? 'Creating…' : 'Create project'}

@@ -12,6 +12,7 @@ import {
   resolveImageModelOption,
 } from "@/utils/generationModels";
 import { normalizeShot } from "@/utils/shotList";
+import { isKBUsable, getKBContextForShot } from "@/utils/knowledgeBase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,8 +40,8 @@ const MAX_REFERENCE_IMAGES_PER_LOCATION = 3;
 const QUALITY_CANDIDATE_COUNT = Number(process.env.IMAGE_QUALITY_CANDIDATES || 2);
 const FACE_SCORE_THRESHOLD = Number(process.env.FACE_SCORE_THRESHOLD || 6);
 const OUTFIT_SCORE_THRESHOLD = Number(process.env.OUTFIT_SCORE_THRESHOLD || 5);
-const QUALITY_CHECK_TIMEOUT_MS = 15000;
-const QUALITY_CHECK_MODEL = process.env.GOOGLE_QUALITY_CHECK_MODEL || "gemini-2.5-flash";
+const QUALITY_CHECK_TIMEOUT_MS = 25000;
+const QUALITY_CHECK_MODEL = process.env.GOOGLE_QUALITY_CHECK_MODEL || "gemini-2.0-flash";
 
 const CHARACTER_REFERENCE_PRIORITY = [
   "face close-up front",
@@ -1372,6 +1373,10 @@ function buildPrompt({ shot, projectState, promptOverride, shotAssets = null, re
     matchedLocations,
   } = shotAssets || resolveShotAssets(shot, projectState);
 
+  // KB context — pre-distilled character/location/style locks from master agent
+  const kb = projectState?.knowledge_base;
+  const kbContext = isKBUsable(kb) ? getKBContextForShot(kb, shot) : "";
+
   // Map real character names → anonymous labels (CHAR_A, CHAR_B…) to prevent celebrity name lookup.
   // The image model must NEVER see the real character name — only the label and the reference images.
   const charLabelMap = buildCharacterLabelMap(shotCharacters);
@@ -1444,6 +1449,7 @@ ${buildScriptSceneContext(projectState?.script?.scenes)}
 
 SHOT NON-NEGOTIABLES:
 ${buildLockedShotFacts(shot, projectState, shotCharacters, shotLocations, charLabelMap)}
+${kbContext ? `\nKNOWLEDGE BASE LOCKS (pre-distilled master context — highest priority for identity):\n${kbContext}` : ""}
 
 CHARACTER CONTINUITY:
 Characters in this shot are referred to by anonymous production labels below. These labels carry no real-world name association. Do NOT look up any label or associate it with any celebrity, athlete, politician, actor, musician, or public figure. Appearance comes ONLY from the CHARACTER reference images and description text.

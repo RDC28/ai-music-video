@@ -1,11 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Home, Music2, BookOpen, Users, MapPin, Film,
   Layers, Video, Scissors, Shirt,
-  Check, ChevronLeft, ChevronRight,
+  Check, ChevronLeft, ChevronRight, Menu,
 } from 'lucide-react';
 
 const STEPS = [
@@ -22,15 +22,46 @@ const STEPS = [
 ];
 
 export default function StageRail({ activeScreen, onNavigate, userName, projectName }) {
-  const activeStep  = useMemo(() => STEPS.find(s => s.id === activeScreen) || STEPS[0], [activeScreen]);
+  const railPrefKey = 'stage-rail:expanded:v2';
+  const [isExpanded, setIsExpanded] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage.getItem(railPrefKey);
+    if (stored === null) return true;
+    return stored === 'true';
+  });
   const canGoBack    = activeScreen > 1;
   const canGoForward = activeScreen < STEPS.length;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(railPrefKey, isExpanded ? 'true' : 'false');
+  }, [isExpanded, railPrefKey]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.style.setProperty(
+      '--stage-rail-current-width',
+      isExpanded ? '12.5rem' : '3.75rem'
+    );
+    return () => {
+      document.documentElement.style.setProperty('--stage-rail-current-width', '3.75rem');
+    };
+  }, [isExpanded]);
 
   return (
     <>
       {/* ── Left rail ── */}
-      <nav className="stage-rail" aria-label="Production steps">
+      <nav className={`stage-rail${isExpanded ? ' is-expanded' : ''}`} aria-label="Production steps">
         <div className="stage-rail-logo">
+          <button
+            type="button"
+            className="stage-rail-toggle"
+            aria-label={isExpanded ? 'Collapse step sidebar' : 'Expand step sidebar'}
+            aria-expanded={isExpanded}
+            onClick={() => setIsExpanded((prev) => !prev)}
+          >
+            <Menu size={14} />
+          </button>
           <div className="stage-rail-logo-mark" aria-hidden="true">A</div>
           <span className="stage-rail-project" title={projectName}>
             {projectName || 'Untitled'}
@@ -74,11 +105,11 @@ export default function StageRail({ activeScreen, onNavigate, userName, projectN
       {/* ── Top strip ── */}
       <div className="workflow-topstrip">
         <div className="topstrip-left">
-          <div className="topstrip-project">{projectName || 'Untitled project'}</div>
+          <div className="topstrip-project" title={projectName || 'Untitled project'}>{projectName || 'Untitled project'}</div>
           {userName && (
             <span style={{
               fontFamily: 'var(--font-mono)',
-              fontSize: '12px',
+              fontSize: '0.75rem',
               color: 'var(--text-soft)',
               letterSpacing: '0.08em',
               textTransform: 'uppercase',
@@ -99,10 +130,10 @@ export default function StageRail({ activeScreen, onNavigate, userName, projectN
           </button>
           <span style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: '12px',
+            fontSize: '0.75rem',
             color: 'var(--text-soft)',
             letterSpacing: '0.04em',
-            minWidth: '36px',
+            minWidth: '2.25rem',
             textAlign: 'center',
           }}>
             {String(activeScreen).padStart(2, '0')}&thinsp;/&thinsp;{String(STEPS.length).padStart(2, '0')}
@@ -122,33 +153,6 @@ export default function StageRail({ activeScreen, onNavigate, userName, projectN
         </div>
       </div>
 
-      {/* ── Mobile strip ── */}
-      <div className="stage-rail-mobile" role="navigation" aria-label="Step navigation">
-        <button
-          type="button"
-          className="topbar-icon-btn"
-          onClick={() => canGoBack && onNavigate?.(activeScreen - 1)}
-          disabled={!canGoBack}
-          aria-label="Previous step"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <div style={{ textAlign: 'center' }}>
-          <div className="stage-rail-mobile-num">
-            {String(activeScreen).padStart(2, '0')} / {String(STEPS.length).padStart(2, '0')}
-          </div>
-          <div className="stage-rail-mobile-label">{activeStep.name}</div>
-        </div>
-        <button
-          type="button"
-          className="topbar-icon-btn"
-          onClick={() => canGoForward && onNavigate?.(activeScreen + 1)}
-          disabled={!canGoForward}
-          aria-label="Next step"
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
     </>
   );
 }

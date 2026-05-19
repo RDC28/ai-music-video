@@ -1,78 +1,32 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { FileText, Loader2 } from 'lucide-react';
+import { FileText, Loader2, Upload, Wand2 } from 'lucide-react';
+import { useGenerationQueue } from '@/hooks/useGenerationQueue';
+import QueueStatusBar from '../QueueStatusBar';
 import { createClient } from '@/utils/supabase';
 import ProgressBar from '../ProgressBar';
+import WorkflowThreePaneShell from '../WorkflowThreePaneShell';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MODAL_BTN = {
   background: 'rgba(var(--cyan-300-rgb), 0.06)',
-  border: '1px solid rgba(var(--cyan-300-rgb), 0.08)',
+  border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.08)',
   color: 'var(--text-soft)',
-  padding: '7px 12px',
-  borderRadius: '6px',
-  fontSize: '11px',
+  padding: '0.4375rem 0.75rem',
+  borderRadius: '0.375rem',
+  fontSize: '0.6875rem',
   fontWeight: 600,
   cursor: 'pointer',
   letterSpacing: '0.03em',
 };
 
-const PANEL_LABELS = [
-  'Wide Shot', 'Close-up Detail', 'Interior View', 'Exterior View', 'Atmosphere', 'Golden Hour', 'Night Shot', 'Aerial View', 'Ground Level',
-];
-
-const LOCATION_REFERENCE_VIEWS = [
-  {
-    label: 'ESTABLISHING VIEW',
-    prompt: 'Wide cinematic establishing view, clear full environment layout, exact architecture, materials, color palette, geography, and atmosphere.',
-  },
-  {
-    label: 'INTERIOR WIDE',
-    prompt: 'Interior wide-angle view, same architecture and material language, clear spatial layout, matching lighting logic and atmosphere.',
-  },
-  {
-    label: 'EXTERIOR VIEW',
-    prompt: 'Exterior elevation view, same building or environment identity, exact materials, signage, palette, geography, and weathering.',
-  },
-  {
-    label: 'AERIAL VIEW',
-    prompt: 'Birds-eye or high aerial view, same location footprint and surrounding context, exact geometry and environmental details.',
-  },
-  {
-    label: 'GROUND LEVEL',
-    prompt: 'Ground-level human-eye view, same location identity, matching scale, textures, props, vegetation, and lighting.',
-  },
-  {
-    label: 'DETAIL VIEW',
-    prompt: 'Close-up detail view of signature architecture, surface texture, props, signage, or environmental feature, exactly matching the location style.',
-  },
-  {
-    label: 'ATMOSPHERE VIEW',
-    prompt: 'Atmospheric cinematic view with haze, rain, dust, or sunset mood while preserving exact location architecture, palette, and geography.',
-  },
-  {
-    label: 'NIGHT VIEW',
-    prompt: 'Night lighting study of the same location, exact architecture and props, consistent palette, practical lights and shadows.',
-  },
-  {
-    label: 'FOCAL POINT',
-    prompt: 'Focused view of the most story-relevant area of the location, same set dressing, materials, and camera-ready composition.',
-  },
-];
-
 const LOCATION_STEPS = [
-  'Locking location identity',
-  ...LOCATION_REFERENCE_VIEWS.map(view => `Creating ${view.label.toLowerCase()}`),
+  'Generating location reference sheet',
   'Saving to library',
 ];
 
-const PINBOARD_WIDTH = 2016;
-const PINBOARD_HEIGHT = 700;
-const PINBOARD_PADDING = 28;
-const PINBOARD_GAP = 14;
-const DEFAULT_COLLAGE_RATIO = 1;
 const LOCATION_DESCRIPTION_DISPLAY_LIMIT = 360;
 const LOCATION_LABEL_FALLBACKS = [
   'ESTABLISHING VIEW',
@@ -101,25 +55,6 @@ const CHARACTER_STYLE_LABELS = [
   'POSE',
 ];
 
-const buildLocationSheetPrompt = (desc, hasRef) => {
-  const locClause = hasRef
-    ? 'of the environment shown in the reference image'
-    : `of this location: ${desc}`;
-  return `Professional location design reference sheet. A single wide 21:9 horizontal canvas with 9 clearly separated panels on a dark neutral or cinematic studio backdrop.
-
-Panel layout:
-- Far left: one large wide-angle cinematic establishing shot
-- Center column: four distinct views — interior wide, exterior elevation, bird's-eye view, and ground level view
-- Top right: close-up texture or architectural detail
-- Middle right: atmospheric view (foggy, rainy, or sunset)
-- Bottom right left: interior focal point or detail
-- Bottom right right: evening or night-time lighting study
-
-Location ${locClause}.
-
-Maintain perfectly consistent architectural style, materials, and environmental details across all 9 panels. Clean visible spacing between panels. Cinematic lighting throughout. Professional concept art/architectural visualization quality.`;
-};
-
 function compactScriptText(value, maxLength = 700) {
   if (!value) return '';
   const text = String(value).replace(/\s+/g, ' ').trim();
@@ -130,16 +65,6 @@ function truncateLocationDescription(value, maxLength = LOCATION_DESCRIPTION_DIS
   if (!value) return '';
   const text = String(value).replace(/\s+/g, ' ').trim();
   return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
-}
-
-async function readJsonResponse(response) {
-  const text = await response.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { error: text };
-  }
 }
 
 function buildScriptLocationDescription(location = {}, projectState = {}) {
@@ -191,28 +116,6 @@ function _renderedRect(img, containerW, containerH) {
   return { offX, offY, rendW, rendH };
 }
 
-function getImageRatio(ratio) {
-  if (!Number.isFinite(ratio) || ratio <= 0) return DEFAULT_COLLAGE_RATIO;
-  return Math.max(0.2, Math.min(5, ratio));
-}
-
-function getStoredImageRatio(imageData) {
-  if (!imageData || typeof imageData !== 'object') return null;
-
-  if (Number.isFinite(imageData.width) && Number.isFinite(imageData.height) && imageData.height > 0) {
-    return imageData.width / imageData.height;
-  }
-
-  if (Array.isArray(imageData.box_2d) && imageData.box_2d.length === 4) {
-    const [ymin, xmin, ymax, xmax] = imageData.box_2d;
-    const width = xmax - xmin;
-    const height = ymax - ymin;
-    if (width > 0 && height > 0) return width / height;
-  }
-
-  return null;
-}
-
 function normalizeLocationLabel(label, index) {
   const text = typeof label === 'string' ? label.trim().toUpperCase() : '';
   const isCharacterLabel = CHARACTER_STYLE_LABELS.some(term => text.includes(term));
@@ -223,162 +126,6 @@ function normalizeLocationLabel(label, index) {
   }
 
   return text;
-}
-
-function parseLocationImage(img, index) {
-  const text = typeof img === 'string' ? img.trim() : '';
-  let parsed = null;
-
-  if (text.charAt(0) === '{') {
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = null;
-    }
-  }
-
-  const imageData = parsed || (img && typeof img === 'object' ? img : null);
-  const src = imageData ? (imageData.url || null) : (text.charAt(0) === '{' ? null : text || null);
-  const label = normalizeLocationLabel(imageData?.label, index);
-
-  return { imageData, src, label };
-}
-
-function getPinboardImageSize(ratio, count, index, scale = 1) {
-  const safeRatio = getImageRatio(ratio);
-  const boardArea = PINBOARD_WIDTH * PINBOARD_HEIGHT;
-  const fill = count === 1 ? 0.25 : Math.min(0.13, Math.max(0.065, 0.56 / Math.max(1, count)));
-  const emphasis = index === 0 ? 1.12 : index % 3 === 0 ? 1.04 : 1;
-  const area = boardArea * fill * emphasis * scale * scale;
-  let width = Math.sqrt(area * safeRatio);
-  let height = width / safeRatio;
-  const usableWidth = PINBOARD_WIDTH - PINBOARD_PADDING * 2;
-  const usableHeight = PINBOARD_HEIGHT - PINBOARD_PADDING * 2;
-  const maxWidth = Math.min(usableWidth, count === 1 ? 820 : index === 0 ? 620 : 560);
-  const maxHeight = Math.min(usableHeight, count === 1 ? 620 : index === 0 ? 560 : 520);
-  const maxScale = Math.min(1, maxWidth / width, maxHeight / height);
-  width *= maxScale;
-  height *= maxScale;
-  const minShortSide = count <= 1 ? 150 : count <= 4 ? 118 : count <= 8 ? 92 : 74;
-  const shortSide = Math.min(width, height);
-  if (shortSide < minShortSide) {
-    const growScale = minShortSide / shortSide;
-    width *= growScale;
-    height *= growScale;
-  }
-
-  return { width, height };
-}
-
-function getPinboardCandidates() {
-  const cx = PINBOARD_WIDTH / 2;
-  const cy = PINBOARD_HEIGHT / 2;
-  const candidates = [{ x: cx, y: cy }];
-  const directions = [
-    0, Math.PI, -Math.PI / 2, Math.PI / 2,
-    -Math.PI / 4, -3 * Math.PI / 4, Math.PI / 4, 3 * Math.PI / 4,
-    -Math.PI / 8, Math.PI / 8, -7 * Math.PI / 8, 7 * Math.PI / 8,
-  ];
-
-  for (let radius = 210; radius <= 980; radius += 115) {
-    directions.forEach(angle => {
-      candidates.push({
-        x: cx + Math.cos(angle) * radius,
-        y: cy + Math.sin(angle) * radius * 0.62,
-      });
-    });
-  }
-
-  return candidates;
-}
-
-function boxesOverlap(a, b, gap = PINBOARD_GAP) {
-  return !(
-    a.x + a.width + gap <= b.x ||
-    b.x + b.width + gap <= a.x ||
-    a.y + a.height + gap <= b.y ||
-    b.y + b.height + gap <= a.y
-  );
-}
-
-function getOverlapArea(a, b) {
-  const x = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
-  const y = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
-  return x * y;
-}
-
-function fitsPinboard(box) {
-  return (
-    box.x >= PINBOARD_PADDING &&
-    box.y >= PINBOARD_PADDING &&
-    box.x + box.width <= PINBOARD_WIDTH - PINBOARD_PADDING &&
-    box.y + box.height <= PINBOARD_HEIGHT - PINBOARD_PADDING
-  );
-}
-
-function tryBuildPinboard(items, sizeScale) {
-  const candidates = getPinboardCandidates();
-  const placed = [];
-
-  for (const item of items) {
-    const size = getPinboardImageSize(item.ratio, items.length, item.index, sizeScale);
-    let best = null;
-
-    candidates.forEach(candidate => {
-      const box = {
-        ...item,
-        x: candidate.x - size.width / 2,
-        y: candidate.y - size.height / 2,
-        width: size.width,
-        height: size.height,
-      };
-      if (!fitsPinboard(box)) return;
-
-      const overlap = placed.reduce((sum, placedBox) => sum + getOverlapArea(box, placedBox), 0);
-      const hasOverlap = placed.some(placedBox => boxesOverlap(box, placedBox));
-      const centerDistance = Math.hypot(candidate.x - PINBOARD_WIDTH / 2, candidate.y - PINBOARD_HEIGHT / 2);
-      const score = overlap * 40 + (hasOverlap ? 100000 : 0) + centerDistance;
-
-      if (!best || score < best.score) best = { ...box, score, hasOverlap };
-    });
-
-    if (!best) return null;
-    placed.push(best);
-  }
-
-  if (placed.length <= 1) return placed;
-
-  const bounds = placed.reduce((acc, box) => ({
-    minX: Math.min(acc.minX, box.x),
-    minY: Math.min(acc.minY, box.y),
-    maxX: Math.max(acc.maxX, box.x + box.width),
-    maxY: Math.max(acc.maxY, box.y + box.height),
-  }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
-
-  const groupWidth = bounds.maxX - bounds.minX;
-  const groupHeight = bounds.maxY - bounds.minY;
-  const targetX = (PINBOARD_WIDTH - groupWidth) / 2;
-  const targetY = (PINBOARD_HEIGHT - groupHeight) / 2;
-  let dx = targetX - bounds.minX;
-  let dy = targetY - bounds.minY;
-
-  dx = Math.max(PINBOARD_PADDING - bounds.minX, Math.min(dx, PINBOARD_WIDTH - PINBOARD_PADDING - bounds.maxX));
-  dy = Math.max(PINBOARD_PADDING - bounds.minY, Math.min(dy, PINBOARD_HEIGHT - PINBOARD_PADDING - bounds.maxY));
-
-  return placed.map(box => ({ ...box, x: box.x + dx, y: box.y + dy }));
-}
-
-function buildPinboardLayout(items) {
-  if (!items.length) return [];
-
-  for (let scale = 1; scale >= 0.58; scale -= 0.06) {
-    const placed = tryBuildPinboard(items, scale);
-    if (placed && placed.every((box, index) => !placed.slice(0, index).some(other => boxesOverlap(box, other)))) {
-      return placed;
-    }
-  }
-
-  return tryBuildPinboard(items, 0.58) || [];
 }
 
 // ─── ZoomCropModal ────────────────────────────────────────────────────────────
@@ -522,24 +269,24 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(var(--ink-950-rgb), 0.97)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(var(--ink-950-rgb), 0.97)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.875rem' }}
       onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
     >
       {/* Toolbar */}
-      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <span style={{ color: 'var(--ink-800)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.12em', marginRight: '4px' }}>{label?.toUpperCase()}</span>
-        <span style={{ color: 'var(--ink-800)', fontSize: '11px', marginRight: '4px' }}>Scroll to zoom · Drag to pan</span>
-        <div style={{ width: '1px', height: '18px', background: 'var(--ink-800)' }} />
+      <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <span style={{ color: 'var(--ink-800)', fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.12em', marginRight: '0.25rem' }}>{label?.toUpperCase()}</span>
+        <span style={{ color: 'var(--ink-800)', fontSize: '0.6875rem', marginRight: '0.25rem' }}>Scroll to zoom · Drag to pan</span>
+        <div style={{ width: '0.0625rem', height: '1.125rem', background: 'var(--ink-800)' }} />
         {recropUrl && (
           viewingRecropSource ? (
             <button onClick={openCurrentImage} style={MODAL_BTN}>View Image</button>
           ) : (
-            <button onClick={openRecropSource} style={{ ...MODAL_BTN, background: 'var(--teal)', color: 'var(--ink-950)', border: '1px solid var(--teal)' }}>
+            <button onClick={openRecropSource} style={{ ...MODAL_BTN, background: 'var(--teal)', color: 'var(--ink-950)', border: '0.0625rem solid var(--teal)' }}>
               Re-crop
             </button>
           )
         )}
-        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={cropMode ? { ...MODAL_BTN, background: 'var(--violet-500)', color: 'var(--ink-950)', border: '1px solid var(--violet-500)' } : MODAL_BTN}>
+        <button onClick={() => { setCropMode(m => !m); if (cropMode) setCropBox(null); }} style={cropMode ? { ...MODAL_BTN, background: 'var(--violet-500)', color: 'var(--ink-950)', border: '0.0625rem solid var(--violet-500)' } : MODAL_BTN}>
           {cropMode ? 'Draw New Selection' : 'Crop Mode'}
         </button>
         {canApply && showEditorLabel && (
@@ -548,7 +295,7 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
             onChange={e => setLabelInput(e.target.value)}
             placeholder="Label (e.g. AERIAL VIEW)"
             onClick={e => e.stopPropagation()}
-            style={{ ...MODAL_BTN, width: '160px', outline: 'none', caretColor: 'var(--text)', background: 'rgba(var(--cyan-300-rgb), 0.04)', color: 'var(--text)' }}
+            style={{ ...MODAL_BTN, width: '10rem', outline: 'none', caretColor: 'var(--text)', background: 'rgba(var(--cyan-300-rgb), 0.04)', color: 'var(--text)' }}
           />
         )}
         {canApply && (
@@ -556,19 +303,19 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
             {applying ? 'Saving...' : 'Save Crop'}
           </button>
         )}
-        <div style={{ width: '1px', height: '18px', background: 'var(--ink-800)' }} />
+        <div style={{ width: '0.0625rem', height: '1.125rem', background: 'var(--ink-800)' }} />
         {onDelete && (
-          <button onClick={onDelete} style={{ ...MODAL_BTN, color: 'var(--violet-400)', border: '1px solid rgba(var(--violet-rgb), 0.3)' }}>
+          <button onClick={onDelete} className="btn-action-danger" style={{ ...MODAL_BTN }}>
             Delete Image
           </button>
         )}
-        <button onClick={onClose} style={{ ...MODAL_BTN, color: 'var(--text-soft)', border: '1px solid rgba(var(--cyan-300-rgb), 0.1)' }}>Close</button>
+        <button onClick={onClose} style={{ ...MODAL_BTN, color: 'var(--text-soft)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.1)' }}>Close</button>
       </div>
 
       {/* Viewport */}
       <div
         ref={containerRef}
-        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: 'var(--ink-950)', borderRadius: '12px', border: '1px solid var(--border-mid)', cursor: cropMode ? 'crosshair' : drag?.type === 'pan' ? 'grabbing' : 'grab' }}
+        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: 'var(--ink-950)', borderRadius: '0.75rem', border: '0.0625rem solid var(--border-mid)', cursor: cropMode ? 'crosshair' : drag?.type === 'pan' ? 'grabbing' : 'grab' }}
         onMouseDown={onMouseDown}
         onWheel={onWheel}
       >
@@ -577,9 +324,9 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
           style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'center center', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
         />
         {cropBox && cropBox.w > 0 && (
-          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '1px solid var(--violet-500)', background: 'rgba(var(--violet-rgb), 0.08)', pointerEvents: 'none', boxSizing: 'border-box' }} />
+          <div style={{ position: 'absolute', left: cropBox.x, top: cropBox.y, width: cropBox.w, height: cropBox.h, border: '0.0625rem solid var(--violet-500)', background: 'rgba(var(--violet-rgb), 0.08)', pointerEvents: 'none', boxSizing: 'border-box' }} />
         )}
-        <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: 'var(--ink-800)', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
+        <div style={{ position: 'absolute', bottom: '0.875rem', left: '50%', transform: 'translateX(-50%)', color: 'var(--ink-800)', fontSize: '0.6875rem', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
           {cropMode
             ? 'Drag to select the zone · Draw a new box to change selection'
             : 'Scroll to zoom · Drag to pan · Enable Crop Mode to select zone'}
@@ -591,11 +338,11 @@ function ZoomCropModal({ imageUrl, label, onClose, onApply, onDelete, initialBox
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function LocationsScreen({ onNavigate, projectData = [], projectState = {}, onDataUpdate, projectId }) {
+export default function LocationsScreen({ projectData = [], projectState = {}, onDataUpdate, projectId }) {
   const [activeTab, setActiveTab] = useState(0);
   const [globalLibrary, setGlobalLibrary] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [isPanelEditing, setIsPanelEditing] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
   const [createRefImage, setCreateRefImage] = useState(null);
@@ -605,12 +352,9 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
   const [isDraggingSheet, setIsDraggingSheet] = useState(false);
   const [isDraggingRef, setIsDraggingRef] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isLockingStyle, setIsLockingStyle] = useState(false);
   const [generatingLoc, setGeneratingLoc] = useState(null);
   const [zoomCropTarget, setZoomCropTarget] = useState(null);
   const [activeCategory, setActiveCategory] = useState('project');
-  const [renamingPanel, setRenamingPanel] = useState(null);
-
   const [scriptPromptPreview, setScriptPromptPreview] = useState(null); // { name, description, replaceIndex }
   const [pendingSheetFile, setPendingSheetFile] = useState(null);
   const [sheetReplaceTarget, setSheetReplaceTarget] = useState(null);
@@ -619,14 +363,28 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
   const [sheetWarning, setSheetWarning] = useState(null);
   const [sheetProcessStatus, setSheetProcessStatus] = useState('');
   const [locProgressStep, setLocProgressStep] = useState(-1);
-  const [imgRatios, setImgRatios] = useState({});
 
   const fileInputRef = useRef(null);
   const refFileInputRef = useRef(null);
-  const collageRef = useRef(null);
-  const [collageSize, setCollageSize] = useState({ width: PINBOARD_WIDTH, height: PINBOARD_HEIGHT });
+
+  // ── Comparison board ──────────────────────────────────────────────────────
+  const [boardCards, setBoardCards] = useState([]);
+  const [cardZOrder, setCardZOrder] = useState([]);
+  const [isDragOverBoard, setIsDragOverBoard] = useState(false);
+  const dragState = useRef(null);
+  const resizeState = useRef(null);
+  const boardRef = useRef(null);
+  const CARD_DEFAULT_W = 280;
+  const CARD_MIN_W = 160;
+  const CARD_MAX_W = 800;
   const supabase = useMemo(() => createClient(), []);
   const projectLocations = projectData || [];
+
+  // ── Batch location generation queue (concurrency=1 — each sheet is expensive) ──
+  // Declared after projectLocations so the useRef initializer can reference it.
+  const locationQueue = useGenerationQueue({ concurrency: 1 });
+  const projectLocationsRef = useRef(projectLocations);
+  useEffect(() => { projectLocationsRef.current = projectLocations; }, [projectLocations]);
   const generatingReplaceIndex = Number.isInteger(generatingLoc?.replaceIndex)
     ? generatingLoc.replaceIndex
     : null;
@@ -640,7 +398,7 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
     : globalLibrary;
   const activeLoc = displayedLocations[activeTab] || null;
   const isGeneratingActive = Boolean(activeLoc?.isGeneratingReference || activeLoc?.id === 'generating');
-  const busy = isProcessingSheet || isGenerating || isLockingStyle;
+  const busy = isProcessingSheet || isGenerating;
 
   const loadGlobalLibrary = useCallback(async () => {
     const { data, error } = await supabase.from('locations_library').select('*').order('created_at', { ascending: false });
@@ -659,62 +417,6 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
     });
     return () => { isActive = false; };
   }, [loadGlobalLibrary]);
-
-  useEffect(() => {
-    const node = collageRef.current;
-    if (!node) return;
-
-    let frame = null;
-    const measure = () => {
-      if (frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const rect = node.getBoundingClientRect();
-        const nextSize = {
-          width: Math.round(rect.width) || PINBOARD_WIDTH,
-          height: Math.round(rect.height) || PINBOARD_HEIGHT,
-        };
-        setCollageSize(prev => (
-          prev.width === nextSize.width && prev.height === nextSize.height ? prev : nextSize
-        ));
-      });
-    };
-
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
-    observer?.observe(node);
-    window.addEventListener('resize', measure);
-    measure();
-
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      observer?.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!activeLoc?.images?.length) return undefined;
-
-    const sources = activeLoc.images
-      .map((img, index) => parseLocationImage(img, index))
-      .filter(item => item.src);
-
-    if (!sources.length) return undefined;
-
-    let cancelled = false;
-    sources.forEach(({ src, imageData }) => {
-      if (imgRatios[src] || getStoredImageRatio(imageData)) return;
-
-      const img = new Image();
-      img.onload = () => {
-        if (cancelled || !img.naturalWidth || !img.naturalHeight) return;
-        const ratio = img.naturalWidth / img.naturalHeight;
-        setImgRatios(prev => prev[src] === ratio ? prev : { ...prev, [src]: ratio });
-      };
-      img.src = src;
-    });
-
-    return () => { cancelled = true; };
-  }, [activeLoc?.images, imgRatios]);
 
   const base64ToBlob = (b64, mime) => {
     const bytes = atob(b64);
@@ -986,69 +688,44 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         id: existingLoc?.id || tempId,
         name: locName,
         description: desc,
-        images: LOCATION_REFERENCE_VIEWS.map(view => ({ label: view.label, url: null })),
+        images: [{ label: 'LOCATION SHEET', url: null }],
         isGeneratingReference: true,
         replaceIndex: isReplacing ? replaceIndex : null,
       });
       setActiveTab(isReplacing ? replaceIndex : projectLocations.length);
       setActiveCategory('project');
 
-      const finalImages = [];
-      const hasUserReference = Boolean(refImage?.base64);
-      let referenceBase64 = refImage?.base64 || null;
-      let referenceMimeType = refImage?.mimeType || 'image/png';
-
-      for (let i = 0; i < LOCATION_REFERENCE_VIEWS.length; i++) {
-        setLocProgressStep(i + 1);
-        const view = LOCATION_REFERENCE_VIEWS[i];
-        try {
-          const payload = {
-            locationDescription: desc,
-            angleDescription: view.prompt,
-            label: view.label
-          };
-
-          if (referenceBase64) {
-            payload.base64 = referenceBase64;
-            payload.mimeType = referenceMimeType;
-          }
-
-          const resp = await fetch('/api/generate-location-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-
-          const { imageBase64, error } = await resp.json();
-          if (error) throw new Error(error);
-
-          if (!hasUserReference && !referenceBase64) {
-            referenceBase64 = imageBase64;
-            referenceMimeType = 'image/png';
-          }
-
-          const blob = base64ToBlob(imageBase64, 'image/png');
-          const url = await uploadBlob(blob, 'image/png', `${projectId}/generated/${Date.now()}-${view.label.replace(/\s+/g, '_')}.png`);
-
-          const imageData = { url, label: view.label };
-          finalImages[i] = imageData;
-
-          setGeneratingLoc(prev => {
-            if (!prev) return prev;
-            const newImgs = [...prev.images];
-            newImgs[i] = imageData;
-            return { ...prev, images: newImgs };
-          });
-
-        } catch (e) {
-          console.error(`Failed ${view.label}:`, e);
-        }
+      // Single call — generates a full 21:9 location reference sheet in one image
+      setLocProgressStep(1);
+      const payload = {
+        locationDescription: desc,
+        locationName: locName,
+        label: 'LOCATION SHEET',
+        projectState,
+      };
+      // If user provided a reference image, pass it so the sheet locks to it
+      if (refImage?.base64) {
+        payload.base64 = refImage.base64;
+        payload.mimeType = refImage.mimeType || 'image/png';
+        payload.angleDescription = 'Full 360° location reference sheet';
       }
 
-      const savedImages = finalImages.filter(Boolean);
-      if (savedImages.length < 7) {
-        throw new Error(`Only ${savedImages.length} location references were generated.`);
-      }
+      const resp = await fetch('/api/generate-location-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const { imageBase64, error: genError } = await resp.json();
+      if (genError) throw new Error(genError);
+      if (!imageBase64) throw new Error('No image data returned from location sheet generation.');
+
+      const blob = base64ToBlob(imageBase64, 'image/png');
+      const sheetPath = `${projectId}/generated/${Date.now()}-${locName.replace(/\s+/g, '_')}-sheet.png`;
+      const sheetUrl = await uploadBlob(blob, 'image/png', sheetPath);
+
+      const sheetImage = { url: sheetUrl, label: 'LOCATION SHEET' };
+      setGeneratingLoc(prev => prev ? { ...prev, images: [sheetImage] } : prev);
 
       setLocProgressStep(LOCATION_STEPS.length - 1);
       const newLoc = {
@@ -1057,7 +734,8 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         name: locName,
         description: desc,
         visual_prompt: existingLoc?.visual_prompt || desc,
-        images: savedImages,
+        images: [sheetImage],
+        sheetUrl,
         source: 'ai',
       };
       const updatedLocs = [...projectLocations];
@@ -1078,6 +756,63 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       setGeneratingLoc(null);
     }
   };
+
+  // Pure worker for one location sheet — throws on failure so queue can retry.
+  const runLocationSheetJob = useCallback(async (loc, replaceIndex) => {
+    const locName = String(loc.name || '').trim().toUpperCase();
+    const desc = buildScriptLocationDescription(loc, projectState);
+    if (!desc.trim()) throw new Error(`No description for ${locName}`);
+
+    const res = await fetch('/api/generate-location-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        locationDescription: desc,
+        locationName: locName,
+        label: 'LOCATION SHEET',
+        projectState,
+      }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error || !result.imageBase64) {
+      const err = new Error(result.error || 'Location sheet generation failed');
+      err.status = res.status;
+      throw err;
+    }
+
+    // Upload sheet
+    const bytes = atob(result.imageBase64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    const blob = new Blob([arr], { type: 'image/png' });
+    const sheetPath = `${projectId}/generated/${Date.now()}-${locName.replace(/\s+/g, '_')}-sheet.png`;
+    const { error: upErr } = await supabase.storage.from('assets').upload(sheetPath, blob);
+    if (upErr) throw upErr;
+    const { data: { publicUrl: sheetUrl } } = supabase.storage.from('assets').getPublicUrl(sheetPath);
+
+    const newLoc = { ...loc, images: [{ url: sheetUrl, label: 'LOCATION SHEET' }], sheetUrl, source: 'ai' };
+
+    // Use ref for latest — sequential jobs (concurrency=1) see each other's writes.
+    const locs = [...projectLocationsRef.current];
+    locs[replaceIndex] = newLoc;
+    projectLocationsRef.current = locs;
+    await onDataUpdate({ locations: locs });
+    return sheetUrl;
+  }, [projectState, projectId, supabase, onDataUpdate]);
+
+  // Enqueue all project locations that don't have a sheet yet.
+  const handleGenerateAllLocationSheets = useCallback(() => {
+    if (locationQueue.isActive) return;
+    const jobs = projectLocations
+      .map((loc, index) => ({ loc, index }))
+      .filter(({ loc }) => !loc.sheetUrl && !loc.isGeneratingReference && loc.name)
+      .map(({ loc, index }) => ({
+        id: `loc-sheet-${index}`,
+        label: loc.name,
+        run: () => runLocationSheetJob(loc, index),
+      }));
+    if (jobs.length) locationQueue.enqueue(jobs);
+  }, [projectLocations, locationQueue, runLocationSheetJob]);
 
   const handleGenerateAngles = async () => {
     if (!createName.trim()) return alert('Enter a location name');
@@ -1135,63 +870,10 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
         updatedLocs[activeTab] = { ...projectLocations[activeTab], name: editName.trim().toUpperCase(), description: editDesc.trim() };
         await onDataUpdate({ locations: updatedLocs });
       }
-      setShowEditModal(false);
+      setIsPanelEditing(false);
     } catch (error) {
       console.error('Location rename failed:', error);
       alert('Location could not be renamed. Please try again.');
-    }
-  };
-
-  const lockStyleBibleIfNeeded = async () => {
-    if (!projectId) return null;
-    if (projectState?.style_bible) return projectState.style_bible;
-
-    const characters = Array.isArray(projectState?.characters) ? projectState.characters : [];
-    const locations = Array.isArray(projectLocations) ? projectLocations : [];
-    const hasCharacterRefs = characters.some(character => (
-      Array.isArray(character?.images) && character.images.length > 0
-    ));
-    const hasLocationRefs = locations.some(location => (
-      Array.isArray(location?.images) && location.images.length > 0
-    ));
-
-    if (!hasCharacterRefs || !hasLocationRefs) return null;
-
-    const mergedState = {
-      ...projectState,
-      locations,
-    };
-
-    setIsLockingStyle(true);
-    try {
-      const response = await fetch('/api/generate-style-bible', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          projectState: mergedState,
-        }),
-      });
-      const result = await readJsonResponse(response);
-      if (!response.ok || result.error || !result.style_bible) {
-        throw new Error(result.error || 'Style bible generation failed');
-      }
-
-      await onDataUpdate({ style_bible: result.style_bible });
-      return result.style_bible;
-    } finally {
-      setIsLockingStyle(false);
-    }
-  };
-
-  const handleContinueToWardrobe = async () => {
-    if (busy) return;
-    try {
-      await lockStyleBibleIfNeeded();
-      onNavigate(6);
-    } catch (error) {
-      console.error('Style bible lock failed:', error);
-      alert('Could not lock the visual style yet. Please try again.');
     }
   };
 
@@ -1243,394 +925,418 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
     await onDataUpdate({ locations: updatedLocs });
   };
 
-  const handleRenameLabel = async (locIdx, imgIdx, newLabel) => {
-    setRenamingPanel(null);
-    if (locIdx < 0 || !newLabel.trim()) return;
-    const loc = projectLocations[locIdx];
-    if (!loc) return;
-    const images = [...loc.images];
-    const existing = images[imgIdx];
-    images[imgIdx] = { ...(typeof existing === 'object' ? existing : { url: existing }), label: normalizeLocationLabel(newLabel, imgIdx) };
-    const updatedLocs = [...projectLocations];
-    updatedLocs[locIdx] = { ...loc, images };
-    await onDataUpdate({ locations: updatedLocs });
-  };
+  // ── Comparison board helpers ──────────────────────────────────────────────
+  const bringToFront = useCallback((id) => {
+    setCardZOrder(prev => [...prev.filter(z => z !== id), id]);
+  }, []);
+
+  const addCardToBoard = useCallback((locIndex, dropX, dropY) => {
+    const existing = boardCards.find(c => c.locIndex === locIndex);
+    if (existing) { bringToFront(existing.id); setActiveTab(locIndex); return; }
+    const id = `loc-card-${Date.now()}-${locIndex}`;
+    setBoardCards(prev => [...prev, { id, locIndex, x: Math.max(0, dropX - 140), y: Math.max(0, dropY - 60), width: CARD_DEFAULT_W }]);
+    setCardZOrder(prev => [...prev, id]);
+    setActiveTab(locIndex);
+  }, [boardCards, bringToFront]);
+
+  const removeCardFromBoard = useCallback((id) => {
+    setBoardCards(prev => prev.filter(c => c.id !== id));
+    setCardZOrder(prev => prev.filter(z => z !== id));
+  }, []);
+
+  const handleCardMouseDown = useCallback((e, card) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    bringToFront(card.id);
+    setActiveTab(card.locIndex);
+    dragState.current = { cardId: card.id, startX: e.clientX, startY: e.clientY, startCardX: card.x, startCardY: card.y };
+  }, [bringToFront]);
+
+  const handleResizeMouseDown = useCallback((e, card) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeState.current = { cardId: card.id, startX: e.clientX, startWidth: card.width ?? CARD_DEFAULT_W };
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (dragState.current) {
+        const { cardId, startX, startY, startCardX, startCardY } = dragState.current;
+        setBoardCards(prev => prev.map(c => c.id === cardId
+          ? { ...c, x: Math.max(0, startCardX + e.clientX - startX), y: Math.max(0, startCardY + e.clientY - startY) }
+          : c));
+      } else if (resizeState.current) {
+        const { cardId, startX, startWidth } = resizeState.current;
+        const newW = Math.max(CARD_MIN_W, Math.min(CARD_MAX_W, startWidth + e.clientX - startX));
+        setBoardCards(prev => prev.map(c => c.id === cardId ? { ...c, width: newW } : c));
+      }
+    };
+    const onUp = () => { dragState.current = null; resizeState.current = null; };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+  }, []);
+
+  const handleBoardDrop = useCallback((e) => {
+    e.preventDefault();
+    setIsDragOverBoard(false);
+    const locIndex = parseInt(e.dataTransfer.getData('loc-index'), 10);
+    if (isNaN(locIndex)) return;
+    const rect = boardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    addCardToBoard(locIndex, e.clientX - rect.left, e.clientY - rect.top);
+  }, [addCardToBoard]);
+
+  const getLocPreviewImage = useCallback((loc) => {
+    if (!loc) return null;
+    const first = loc.images?.[0];
+    const src = typeof first === 'string' ? first : first?.url;
+    if (src) return src;
+    if (loc.sheetUrl) return loc.sheetUrl;
+    return null;
+  }, []);
+
+  useEffect(() => { setIsPanelEditing(false); }, [activeTab, activeCategory]);
+
+  const openPanelEdit = useCallback(() => {
+    if (!activeLoc) return;
+    setEditName(activeLoc.name || '');
+    setEditDesc(activeLoc.description || '');
+    setIsPanelEditing(true);
+  }, [activeLoc]);
 
   return (
     <div className="screen active screen-fill" id="s5">
       <style>{`
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         .skeleton-shimmer { background:linear-gradient(90deg,var(--bg-deep) 25%,var(--surface-2) 50%,var(--bg-deep) 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
-        .img-card {
-          --board-card-scale: 1;
-          transition: transform 0.16s ease, filter 0.16s ease;
-        }
-        .img-card:hover {
-          --board-card-scale: 1.06;
-          z-index: 20;
-          filter: brightness(1.1);
-        }
+        .tab-pill.on-board::after { content:''; display:inline-block; width:0.375rem; height:0.375rem; border-radius:50%; background:var(--cyan); margin-left:0.375rem; vertical-align:middle; box-shadow:0 0 0.375rem rgba(var(--cyan-rgb),0.6); }
       `}</style>
 
-      <div className="layout-sidebar-main">
-        {/* Sidebar */}
-        <div className="layout-sidebar" style={{ width: '280px' }}>
-          <div style={{ padding: '26px' }}>
-            <div className="kicker kicker--orange" style={{ marginBottom: '12px' }}>Location · Studio</div>
-            <h2 className="editorial-title editorial-h2" style={{ margin: 0, marginBottom: '10px' }}>
-              Build your <span className="text-grad">set.</span>
-            </h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '12.5px', marginTop: '8px', lineHeight: '1.6' }}>
-              Upload a location sheet or create cinematic environment references.
-            </p>
-          </div>
-
-          <div style={{ padding: '0 26px 26px', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            {/* Category Toggle */}
-            <div className="neo-inset" style={{ display: 'flex', padding: '4px' }}>
-              {['project', 'history'].map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => { setActiveCategory(cat); setActiveTab(0); }}
-                  style={{
-                    flex: 1, padding: '8px', borderRadius: '7px',
-                    border: activeCategory === cat ? '1px solid var(--cyan-border)' : '1px solid transparent',
-                    background: activeCategory === cat ? 'var(--surface-2)' : 'transparent',
-                    boxShadow: activeCategory === cat ? 'var(--neo-flat)' : 'none',
-                    color: activeCategory === cat ? 'var(--cyan)' : 'var(--text-muted)',
-                    fontWeight: 600, fontSize: '11px', cursor: 'pointer', fontFamily: 'var(--font-body)',
-                    transition: 'background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out',
-                  }}
-                >
-                  {cat === 'project' ? 'Project' : 'History'}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <button
-                onClick={() => { setSheetReplaceTarget(null); fileInputRef.current?.click(); }}
-                onDragOver={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
-                onDragEnter={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
-                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingSheet(false); }}
-                onDrop={handleSheetDrop}
-                disabled={busy}
-                className="btn-orange"
-                style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center', outline: isDraggingSheet ? '2px dashed var(--cyan-border)' : 'none', outlineOffset: '2px', transition: 'outline 120ms ease-out' }}
-              >
-                {isDraggingSheet ? 'Drop to upload' : 'Upload reference sheet'}
-              </button>
-              <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
-
-              <button onClick={() => { setShowCreateModal(true); setCreateRefImage(null); }} disabled={busy} className="btn-outline" style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center' }}>
-                Create new
-              </button>
-              <button
-                onClick={handleGenerateFromScript}
-                disabled={busy}
-                className="btn-outline"
-                title="Generate references for the next location described in the script"
-                style={{ width: '100%', padding: '12px', fontSize: '12.5px', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '7px' }}
-              >
-                <FileText size={14} />
-                Generate from Script
-              </button>
-            </div>
-
-            {isGenerating && (
-              <ProgressBar steps={LOCATION_STEPS} currentStep={locProgressStep} />
-            )}
-          </div>
-
-          <div style={{ padding: '24px', borderTop: '1px solid rgba(var(--cyan-300-rgb), 0.05)' }}>
-            <button
-              onClick={handleContinueToWardrobe}
-              disabled={busy}
-              className="btn-teal"
-              style={{ width: '100%', padding: '14px', fontSize: '13px', fontWeight: 600, opacity: busy ? 0.8 : 1 }}
-            >
-              {isLockingStyle ? 'Locking style...' : 'Continue to Wardrobe →'}
-            </button>
-          </div>
-        </div>
-
-        {/* Content Area */}
-        <div className="main-content" style={{ background: 'var(--bg)' }}>
-          {/* Header row with tabs */}
-          <div style={{ height: '64px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 24px', background: 'rgba(var(--ink-900-rgb), 0.95)', backdropFilter: 'blur(12px)' }}>
-            <div style={{ flex: 1, display: 'flex', gap: '8px', overflowX: 'auto', paddingRight: '20px', scrollbarWidth: 'none' }}>
-              {displayedLocations.map((loc, i) => (
-                <button
-                  key={loc.id || i}
-                  onClick={() => setActiveTab(i)}
-                  className={`tab-pill ${activeTab === i ? 'active' : ''}`}
-                  style={{
-                    whiteSpace: 'nowrap',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontFamily: 'var(--font-display)',
-                    fontStyle: 'italic',
-                    fontSize: '13px',
-                    fontWeight: 500,
-                    letterSpacing: '-0.015em',
-                  }}
-                >
-                  {loc.name}
-                  {(loc.isGeneratingReference || loc.id === 'generating') && (
-                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--teal)', animation: 'pulse 1.5s infinite', boxShadow: '0 0 10px rgba(var(--violet-rgb), 0.7)' }} />
-                  )}
-                </button>
-              ))}
-              {activeCategory === 'project' && (
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="tab-pill"
-                  style={{
-                    width: '36px',
-                    height: '32px',
-                    flexShrink: 0,
-                    color: 'var(--orange)',
-                    background: 'rgba(var(--violet-rgb), 0.06)',
-                    borderColor: 'rgba(var(--violet-rgb), 0.22)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '14px',
-                    padding: 0,
-                  }}
-                >
-                  +
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Location details & actions */}
-          <div style={{ padding: '32px 36px', flexShrink: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '10px', flexWrap: 'wrap' }}>
-                  <h1 className="editorial-title editorial-h2" style={{ margin: 0 }}>
-                    {activeLoc?.name || <em style={{ color: 'var(--text-muted)' }}>No locations.</em>}
-                  </h1>
-                  {activeLoc && (
-                    <span
-                      style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '9.5px',
-                        fontWeight: 500,
-                        color: activeCategory === 'project' ? 'var(--teal)' : 'var(--orange)',
-                        background: activeCategory === 'project' ? 'rgba(var(--violet-rgb), 0.1)' : 'rgba(var(--violet-rgb), 0.1)',
-                        padding: '4px 10px',
-                        borderRadius: '999px',
-                        border: `1px solid ${activeCategory === 'project' ? 'rgba(var(--violet-rgb), 0.22)' : 'rgba(var(--violet-rgb), 0.22)'}`,
-                        letterSpacing: '0.18em',
-                      }}
-                    >
-                      {activeCategory === 'project' ? '◇ PROJECT' : '◆ GLOBAL'}
-                    </span>
-                  )}
-                </div>
-                <p style={{ margin: 0, color: 'var(--text-soft)', fontSize: '14px', maxWidth: '640px', lineHeight: 1.65, fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 400, letterSpacing: '-0.01em' }}>
-                  {truncateLocationDescription(activeLoc?.description) || 'Select or add a location to get started.'}
-                </p>
-                {activeLoc?.warning && (
-                  <div style={{ marginTop: '10px', color: 'var(--violet-400)', background: 'rgba(var(--violet-rgb), 0.08)', border: '1px solid rgba(var(--violet-rgb), 0.18)', borderRadius: '7px', padding: '7px 10px', fontSize: '11px', fontWeight: 600, maxWidth: '720px' }}>
-                    {activeLoc.warning}
+      <WorkflowThreePaneShell
+        showLeftPanel={false}
+        rightTitle="Location Controls"
+        storageKey="workflow-three-pane:s5"
+        minRightWidth={320}
+        maxRightWidth={540}
+        defaultRightWidth={384}
+        main={(
+          <div className="main-content" style={{ background: 'var(--bg)' }}>
+            {/* Header */}
+            <div className="main-header" style={{ padding: '1.125rem 2rem' }}>
+              {/* Draggable location tabs */}
+              <div style={{ display: 'flex', gap: '0.375rem', overflowX: 'auto', paddingBottom: '0.875rem', alignItems: 'center' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', flexShrink: 0, marginRight: '0.25rem' }}>drag to board →</span>
+                {displayedLocations.map((loc, i) => (
+                  <div
+                    key={loc.id || i}
+                    draggable={true}
+                    onDragStart={e => { e.dataTransfer.setData('loc-index', String(i)); e.dataTransfer.effectAllowed = 'copy'; }}
+                    onClick={() => setActiveTab(i)}
+                    className={`tab-pill ${activeTab === i ? 'active' : ''}${boardCards.some(c => c.locIndex === i) ? ' on-board' : ''}`}
+                    style={{ whiteSpace: 'nowrap', cursor: 'grab', fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: '0.8125rem', fontWeight: 500, letterSpacing: '-0.015em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  >
+                    {loc.name}
+                    {(loc.isGeneratingReference || loc.id === 'generating') && (
+                      <Loader2 size={10} className="spin" style={{ color: 'var(--cyan)', opacity: 0.8 }} />
+                    )}
                   </div>
+                ))}
+                {activeCategory === 'project' && !isGeneratingActive && (
+                  <div onClick={() => setShowCreateModal(true)} className="tab-pill" style={{ fontSize: '0.875rem', color: 'var(--orange)', background: 'rgba(var(--violet-rgb), 0.06)', borderColor: 'rgba(var(--violet-rgb), 0.22)', cursor: 'pointer', padding: '0.3125rem 0.875rem' }}>+</div>
                 )}
               </div>
 
-              {!isGeneratingActive && activeLoc && activeCategory === 'history' && (
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  <button onClick={handleAddHistoryToProject} className="btn-teal" style={{ fontSize: '11px', padding: '8px 14px' }}>Add to project</button>
-                  <button onClick={() => { setEditName(activeLoc.name); setEditDesc(activeLoc.description || ''); setShowEditModal(true); }} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px' }}>Rename</button>
-                  <button onClick={handleDelete} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px', color: 'var(--violet-400)', border: '1px solid rgba(var(--violet-rgb), 0.15)' }}>Delete from history</button>
-                </div>
-              )}
-              {!isGeneratingActive && activeLoc && activeCategory === 'project' && (
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  {activeLoc.sheetUrl && (
-                    <button onClick={() => setZoomCropTarget({ locIdx: activeTab, imgIdx: null, url: activeLoc.sheetUrl, label: 'NEW VIEW', showLabelInput: true })} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px' }}>+ Add from Sheet</button>
-                  )}
-                  <button onClick={() => { setEditName(activeLoc.name); setEditDesc(activeLoc.description); setShowEditModal(true); }} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px' }}>Edit</button>
-                  <button onClick={handleDelete} className="btn-outline" style={{ fontSize: '11px', padding: '8px 14px', color: 'var(--violet-400)', border: '1px solid rgba(var(--violet-rgb), 0.15)' }}>Delete</button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Image collage */}
-          <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'hidden', padding: '8px 24px 18px', boxSizing: 'border-box' }}>
-            <div className="studio-board" ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: 'var(--bg-deep)', boxShadow: 'var(--neo-inset)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {activeLoc?.images?.length > 0 ? (() => {
-                const locIdx = activeCategory === 'project' ? activeTab : -1;
-                const collageItems = activeLoc.images.map((img, i) => {
-                  const { imageData, src, label } = parseLocationImage(img, i);
-                  const loading = !src;
-                  return {
-                    key: `${src || 'loading'}-${i}`,
-                    raw: imageData || img,
-                    index: i,
-                    src,
-                    label,
-                    loading,
-                    ratio: src ? (imgRatios[src] || getStoredImageRatio(imageData) || DEFAULT_COLLAGE_RATIO) : DEFAULT_COLLAGE_RATIO,
-                  };
-                });
-                const boxes = buildPinboardLayout(collageItems);
-                const boardScale = Math.max(
-                  0.1,
-                  Math.min(
-                    collageSize.width / PINBOARD_WIDTH,
-                    collageSize.height / PINBOARD_HEIGHT,
-                  ),
-                );
-                const boardWidth = PINBOARD_WIDTH * boardScale;
-                const boardHeight = PINBOARD_HEIGHT * boardScale;
-
-                return (
-                  <div style={{
-                    width: `${boardWidth}px`,
-                    height: `${boardHeight}px`,
-                    position: 'relative',
-                    overflow: 'hidden',
-                    border: `${Math.max(2, 4 * boardScale)}px solid var(--ink-800)`,
-                    borderRadius: `${Math.max(6, 12 * boardScale)}px`,
-                    backgroundColor: 'var(--ink-950)',
-                    backgroundImage: 'radial-gradient(rgba(var(--cyan-300-rgb), 0.04) 1px, transparent 1px)',
-                    backgroundPosition: '0 0',
-                    backgroundSize: `${Math.max(10, 20 * boardScale)}px ${Math.max(10, 20 * boardScale)}px`,
-                    boxShadow: '0 28px 80px rgba(var(--ink-950-rgb), 0.8), inset 0 0 0 1px rgba(var(--cyan-300-rgb), 0.02)',
-                    boxSizing: 'border-box',
-                  }}>
-                    <div style={{ position: 'absolute', inset: `${18 * boardScale}px`, border: '1px solid rgba(var(--cyan-300-rgb), 0.06)', pointerEvents: 'none' }} />
-                    {boxes.map(item => {
-                      const cardPadding = Math.max(1, 2 * boardScale);
-                      return (
-                        <div
-                          key={item.key}
-                          className="img-card"
-                          onClick={e => {
-                            e.stopPropagation();
-                            if (item.loading || locIdx < 0) return;
-                            setZoomCropTarget({
-                              locIdx,
-                              imgIdx: item.index,
-                              url: item.src,
-                              label: item.label,
-                              recropUrl: activeLoc?.sheetUrl || null,
-                              recropBox: item.raw && typeof item.raw === 'object' ? item.raw.box_2d : null,
-                            });
-                          }}
-                          style={{
-                          background: 'rgba(var(--cyan-300-rgb), 0.9)',
-                          borderRadius: `${Math.max(2, 3 * boardScale)}px`,
-                          boxShadow: '0 8px 24px rgba(var(--ink-950-rgb), 0.5)',
-                          overflow: 'hidden',
-                          position: 'absolute',
-                          left: `${item.x * boardScale}px`,
-                          top: `${item.y * boardScale}px`,
-                          width: `${item.width * boardScale}px`,
-                          height: `${item.height * boardScale}px`,
-                          minWidth: 0,
-                          minHeight: 0,
-                          boxSizing: 'border-box',
-                          padding: `${cardPadding}px`,
-                          cursor: !item.loading && locIdx >= 0 ? 'pointer' : 'default',
-                          transform: 'scale(var(--board-card-scale))',
-                          transformOrigin: 'center center',
-                        }}>
-                          {item.loading
-                            ? <div className="skeleton-shimmer" style={{ width: '100%', height: '100%' }} />
-                            : <img
-                                key={item.src}
-                                src={item.src}
-                                alt={item.label}
-                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: 'var(--cyan-300)' }}
-                                onLoad={e => {
-                                  const ratio = e.currentTarget.naturalWidth / e.currentTarget.naturalHeight;
-                                  setImgRatios(prev => prev[item.src] === ratio ? prev : { ...prev, [item.src]: ratio });
-                                }}
-                              />
-                          }
-                          {/* Label badge */}
-                          <div style={{ position: 'absolute', top: '8px', right: '8px', maxWidth: 'calc(100% - 16px)' }}>
-                            {renamingPanel?.locIdx === locIdx && renamingPanel?.imgIdx === item.index ? (
-                              <input
-                                autoFocus
-                                defaultValue={item.label}
-                                onBlur={e => handleRenameLabel(locIdx, item.index, e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') handleRenameLabel(locIdx, item.index, e.target.value);
-                                  if (e.key === 'Escape') setRenamingPanel(null);
-                                }}
-                                onClick={e => e.stopPropagation()}
-                                style={{ background: 'rgba(var(--ink-950-rgb), 0.92)', border: '1px solid var(--teal)', color: 'var(--text)', borderRadius: '4px', padding: '2px 7px', fontSize: '8px', fontWeight: 700, outline: 'none', width: '100px', maxWidth: '100%', letterSpacing: '0.05em' }}
-                              />
-                            ) : (
-                              <div
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  if (!item.loading && locIdx >= 0) {
-                                    setRenamingPanel({ locIdx, imgIdx: item.index });
-                                  }
-                                }}
-                                title={locIdx >= 0 ? 'Click to rename' : ''}
-                                style={{ padding: '2px 7px', background: 'rgba(var(--ink-950-rgb), 0.75)', borderRadius: '3px', fontSize: '8px', color: item.loading ? 'var(--ink-800)' : 'var(--text-soft)', backdropFilter: 'blur(8px)', fontWeight: 700, cursor: locIdx >= 0 ? 'text' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'var(--font-display)' }}
-                              >
-                                {item.label.toUpperCase()}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+              {/* Location info + actions */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+                <div>
+                  <h1 className="editorial-title editorial-h2" style={{ margin: '0 0 0.375rem' }}>
+                    {activeLoc ? <>{activeLoc.name}<span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>.</span></> : <em style={{ color: 'var(--text-muted)' }}>No locations.</em>}
+                  </h1>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    {activeLoc && (
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5938rem', fontWeight: 500, color: activeCategory === 'project' ? 'var(--teal)' : 'var(--orange)', background: 'rgba(var(--violet-rgb), 0.1)', padding: '0.25rem 0.625rem', borderRadius: '62.4375rem', border: '0.0625rem solid rgba(var(--violet-rgb), 0.22)', letterSpacing: '0.18em' }}>
+                        {activeCategory === 'project' ? '◇ PROJECT' : '◆ GLOBAL'}
+                      </span>
+                    )}
+                    <p style={{ margin: 0, color: 'var(--text-soft)', fontSize: '0.8125rem', fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.01em' }}>
+                      {truncateLocationDescription(activeLoc?.description) || 'Select or add a location to get started.'}
+                    </p>
                   </div>
-                );
-              })() : (
-              <div style={{ width: `${Math.min(PINBOARD_WIDTH, collageSize.width - 24)}px`, aspectRatio: `${PINBOARD_WIDTH} / ${PINBOARD_HEIGHT}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1.5px dashed var(--border-mid)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-deep)' }}>
-                <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'var(--surface-2)', boxShadow: 'var(--neo-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                 </div>
-                <div style={{ color: 'var(--text)', fontSize: '15px', fontWeight: '700', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', marginBottom: '6px' }}>No reference views yet</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-body)' }}>Upload a location sheet or create a reference set</div>
+                {!isGeneratingActive && activeLoc && activeCategory === 'history' && (
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={handleAddHistoryToProject} className="btn-secondary" style={{ fontSize: '0.6875rem', padding: '0.5rem 0.875rem' }}>Add to project</button>
+                    <button onClick={handleDelete} className="btn-action-danger" style={{ fontSize: '0.6875rem', padding: '0.5rem 0.875rem' }}>Delete from history</button>
+                  </div>
+                )}
+                {!isGeneratingActive && activeLoc && activeCategory === 'project' && (
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {activeLoc.sheetUrl && (
+                      <button onClick={() => setZoomCropTarget({ locIdx: activeTab, imgIdx: null, url: activeLoc.sheetUrl, label: 'NEW VIEW', showLabelInput: true })} className="btn-outline" style={{ fontSize: '0.6875rem', padding: '0.5rem 0.875rem' }}>+ Add from Sheet</button>
+                    )}
+                    <button onClick={handleDelete} className="btn-action-danger" style={{ fontSize: '0.6875rem', padding: '0.5rem 0.875rem' }}>Delete</button>
+                  </div>
+                )}
               </div>
-              )}
+            </div>
+
+            {/* Comparison board */}
+            <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'hidden', padding: '0.5rem 1.5rem 1.125rem', boxSizing: 'border-box' }}>
+              <div
+                ref={boardRef}
+                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setIsDragOverBoard(true); }}
+                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOverBoard(false); }}
+                onDrop={handleBoardDrop}
+                style={{
+                  width: '100%', height: '100%',
+                  background: 'var(--bg-deep)',
+                  boxShadow: isDragOverBoard ? 'inset 0 0 0 0.125rem var(--cyan-border)' : 'var(--neo-inset)',
+                  border: `0.0625rem solid ${isDragOverBoard ? 'var(--cyan-border)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-lg)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  transition: 'border-color 120ms ease, box-shadow 120ms ease',
+                  backgroundImage: 'radial-gradient(rgba(var(--cyan-300-rgb), 0.035) 0.0625rem, transparent 0.0625rem)',
+                  backgroundSize: '1.5rem 1.5rem',
+                }}
+              >
+                {boardCards.length === 0 && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                    <div style={{ width: '3.25rem', height: '3.25rem', borderRadius: '0.875rem', background: 'var(--surface-2)', boxShadow: 'var(--neo-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', opacity: isDragOverBoard ? 1 : 0.6 }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+                    </div>
+                    <div style={{ color: isDragOverBoard ? 'var(--cyan)' : 'var(--text-muted)', fontSize: '0.9375rem', fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', marginBottom: '0.375rem', transition: 'color 120ms ease' }}>
+                      {isDragOverBoard ? 'Drop to add to board' : 'Drag locations here to compare'}
+                    </div>
+                    <div style={{ color: 'var(--text-subtle)', fontSize: '0.75rem', fontFamily: 'var(--font-body)' }}>Drag location tabs from the bar above</div>
+                  </div>
+                )}
+                {boardCards.length > 0 && isDragOverBoard && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(var(--cyan-rgb), 0.04)', border: '0.125rem dashed var(--cyan-border)', borderRadius: 'var(--radius-lg)', pointerEvents: 'none', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.875rem', fontWeight: 700, color: 'var(--cyan)' }}>Drop to add location</span>
+                  </div>
+                )}
+                {boardCards.map(card => {
+                  const loc = displayedLocations[card.locIndex];
+                  if (!loc) return null;
+                  const imgSrc = getLocPreviewImage(loc);
+                  const zIndex = cardZOrder.indexOf(card.id) + 1;
+                  const isSelected = activeTab === card.locIndex;
+                  const isGeneratingThis = loc.isGeneratingReference || loc.id === 'generating';
+                  return (
+                    <div
+                      key={card.id}
+                      onMouseDown={e => handleCardMouseDown(e, card)}
+                      onClick={e => { e.stopPropagation(); setActiveTab(card.locIndex); bringToFront(card.id); }}
+                      style={{ position: 'absolute', left: card.x, top: card.y, width: card.width ?? CARD_DEFAULT_W, background: 'var(--surface-2)', border: `0.0625rem solid ${isSelected ? 'var(--cyan-border)' : 'rgba(var(--cyan-300-rgb), 0.1)'}`, borderRadius: 'var(--radius-lg)', boxShadow: isSelected ? 'var(--neo-active)' : 'var(--neo-raised)', overflow: 'visible', cursor: dragState.current?.cardId === card.id ? 'grabbing' : 'grab', userSelect: 'none', zIndex, transition: 'border-color 120ms ease, box-shadow 120ms ease' }}
+                    >
+                      <div style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+                        <div style={{ position: 'relative', width: '100%', background: 'var(--bg-deep)', aspectRatio: '21/9', overflow: 'hidden' }}>
+                          {imgSrc ? (
+                            <img src={imgSrc} alt={loc.name} draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+                          ) : isGeneratingThis ? (
+                            <div className="skeleton-shimmer" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Loader2 size={20} className="spin" style={{ color: 'var(--cyan)', opacity: 0.6 }} />
+                            </div>
+                          ) : (
+                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(var(--cyan-300-rgb), 0.25)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+                            </div>
+                          )}
+                          <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); removeCardFromBoard(card.id); }} style={{ position: 'absolute', top: '0.375rem', right: '0.375rem', width: '1.375rem', height: '1.375rem', borderRadius: '50%', background: 'rgba(var(--ink-950-rgb), 0.75)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.15)', color: 'var(--text-soft)', fontSize: '0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, backdropFilter: 'blur(0.25rem)' }}>×</button>
+                        </div>
+                        <div style={{ padding: '0.5rem 0.625rem 0.4375rem', borderTop: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.06)' }}>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.75rem', fontWeight: 700, color: isSelected ? 'var(--cyan)' : 'var(--text)', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', transition: 'color 120ms ease' }}>{loc.name}</div>
+                          {loc.description && <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '0.125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{loc.description.slice(0, 55)}</div>}
+                        </div>
+                      </div>
+                      {/* Resize handle */}
+                      <div onMouseDown={e => handleResizeMouseDown(e, card)} title="Drag to resize" style={{ position: 'absolute', bottom: -1, right: -1, width: '1.125rem', height: '1.125rem', cursor: 'nwse-resize', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', padding: '0.1875rem', borderBottomRightRadius: 'var(--radius-lg)', zIndex: 2 }}>
+                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M7 1L1 7M7 4L4 7M7 7L7 7" stroke="rgba(var(--cyan-300-rgb),0.45)" strokeWidth="1.25" strokeLinecap="round"/></svg>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
-      </div>{/* end layout-sidebar-main */}
+        )}
+        right={(
+          <div className="layout-sidebar scroll-y" style={{ width: '100%', minWidth: 0, padding: '1rem', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
+
+            {isPanelEditing && activeLoc ? (
+              /* ── Edit form ── */
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                  <div>
+                    <div className="kicker" style={{ marginBottom: '0.25rem' }}>Edit Location</div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '13rem' }}>{activeLoc.name}</div>
+                  </div>
+                  <button onClick={() => setIsPanelEditing(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.375rem', cursor: 'pointer', padding: '0.125rem 0.375rem', lineHeight: 1, borderRadius: '0.375rem' }}>×</button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', flex: '1 1 auto' }}>
+                  <div>
+                    <label className="panel-meta-label" style={{ display: 'block', marginBottom: '0.375rem' }}>LOCATION NAME</label>
+                    <input className="input-inset" value={editName} onChange={e => setEditName(e.target.value)} style={{ padding: '0.5625rem 0.75rem', fontSize: '0.8125rem', borderRadius: '0.5rem', width: '100%', boxSizing: 'border-box' }} />
+                  </div>
+
+                  <div>
+                    <label className="panel-meta-label" style={{ display: 'block', marginBottom: '0.375rem' }}>DESCRIPTION</label>
+                    <textarea className="textarea-inset" value={editDesc} onChange={e => setEditDesc(e.target.value)} style={{ padding: '0.5625rem 0.75rem', fontSize: '0.8125rem', borderRadius: '0.5rem', height: '6rem', resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
+                  </div>
+
+                  {activeCategory === 'project' && (
+                    <div>
+                      <div className="panel-meta-label" style={{ marginBottom: '0.5rem' }}>REPLACE SHEET</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4375rem' }}>
+                        <button className="btn-outline" style={{ padding: '0.5625rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', fontSize: '0.75rem', width: '100%' }}
+                          onClick={() => {
+                            setSheetReplaceTarget({ index: activeTab, name: (editName || activeLoc?.name || '').trim().toUpperCase(), description: editDesc.trim() });
+                            setIsPanelEditing(false);
+                            fileInputRef.current?.click();
+                          }}
+                        >
+                          <Upload size={13} /> Upload New Sheet
+                        </button>
+                        <button className="btn-action-generate" style={{ padding: '0.5625rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', fontSize: '0.75rem', width: '100%' }}
+                          disabled={busy}
+                          onClick={() => { setIsPanelEditing(false); handleGenerateFromScript(); }}
+                        >
+                          <FileText size={13} /> Regenerate from Script
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '1rem', marginTop: 'auto' }}>
+                  <button className="btn-orange" style={{ flex: 1, padding: '0.75rem', fontWeight: 700, fontSize: '0.8125rem' }} onClick={handleEditSave}>
+                    Save Changes
+                  </button>
+                  <button className="btn-outline" style={{ flex: 1, padding: '0.75rem', fontSize: '0.8125rem' }} onClick={() => setIsPanelEditing(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* ── Normal view ── */
+              <>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <div className="kicker" style={{ marginBottom: '0.5rem' }}>Location · Studio</div>
+                  <h2 className="editorial-title editorial-h2" style={{ marginBottom: '0.375rem' }}>
+                    Build your <span className="text-grad">set.</span>
+                  </h2>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.7188rem', lineHeight: 1.5 }}>
+                    {busy ? (isProcessingSheet ? 'Processing sheet…' : 'Generating references…') : 'Upload a location sheet or create one.'}
+                  </p>
+                </div>
+
+                {/* Location image preview */}
+                {(() => {
+                  const imgSrc = getLocPreviewImage(activeLoc);
+                  if (!imgSrc) return null;
+                  return (
+                    <div style={{ marginBottom: '0.5rem', borderRadius: 'var(--radius)', overflow: 'hidden', border: '0.0625rem solid var(--border-mid)', background: 'var(--bg-deep)', cursor: 'pointer' }}
+                      onClick={() => activeLoc?.sheetUrl && setZoomCropTarget({ locIdx: activeCategory === 'project' ? activeTab : -1, imgIdx: null, url: activeLoc.sheetUrl, label: 'LOCATION SHEET', showLabelInput: false })}
+                      title="Click to view sheet"
+                    >
+                      <img src={imgSrc} alt={activeLoc?.name} style={{ width: '100%', display: 'block', aspectRatio: '21/9', objectFit: 'cover' }} />
+                      <div style={{ padding: '0.375rem 0.625rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Location sheet</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--cyan)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>view ↗</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Edit button — shown when a project location is selected */}
+                {activeLoc && !isGeneratingActive && (
+                  <button
+                    onClick={openPanelEdit}
+                    className="btn-outline"
+                    style={{ width: '100%', padding: '0.5rem', fontSize: '0.6875rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem' }}
+                  >
+                    Edit {activeCategory === 'history' ? 'Details' : 'Location'}
+                  </button>
+                )}
+
+                {/* Category toggle */}
+                <div className="neo-inset" style={{ display: 'flex', padding: '0.25rem', marginBottom: '1.375rem' }}>
+                  {['project', 'history'].map(cat => (
+                    <button key={cat} onClick={() => { setActiveCategory(cat); setActiveTab(0); }} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4375rem', border: activeCategory === cat ? '0.0625rem solid var(--cyan-border)' : '0.0625rem solid transparent', background: activeCategory === cat ? 'var(--surface-2)' : 'transparent', boxShadow: activeCategory === cat ? 'var(--neo-flat)' : 'none', color: activeCategory === cat ? 'var(--cyan)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.6875rem', cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out' }}>
+                      {cat === 'project' ? 'Project' : 'History'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <button onClick={() => { setShowCreateModal(true); setCreateRefImage(null); }} disabled={busy} className="btn-orange" style={{ width: '100%', padding: '0.75rem', justifyContent: 'center' }}>
+                    Create new
+                  </button>
+                  {/* Generate sheets for all locations that don't have one yet */}
+                  {activeCategory === 'project' && (() => {
+                    const pending = projectLocations.filter(l => l?.name && !l.sheetUrl && !l.isGeneratingReference).length;
+                    if (pending === 0 && !locationQueue.isActive) return null;
+                    return (
+                      <button
+                        className="btn-action-generate"
+                        style={{ width: '100%', padding: '0.625rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', fontSize: '0.75rem', fontWeight: 700 }}
+                        onClick={handleGenerateAllLocationSheets}
+                        disabled={locationQueue.isActive || busy}
+                      >
+                        {locationQueue.isActive
+                          ? <><Loader2 size={13} className="spin" /> {locationQueue.stats.done}/{locationQueue.stats.total} sheets…</>
+                          : <><Wand2 size={13} /> Generate all sheets ({pending})</>}
+                      </button>
+                    );
+                  })()}
+                  {isGenerating && <ProgressBar steps={LOCATION_STEPS} currentStep={locProgressStep} />}
+                </div>
+
+                <div style={{ marginTop: 'auto', paddingTop: '1.5rem' }}>
+                  <div className="panel-flat">
+                    <div className="panel-meta-label">Hint</div>
+                    <p className="body-sm">Drag location tabs onto the board to compare sets side by side. Click a card to select it and see controls here.</p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      />
+
 
       {/* Sheet Crop Choice Modal */}
       {showSheetCropModal && (
         <div className="modal-overlay">
-          <div className="modal-panel" style={{ maxWidth: '560px', textAlign: 'center' }}>
-            <h3 style={{ color: 'var(--text)', fontSize: '20px', fontWeight: 600, margin: '0 0 12px' }}>Choose Crop Method</h3>
-            <p style={{ color: isProcessingSheet ? 'var(--cyan)' : 'var(--text-muted)', fontSize: '13px', margin: '0 0 24px' }}>
+          <div className="modal-panel" style={{ maxWidth: '35rem', textAlign: 'center' }}>
+            <h3 style={{ color: 'var(--text)', fontSize: '1.25rem', fontWeight: 600, margin: '0 0 0.75rem' }}>Choose Crop Method</h3>
+            <p style={{ color: isProcessingSheet ? 'var(--cyan)' : 'var(--text-muted)', fontSize: '0.8125rem', margin: '0 0 1.5rem' }}>
               {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Automatically detect and crop each view from your sheet.'}
             </p>
             {sheetWarning && (
-              <div style={{ marginBottom: '16px', color: 'var(--violet-400)', background: 'rgba(var(--violet-rgb), 0.08)', border: '1px solid rgba(var(--violet-rgb), 0.18)', borderRadius: '10px', padding: '10px 12px', fontSize: '12px', lineHeight: 1.5, textAlign: 'left' }}>
+              <div style={{ marginBottom: '1rem', color: 'var(--violet-400)', background: 'rgba(var(--violet-rgb), 0.08)', border: '0.0625rem solid rgba(var(--violet-rgb), 0.18)', borderRadius: '0.625rem', padding: '0.625rem 0.75rem', fontSize: '0.75rem', lineHeight: 1.5, textAlign: 'left' }}>
                 {sheetWarning}
               </div>
             )}
             {sheetPreviewUrl && (
-              <img src={sheetPreviewUrl} alt="Preview" style={{ width: '100%', height: '200px', objectFit: 'contain', background: 'var(--ink-950)', borderRadius: '12px', marginBottom: '24px', border: '1px solid rgba(var(--cyan-300-rgb), 0.05)' }} />
+              <img src={sheetPreviewUrl} alt="Preview" style={{ width: '100%', height: '12.5rem', objectFit: 'contain', background: 'var(--ink-950)', borderRadius: '0.75rem', marginBottom: '1.5rem', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.05)' }} />
             )}
             <div className="flex-row gap-12">
               <button
                 onClick={() => processSheetFile(pendingSheetFile)}
                 disabled={isProcessingSheet}
-                className="btn-orange"
-                style={{ flex: 1, padding: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isProcessingSheet ? 0.82 : 1, cursor: isProcessingSheet ? 'wait' : 'pointer' }}
+                className="btn-action-generate"
+                style={{ flex: 1, padding: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', opacity: isProcessingSheet ? 0.82 : 1, cursor: isProcessingSheet ? 'wait' : 'pointer' }}
               >
                 {isProcessingSheet && <Loader2 size={15} className="spin" />}
                 {isProcessingSheet ? 'Detecting Views...' : 'Auto-detect Views'}
               </button>
-              <button disabled={isProcessingSheet} onClick={handleCloseSheetCropModal} className="btn-outline" style={{ flex: 1, padding: '16px', opacity: isProcessingSheet ? 0.45 : 1 }}>Cancel Upload</button>
+              <button disabled={isProcessingSheet} onClick={handleCloseSheetCropModal} className="btn-outline" style={{ flex: 1, padding: '1rem', opacity: isProcessingSheet ? 0.45 : 1 }}>Cancel Upload</button>
             </div>
           </div>
         </div>
@@ -1639,33 +1345,74 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       {/* Create Modal */}
       {showCreateModal && (
         <div className="modal-overlay">
-          <div className="modal-panel" style={{ maxWidth: '500px' }}>
+          <div className="modal-panel" style={{ maxWidth: '31.25rem' }}>
             <div className="modal-header">
-              <h3 style={{ color: 'var(--text)', fontSize: '20px', fontWeight: 600, margin: 0 }}>Create New</h3>
+              <h3 style={{ color: 'var(--text)', fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>Create New</h3>
               <button className="modal-close-btn" onClick={() => setShowCreateModal(false)}>×</button>
             </div>
 
             <div className="flex-col gap-16">
+
+              {/* Option 1: Upload existing sheet */}
               <div>
-                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '10px' }}>LOCATION NAME</label>
-                <input className="input-inset" value={createName} onChange={e => setCreateName(e.target.value)} placeholder="e.g. CYBERPUNK BAR" style={{ padding: '10px 13px', fontSize: '13px', borderRadius: '8px' }} />
+                <div className="panel-meta-label" style={{ marginBottom: '0.5rem' }}>Upload existing sheet</div>
+                <button
+                  className="btn-outline"
+                  style={{ width: '100%', padding: '0.6875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4375rem', fontSize: '0.8125rem', outline: isDraggingSheet ? '0.125rem dashed var(--cyan-border)' : 'none', outlineOffset: '0.125rem' }}
+                  onClick={() => { setSheetReplaceTarget(null); setShowCreateModal(false); fileInputRef.current?.click(); }}
+                  onDragOver={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
+                  onDragEnter={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
+                  onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingSheet(false); }}
+                  onDrop={(e) => { setShowCreateModal(false); handleSheetDrop(e); }}
+                  disabled={busy}
+                >
+                  <Upload size={14} />
+                  {isDraggingSheet ? 'Drop to upload' : 'Upload Reference Sheet'}
+                </button>
+              </div>
+
+              {/* Option 2: Generate from script */}
+              <div>
+                <div className="panel-meta-label" style={{ marginBottom: '0.5rem' }}>Generate from script</div>
+                <button
+                  className="btn-action-generate"
+                  style={{ width: '100%', padding: '0.6875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4375rem', fontSize: '0.8125rem' }}
+                  onClick={() => { setShowCreateModal(false); handleGenerateFromScript(); }}
+                  disabled={busy}
+                >
+                  <FileText size={14} />
+                  Generate from Script
+                </button>
+              </div>
+
+              {/* Divider */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ flex: 1, height: '0.0625rem', background: 'rgba(var(--cyan-300-rgb), 0.07)' }} />
+                <span style={{ fontSize: '0.5625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.14em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>or describe from scratch</span>
+                <div style={{ flex: 1, height: '0.0625rem', background: 'rgba(var(--cyan-300-rgb), 0.07)' }} />
+              </div>
+
+              {/* Option 3: Generate from description */}
+              <div>
+                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '0.625rem' }}>LOCATION NAME</label>
+                <input className="input-inset" value={createName} onChange={e => setCreateName(e.target.value)} placeholder="e.g. CYBERPUNK BAR" style={{ padding: '0.625rem 0.8125rem', fontSize: '0.8125rem', borderRadius: '0.5rem' }} />
               </div>
               <div>
-                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '10px' }}>DESCRIPTION</label>
-                <textarea className="textarea-inset" value={createDesc} onChange={e => setCreateDesc(e.target.value)} placeholder="Neon-lit interior with rain-slicked windows, holographic advertisements, and crowded seating..." style={{ padding: '10px 13px', fontSize: '13px', borderRadius: '8px', height: '100px' }} />
+                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '0.625rem' }}>DESCRIPTION</label>
+                <textarea className="textarea-inset" value={createDesc} onChange={e => setCreateDesc(e.target.value)} placeholder="Neon-lit interior with rain-slicked windows, holographic advertisements, and crowded seating..." style={{ padding: '0.625rem 0.8125rem', fontSize: '0.8125rem', borderRadius: '0.5rem', height: '5.5rem' }} />
               </div>
 
               <div>
-                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '10px' }}>REFERENCE IMAGE (OPTIONAL)</label>
+                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '0.625rem' }}>REFERENCE IMAGE <span style={{ color: 'var(--text-subtle)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
                 <input type="file" ref={refFileInputRef} onChange={handleRefImageSelect} style={{ display: 'none' }} accept="image/*" />
                 {createRefImage ? (
-                  <div className="flex-row gap-12" style={{ padding: '10px', background: 'var(--bg-deep)', border: '1px solid rgba(var(--cyan-300-rgb), 0.07)', borderRadius: '8px', alignItems: 'center' }}>
-                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: 'var(--ink-950)', borderRadius: '6px', flexShrink: 0 }} />
+                  <div className="flex-row gap-12" style={{ padding: '0.625rem', background: 'var(--bg-deep)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.07)', borderRadius: '0.5rem', alignItems: 'center' }}>
+                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '3.5rem', height: '3.5rem', objectFit: 'contain', background: 'var(--ink-950)', borderRadius: '0.375rem', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '10px', marginTop: '2px' }}>Consistency will match this scene</div>
+                      <div style={{ color: 'var(--text-soft)', fontSize: '0.6875rem', fontWeight: 600 }}>Reference uploaded</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.625rem', marginTop: '0.125rem' }}>Consistency will match this scene</div>
                     </div>
-                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'transparent', border: 'none', color: 'var(--violet-400)', fontSize: '16px', cursor: 'pointer' }}>×</button>
+                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'transparent', border: 'none', color: 'var(--violet-400)', fontSize: '1rem', cursor: 'pointer' }}>×</button>
                   </div>
                 ) : (
                   <button
@@ -1674,58 +1421,24 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
                     onDragEnter={(e) => { e.preventDefault(); setIsDraggingRef(true); }}
                     onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingRef(false); }}
                     onDrop={handleRefDrop}
-                    style={{ width: '100%', padding: '12px', background: isDraggingRef ? 'rgba(var(--cyan-rgb), 0.06)' : 'rgba(var(--cyan-300-rgb), 0.04)', border: isDraggingRef ? '1px dashed var(--cyan-border)' : '1px dashed rgba(var(--cyan-300-rgb), 0.22)', borderRadius: '8px', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', transition: 'border-color 120ms ease-out, background 120ms ease-out' }}>
+                    style={{ width: '100%', padding: '0.75rem', background: isDraggingRef ? 'rgba(var(--cyan-rgb), 0.06)' : 'rgba(var(--cyan-300-rgb), 0.04)', border: isDraggingRef ? '0.0625rem dashed var(--cyan-border)' : '0.0625rem dashed rgba(var(--cyan-300-rgb), 0.22)', borderRadius: '0.5rem', color: 'var(--text-soft)', fontSize: '0.6875rem', fontWeight: 600, cursor: 'pointer', transition: 'border-color 120ms ease-out, background 120ms ease-out' }}>
                     {isDraggingRef ? 'Drop image here' : 'Upload Reference View'}
                   </button>
                 )}
               </div>
 
-              <div style={{ marginTop: '12px', padding: '12px', background: 'var(--cyan-dim)', borderRadius: '12px', border: '1px solid var(--cyan-border)' }}>
-                <div className="panel-meta-label panel-meta-label--cyan" style={{ marginBottom: '8px' }}>SET PREVIEW</div>
+              <div style={{ padding: '0.75rem', background: 'var(--cyan-dim)', borderRadius: '0.75rem', border: '0.0625rem solid var(--cyan-border)' }}>
+                <div className="panel-meta-label panel-meta-label--cyan" style={{ marginBottom: '0.5rem' }}>SET PREVIEW</div>
                 <div className="flex-row gap-6">
                   {['WIDE', 'DETAIL', 'INTERIOR', 'ATMOS'].map(tag => (
-                    <span key={tag} className="tag-badge tag-teal" style={{ fontSize: '8px' }}>{tag}</span>
+                    <span key={tag} className="tag-badge tag-teal" style={{ fontSize: '0.5rem' }}>{tag}</span>
                   ))}
                 </div>
               </div>
 
-              <button onClick={handleGenerateAngles} className="btn-orange" style={{ padding: '16px', fontWeight: 700, marginTop: '10px' }}>
-                Create new
+              <button onClick={handleGenerateAngles} className="btn-action-generate" style={{ padding: '1rem', fontWeight: 700 }}>
+                Generate Location References
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Modal */}
-      {showEditModal && (
-        <div className="modal-overlay">
-          <div className="modal-panel" style={{ maxWidth: '460px' }}>
-            <h3 style={{ color: 'var(--text)', fontSize: '18px', fontWeight: 600, margin: '0 0 24px' }}>
-              {activeCategory === 'history' ? 'Rename Location' : 'Edit Location'}
-            </h3>
-            <div className="flex-col gap-16">
-              <div>
-                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '8px' }}>LOCATION NAME</label>
-                <input className="input-inset" value={editName} onChange={e => setEditName(e.target.value)} style={{ padding: '10px 13px', fontSize: '13px', borderRadius: '8px' }} />
-              </div>
-              <div>
-                <label className="panel-meta-label" style={{ display: 'block', marginBottom: '8px' }}>DESCRIPTION</label>
-                <textarea className="textarea-inset" value={editDesc} onChange={e => setEditDesc(e.target.value)} style={{ padding: '10px 13px', fontSize: '13px', borderRadius: '8px', height: '100px' }} />
-              </div>
-              {activeCategory === 'project' && (
-                <button onClick={() => {
-                  setSheetReplaceTarget({ index: activeTab, name: (editName || activeLoc?.name || '').trim().toUpperCase(), description: editDesc.trim() });
-                  setShowEditModal(false);
-                  fileInputRef.current?.click();
-                }} style={{ padding: '12px', background: 'rgba(var(--cyan-300-rgb), 0.04)', border: '1px solid rgba(var(--cyan-300-rgb), 0.14)', borderRadius: '8px', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
-                  Upload New Location Sheet
-                </button>
-              )}
-              <div className="flex-row gap-12" style={{ marginTop: '12px' }}>
-                <button onClick={handleEditSave} className="btn-orange" style={{ flex: 1, padding: '14px', fontWeight: 700 }}>{activeCategory === 'history' ? 'Rename' : 'Save Changes'}</button>
-                <button onClick={() => setShowEditModal(false)} className="btn-outline" style={{ flex: 1, padding: '14px' }}>Cancel</button>
-              </div>
             </div>
           </div>
         </div>
@@ -1749,36 +1462,45 @@ export default function LocationsScreen({ onNavigate, projectData = [], projectS
       {/* Script prompt preview modal */}
       {scriptPromptPreview && (
         <div className="modal-overlay">
-          <div className="modal-panel flex-col gap-16" style={{ maxWidth: '560px' }}>
+          <div className="modal-panel flex-col gap-16" style={{ maxWidth: '35rem' }}>
             <div>
-              <div className="panel-meta-label" style={{ marginBottom: '6px' }}>▪ Generate from Script</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>{scriptPromptPreview.name}</div>
+              <div className="panel-meta-label" style={{ marginBottom: '0.375rem' }}>▪ Generate from Script</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>{scriptPromptPreview.name}</div>
             </div>
-            <div className="panel-inset" style={{ maxHeight: '260px', fontSize: '12.5px' }}>
+            <div className="panel-inset" style={{ maxHeight: '16.25rem', fontSize: '0.7812rem' }}>
               {scriptPromptPreview.description}
             </div>
             <p className="body-sm">
               This prompt will be sent to the image model to generate location reference angles. Edit the description in the location card first if you need to adjust it.
             </p>
             <div className="flex-row gap-10">
-              <button onClick={handleConfirmScriptGenerate} className="btn-orange" style={{ flex: 1, padding: '13px', fontWeight: 700 }}>Generate References</button>
-              <button onClick={() => setScriptPromptPreview(null)} className="btn-outline" style={{ flex: 1, padding: '13px' }}>Cancel</button>
+              <button onClick={handleConfirmScriptGenerate} className="btn-action-generate" style={{ flex: 1, padding: '0.8125rem', fontWeight: 700 }}>Generate References</button>
+              <button onClick={() => setScriptPromptPreview(null)} className="btn-outline" style={{ flex: 1, padding: '0.8125rem' }}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
       {busy && (
-        <div className="flex-row gap-16" style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: 'var(--ink-950)', border: '1px solid var(--cyan)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(var(--ink-950-rgb), 0.5)', alignItems: 'center' }}>
+        <div className="flex-row gap-16" style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 10001, background: 'var(--ink-950)', border: '0.0625rem solid var(--cyan)', borderRadius: '0.75rem', padding: '1rem 1.25rem', boxShadow: '0 0.5rem 2rem rgba(var(--ink-950-rgb), 0.5)', alignItems: 'center' }}>
           <Loader2 size={24} className="spin" style={{ color: 'var(--cyan)' }} />
           <div>
-            <div style={{ color: 'var(--text)', fontSize: '13px', fontWeight: 600 }}>
-              {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : isLockingStyle ? 'Locking visual style...' : 'Creating references...'}
+            <div style={{ color: 'var(--text)', fontSize: '0.8125rem', fontWeight: 600 }}>
+              {isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating references...'}
             </div>
-            <div style={{ color: 'var(--cyan)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
+            <div style={{ color: 'var(--cyan)', fontSize: '0.625rem', fontWeight: 700, marginTop: '0.125rem', letterSpacing: '0.05em' }}>Please keep this page open</div>
           </div>
         </div>
       )}
+
+      <QueueStatusBar
+        jobs={locationQueue.jobs}
+        isActive={locationQueue.isActive}
+        stats={locationQueue.stats}
+        onAbort={locationQueue.abort}
+        onClear={locationQueue.clear}
+        label="Location sheets"
+      />
     </div>
   );
 }

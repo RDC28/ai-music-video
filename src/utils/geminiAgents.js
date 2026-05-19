@@ -6,6 +6,7 @@ import {
 } from "@/utils/googleModelFallbacks";
 import { getProjectAudioDuration, normalizeShotList } from "@/utils/shotList";
 import { CAMERA_STYLE_EXAMPLES } from "@/utils/cameraStyles";
+import { isKBUsable, getKBContextForShotList } from "@/utils/knowledgeBase";
 
 const genAI = process.env.GOOGLE_AI_API_KEY
   ? new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
@@ -305,11 +306,17 @@ Return STRICTLY one JSON object:
 }
 `;
 
+    // Append pre-distilled KB context when available — gives the model
+    // ready-to-use prompt_locks instead of raw project data fields.
+    const kb = projectState?.knowledge_base;
+    const kbBlock = isKBUsable(kb) ? getKBContextForShotList(kb) : "";
+
+    const userMessage = kbBlock
+      ? `${kbBlock}\n\nPROJECT CONTEXT JSON:\n${JSON.stringify(context)}`
+      : `PROJECT CONTEXT JSON:\n${JSON.stringify(context)}`;
+
     const { text } = await generateText(
-      [
-        systemPrompt,
-        `PROJECT CONTEXT JSON:\n${JSON.stringify(context)}`
-      ],
+      [systemPrompt, userMessage],
       "Shot list generation"
     );
     return extractJsonObject(text, "shot list generation response");

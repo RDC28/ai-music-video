@@ -6,6 +6,7 @@ import {
   TEXT_MODEL_FALLBACKS,
 } from "@/utils/googleModelFallbacks";
 import { CAMERA_STYLE_EXAMPLES } from "@/utils/cameraStyles";
+import { isKBUsable, getKBEntityLocksForShot, getStyleLock } from "@/utils/knowledgeBase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,6 +87,11 @@ export async function POST(req) {
     const isImage = mode === "image";
     const videoPrompt = shot?.video_prompt || shot?.motion_prompt || shot?.clip_prompt || '';
 
+    // KB entity locks give the rewriter precise visual descriptions for characters/locations
+    const kb = projectState?.knowledge_base;
+    const kbEntityLocks = isKBUsable(kb) ? getKBEntityLocksForShot(kb, shot) : "";
+    const kbStyleLock = isKBUsable(kb) ? getStyleLock(kb) : "";
+
     const systemPrompt = isImage
       ? `You are a cinematography prompt writer for a photorealistic AI image generator. Your job is to write the first-frame anchor image for a video clip.
 
@@ -125,10 +131,15 @@ Rules:
 - Target 220–420 words. Complex multi-character shots can be longer.
 - Output ONLY the rewritten prompt text. No preamble, no explanation, no markdown headers.`;
 
+    const kbSection = [
+      kbEntityLocks ? `KNOWLEDGE BASE — CHARACTER & LOCATION LOCKS (highest priority — use these exact descriptions):\n${kbEntityLocks}` : "",
+      kbStyleLock   ? `KNOWLEDGE BASE — VISUAL STYLE LOCK:\n${kbStyleLock}` : "",
+    ].filter(Boolean).join("\n\n");
+
     const userPrompt = `${CAMERA_STYLE_EXAMPLES}
 
 ---
-
+${kbSection ? `\n${kbSection}\n\n---\n` : ""}
 Shot context:
 ${context}
 ${isImage && videoPrompt ? `\nVIDEO CLIP THIS IMAGE ANCHORS (derive first frame from its [00:00.00-...] beat):\n${videoPrompt}\n` : ""}

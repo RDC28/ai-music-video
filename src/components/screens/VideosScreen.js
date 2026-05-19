@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Check, Download, Loader2, Play, RotateCcw, Upload, Video, Wand2, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Check, Copy, Download, Loader2, Play, RotateCcw, Upload, Video, Wand2, X } from 'lucide-react';
+import { useGenerationQueue } from '@/hooks/useGenerationQueue';
+import QueueStatusBar from '../QueueStatusBar';
 import { drawClubScene } from '@/utils/drawClubScene';
 import {
   DEFAULT_VIDEO_MODEL,
@@ -12,6 +14,7 @@ import {
 } from '@/utils/generationModels';
 import { getPlannedVideoDuration, getProjectAudioDuration, normalizeShotListForVeo } from '@/utils/shotList';
 import { createClient } from '@/utils/supabase';
+import WorkflowThreePaneShell from '../WorkflowThreePaneShell';
 
 const MAX_CLIENT_RETRIES = 2;
 const CLIENT_REQUEST_TIMEOUT_MS = 650000;
@@ -347,15 +350,42 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   const [modelDraft, setModelDraft] = useState(DEFAULT_VIDEO_MODEL);
   const [durationDraft, setDurationDraft] = useState('6');
   const [isApproving, setIsApproving] = useState(false);
-  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [generatingIndex, setGeneratingIndex] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDraggingVideo, setIsDraggingVideo] = useState(false);
-  const [generationError, setGenerationError] = useState('');
-  const [queueSummary, setQueueSummary] = useState('');
+
+  // ── Queue (concurrency=1 — Veo renders are long-running; space them out) ──
+  const videoQueue = useGenerationQueue({ concurrency: 1 });
+
+  const shotsRef = useRef(shots);
+  useEffect(() => { shotsRef.current = shots; }, [shots]);
+
+  // Reset generatingIndex when the queue finishes so buttons re-enable.
+  useEffect(() => {
+    if (!videoQueue.isActive) setGeneratingIndex(null);
+  }, [videoQueue.isActive]);
+
+  const saveQRef = useRef({ pending: false, latest: null });
+  const saveShotList = useCallback(async (data) => {
+    saveQRef.current.latest = { shot_list: data };
+    if (saveQRef.current.pending) return;
+    saveQRef.current.pending = true;
+    while (saveQRef.current.latest) {
+      const d = saveQRef.current.latest;
+      saveQRef.current.latest = null;
+      try { await onDataUpdate(d); } catch (e) { console.error('[shots save]', e); }
+    }
+    saveQRef.current.pending = false;
+  }, [onDataUpdate]);
   const [isRewritingPrompt, setIsRewritingPrompt] = useState(false);
+  const [undoClip, setUndoClip] = useState(null);
 
   const selectedShot = editModalIndex !== null ? shots[editModalIndex] : null;
+  const promptLength = promptDraft.length;
+  const promptLimit = 6400;
+  const promptUsage = promptLength / promptLimit;
+  const plannedDuration = selectedShot ? getPlannedVideoDuration(selectedShot, 6) : 6;
+  const recommendedDuration = normalizeVideoDurationForModel(plannedDuration, modelDraft);
   const durationOptions = getVideoDurationOptions(modelDraft);
   const handleModelDraftChange = (value) => {
     setModelDraft(value);
@@ -394,6 +424,13 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
       drawClubScene(modalCanvasRef.current, editModalIndex * 5 + 2);
     }
   }, [editModalIndex, shots]);
+
+  useEffect(() => {
+    if (!undoClip?.expiresAt) return;
+    const ttl = Math.max(0, undoClip.expiresAt - Date.now());
+    const timer = setTimeout(() => setUndoClip(null), ttl);
+    return () => clearTimeout(timer);
+  }, [undoClip]);
 
   const openEditor = (index) => {
     const shot = shots[index];
@@ -461,60 +498,84 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     ));
   };
 
-  const runGenerationQueue = async (indices, { promptOverrides = {}, durationOverrides = {}, label = 'Video generation' } = {}) => {
-    if (!indices.length) return;
-
-    setIsGeneratingAll(indices.length > 1);
-    setGenerationError('');
-    setQueueSummary(`${label} started for ${indices.length} shot${indices.length === 1 ? '' : 's'}. Clips can take a few minutes each.`);
-
-    let nextShots = [...shots];
-    let successCount = 0;
-    let failureCount = 0;
-
-    for (const index of indices) {
-      try {
-        // Space out clip requests so long-running renders stay reliable.
-        if (successCount > 0 || failureCount > 0) {
-          setQueueSummary(`${label}: Preparing the next clip...`);
-          await sleep(35000);
-        }
-
-        setQueueSummary(`${label}: Generating shot ${index + 1}...`);
-        nextShots = await requestShotVideo(index, promptOverrides[index], nextShots, {
-          durationSeconds: Number.isFinite(durationOverrides[index]) ? durationOverrides[index] : undefined,
-        });
-        successCount += 1;
-      } catch (error) {
-        console.warn(`Shot ${index + 1} video generation failed:`, error);
-        nextShots = markShotFailure(nextShots, index, error);
-        failureCount += 1;
-      }
-
-      setShots(nextShots);
-      await onDataUpdate({ shot_list: nextShots });
-    }
-
-    setGeneratingIndex(null);
-    setIsGeneratingAll(false);
-
-    if (failureCount) {
-      const setupFailureCount = nextShots.filter(shot => !shot.video_url && shot.video_error && !shot.video_error.retryable).length;
-      setGenerationError(
-        setupFailureCount
-          ? `${setupFailureCount} shot${setupFailureCount === 1 ? '' : 's'} need setup before retrying. Open the shot for details.`
-          : `${failureCount} shot${failureCount === 1 ? '' : 's'} need another try. Generate Remaining will retry unfinished clips.`
-      );
-    }
-    setQueueSummary(`${successCount} ready, ${failureCount} need retry, ${nextShots.filter(shot => !shot.video_url).length} remaining.`);
+  const rememberUndoForShot = (sourceShots, index) => {
+    const previous = sourceShots[index];
+    if (!previous?.video_url) return;
+    setUndoClip({
+      index,
+      video_url: previous.video_url,
+      video_path: previous.video_path || null,
+      expiresAt: Date.now() + 30000,
+    });
   };
 
-  const handleGenerateOne = async () => {
+  const handleUndoReplace = async () => {
+    if (!undoClip) return;
+    const target = shots[undoClip.index];
+    if (!target) {
+      setUndoClip(null);
+      return;
+    }
+    const restored = shots.map((shot, index) => (
+      index === undoClip.index
+        ? {
+            ...shot,
+            video_url: undoClip.video_url,
+            video_path: undoClip.video_path,
+            video_error: null,
+          }
+        : shot
+    ));
+    setShots(restored);
+    await onDataUpdate({ shot_list: restored });
+    setQueueSummary(`Restored previous clip for shot ${undoClip.index + 1}.`);
+    setUndoClip(null);
+  };
+
+  // Enqueues video jobs — concurrency=1 preserving the 35s inter-clip spacing
+  // that keeps Veo's long-running renders reliable.
+  const runGenerationQueue = (indices, { promptOverrides = {}, durationOverrides = {} } = {}) => {
+    if (!indices.length) return;
+    // Closure counter so only the 2nd+ job adds the pre-generation delay.
+    let clipsStarted = 0;
+    videoQueue.enqueue(
+      indices.map(index => ({
+        id: `vid-${index}-${Date.now()}`,
+        label: `Shot ${index + 1}`,
+        run: async () => {
+          if (clipsStarted > 0) await sleep(35000);
+          clipsStarted++;
+          rememberUndoForShot(shotsRef.current, index);
+          const source = shotsRef.current;
+          try {
+            const updatedShots = await requestShotVideo(
+              index,
+              promptOverrides[index] ?? null,
+              source,
+              { durationSeconds: Number.isFinite(durationOverrides[index]) ? durationOverrides[index] : undefined }
+            );
+            const updatedShot = updatedShots[index];
+            setShots(prev => prev.map((s, i) => i === index ? updatedShot : s));
+            shotsRef.current = shotsRef.current.map((s, i) => i === index ? updatedShot : s);
+            await saveShotList(shotsRef.current);
+            return updatedShot;
+          } catch (err) {
+            const failed = markShotFailure(shotsRef.current, index, err);
+            setShots(prev => markShotFailure(prev, index, err));
+            shotsRef.current = failed;
+            try { await saveShotList(failed); } catch { /* best-effort */ }
+            throw err;
+          }
+        },
+      }))
+    );
+  };
+
+  const handleGenerateOne = () => {
     if (editModalIndex === null) return;
-    await runGenerationQueue([editModalIndex], {
+    runGenerationQueue([editModalIndex], {
       promptOverrides: { [editModalIndex]: promptDraft },
       durationOverrides: { [editModalIndex]: Number(durationDraft) || getPlannedVideoDuration(shots[editModalIndex], 6) },
-      label: `Shot ${editModalIndex + 1}`,
     });
   };
 
@@ -542,19 +603,19 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     }
   };
 
-  const handleGenerateAll = async () => {
-    if (!shots.length || isGeneratingAll) return;
-    await runGenerationQueue(shots.map((_, index) => index), { label: 'Regenerate all' });
+  const handleGenerateAll = () => {
+    if (!shots.length || videoQueue.isActive) return;
+    if (!confirm(`Regenerate all ${shots.length} clips? This will replace existing generated clips.`)) return;
+    runGenerationQueue(shots.map((_, index) => index));
   };
 
-  const handleGenerateRemaining = async () => {
-    if (!shots.length || isGeneratingAll) return;
+  const handleGenerateRemaining = () => {
+    if (!shots.length || videoQueue.isActive) return;
     const remainingIndices = shots
       .map((shot, index) => ({ shot, index }))
       .filter(({ shot }) => !shot.video_url)
       .map(({ index }) => index);
-
-    await runGenerationQueue(remainingIndices, { label: 'Generate remaining' });
+    runGenerationQueue(remainingIndices);
   };
 
   const handleVideoDrop = (e) => {
@@ -579,6 +640,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
     setGenerationError('');
 
     try {
+      rememberUndoForShot(shots, editModalIndex);
       const supabase = createClient();
       const extension = inferVideoExtension(file);
       const storagePath = `${projectId}/videos/upload-shot-${String(editModalIndex + 1).padStart(3, '0')}-${Date.now()}-${safeFileName(file.name || `clip.${extension}`)}`;
@@ -617,6 +679,8 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   };
 
   const handleApproveAll = async () => {
+    if (!shots.length) return;
+    if (!confirm(`Approve all ${shots.length} clips and continue to Editor?`)) return;
     setIsApproving(true);
     await onDataUpdate({
       shot_list: shots,
@@ -638,22 +702,17 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   const generatedCount = shots.filter(shot => shot.video_url).length;
   const remainingCount = shots.length - generatedCount;
   const failedCount = shots.filter(shot => !shot.video_url && shot.video_error).length;
+  const screenTitle = generatedCount > 0 ? `${generatedCount} moments. Let's make them move.` : 'Bring frames to life.';
 
-  return (
-    <div
-      className="screen active"
-      id="s9"
-      style={{ display: 'flex', flexDirection: 'row', width: '100%', height: '100%', overflow: 'hidden', background: 'var(--bg)' }}
-    >
-      {/* ── Main content column ── */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+  const mainPanel = (
+    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
 
         {/* Header */}
         <div className="panel-header clips-header">
           <div className="clips-header-top">
             <div className="clips-header-copy">
-              <div className="sidebar-header-kicker">▪ Clips · Render</div>
-              <h2 className="clips-screen-title">Bring frames to life.</h2>
+              <div className="sidebar-header-kicker">Clips · Render</div>
+              <h2 className="clips-screen-title">{screenTitle}</h2>
               <div className="panel-meta-label">
                 {shots.length
                   ? `${String(generatedCount).padStart(2, '0')} / ${String(shots.length).padStart(2, '0')} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
@@ -666,30 +725,20 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
             </div>
 
             <div className="clips-header-actions">
-              <select className="select-model" style={{ width: '11rem' }} value={modelDraft} onChange={(event) => handleModelDraftChange(event.target.value)} title="Video model">
-                {VIDEO_GENERATION_MODELS.map(option => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-              <button className="btn-primary" onClick={handleGenerateRemaining} disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}>
-                {isGeneratingAll ? (
-                  <><Loader2 size={14} className="spin" /> Generating {generatingIndex !== null ? `${generatingIndex + 1}/${shots.length}` : 'Videos'}</>
+              <button className="btn-action-generate" onClick={handleGenerateRemaining} disabled={!shots.length || remainingCount === 0 || videoQueue.isActive || generatingIndex !== null}>
+                {videoQueue.isActive ? (
+                  <><Loader2 size={14} className="spin" /> {generatingIndex !== null ? `Shot ${generatingIndex + 1}` : `${videoQueue.stats.done}/${videoQueue.stats.total} done`}</>
                 ) : (
                   <><Wand2 size={14} /> {remainingCount === shots.length ? 'Generate Clips' : `Generate Remaining (${remainingCount})`}</>
                 )}
               </button>
-              <button className="btn-outline" onClick={handleGenerateAll} disabled={!shots.length || isGeneratingAll || generatingIndex !== null} title="Regenerate every shot, including completed videos">
-                <RotateCcw size={14} /> Regenerate All
+              <button className="btn-outline" onClick={handleGenerateAll} disabled={!shots.length || videoQueue.isActive || generatingIndex !== null} title="Regenerate every shot, including completed videos">
+                <RotateCcw size={14} /> Regenerate All ({shots.length})
               </button>
               <button className="btn-confirm" onClick={handleApproveAll} disabled={isApproving}>
                 {isApproving ? 'Saving...' : <><Check size={14} /> Approve All</>}
               </button>
             </div>
-          </div>
-
-          <div className="clips-header-status">
-            {queueSummary && <p className="queue-msg">{queueSummary}</p>}
-            {generationError && <p className="queue-msg queue-msg--error">{generationError}</p>}
           </div>
         </div>
 
@@ -722,14 +771,14 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
 
                     <div style={{ position: 'absolute', left: '0.75rem', right: '0.75rem', bottom: '0.625rem', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.875rem', fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 1px 8px rgba(var(--ink-950-rgb), 0.9)' }}>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.875rem', fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 0.0625rem 0.5rem rgba(var(--ink-950-rgb), 0.9)' }}>
                           {i + 1}. {shot.n || shot.title || `Shot ${i + 1}`}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'rgba(var(--cyan-300-rgb), 0.78)', marginTop: '0.125rem' }}>
                           {shot.video_url ? 'Clip ready' : shot.video_error ? 'Try again' : 'Ready to generate'}
                         </div>
                       </div>
-                      <div className="flex-center" style={{ width: '1.75rem', height: '1.75rem', borderRadius: '50%', background: 'rgba(var(--ink-950-rgb), 0.72)', border: '1px solid rgba(var(--cyan-300-rgb), 0.28)', color: 'var(--text)', flexShrink: 0 }}>
+                      <div className="flex-center" style={{ width: '1.75rem', height: '1.75rem', borderRadius: '50%', background: 'rgba(var(--ink-950-rgb), 0.72)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.28)', color: 'var(--text)', flexShrink: 0 }}>
                         <Play size={11} fill="var(--text)" />
                       </div>
                     </div>
@@ -737,9 +786,9 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                     <button
                       type="button"
                       onClick={(event) => { event.stopPropagation(); openEditor(i); }}
-                      style={{ position: 'absolute', top: '0.625rem', right: '0.625rem', background: editModalIndex === i ? 'rgba(var(--cyan-rgb), 0.24)' : 'rgba(var(--ink-950-rgb), 0.78)', border: editModalIndex === i ? '1px solid rgba(var(--cyan-rgb), 0.64)' : '1px solid rgba(var(--cyan-300-rgb), 0.28)', borderRadius: 'var(--radius)', padding: '0.375rem 0.625rem', color: editModalIndex === i ? 'var(--text)' : 'var(--text-soft)', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.01em', cursor: 'pointer', fontFamily: 'var(--font-body)', boxShadow: '0 2px 10px rgba(var(--ink-950-rgb), 0.4)' }}
+                      style={{ position: 'absolute', top: '0.625rem', right: '0.625rem', background: editModalIndex === i ? 'rgba(var(--cyan-rgb), 0.24)' : 'rgba(var(--ink-950-rgb), 0.78)', border: editModalIndex === i ? '0.0625rem solid rgba(var(--cyan-rgb), 0.64)' : '0.0625rem solid rgba(var(--cyan-300-rgb), 0.28)', borderRadius: 'var(--radius)', padding: '0.375rem 0.625rem', color: editModalIndex === i ? 'var(--text)' : 'var(--text-soft)', fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.01em', cursor: 'pointer', fontFamily: 'var(--font-body)', boxShadow: '0 0.125rem 0.625rem rgba(var(--ink-950-rgb), 0.4)' }}
                     >
-                      {editModalIndex === i ? 'Editing' : shot.video_url ? 'Edit' : shot.video_error ? 'Retry' : 'Generate'}
+                      {editModalIndex === i ? 'Editing' : shot.video_url ? 'Edit' : shot.video_error ? 'Retry' : 'Edit & Generate'}
                     </button>
 
                     {generatingIndex === i && (
@@ -749,7 +798,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                     )}
 
                     {!shot.video_url && shot.video_error && generatingIndex !== i && (
-                      <div className="flex-row gap-6" style={{ position: 'absolute', left: '0.625rem', top: '0.625rem', background: 'rgba(var(--violet-rgb), 0.8)', border: '1px solid rgba(var(--violet-rgb), 0.3)', borderRadius: '62.5rem', padding: '0.25rem 0.5rem', alignItems: 'center', color: 'var(--error)', fontSize: '0.6875rem', fontWeight: 700 }}>
+                      <div className="flex-row gap-6" style={{ position: 'absolute', left: '0.625rem', top: '0.625rem', background: 'rgba(var(--violet-rgb), 0.8)', border: '0.0625rem solid rgba(var(--violet-rgb), 0.3)', borderRadius: '62.5rem', padding: '0.25rem 0.5rem', alignItems: 'center', color: 'var(--error)', fontSize: '0.6875rem', fontWeight: 700 }}>
                         <AlertTriangle size={10} /> Retry
                       </div>
                     )}
@@ -763,32 +812,35 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 <Video size={22} />
               </div>
               <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', textAlign: 'center' }}>
-                No shots to display. Please add shots in the Shot List step first.
+                Your clips will live here. Head to Shots to plan your sequence first.
               </div>
-              <button className="btn-outline" onClick={() => onNavigate(8)}>Back to Shots</button>
+              <button className="btn-outline" onClick={() => onNavigate(8)}>Go to Shots →</button>
             </div>
           )}
         </div>
-      </div>
 
-      {/* ── Edit panel (right) — always mounted so width can transition smoothly ── */}
-      <div
-        style={{
-          flexShrink: 0,
-          width: editModalIndex !== null ? '27.5rem' : '0rem',
-          transition: 'width 0.32s cubic-bezier(0.2, 0, 0, 1)',
-          overflow: 'hidden',
-          height: '100%',
-        }}
-      >
-        <div className="edit-side-panel clip-edit-panel">
-          {editModalIndex !== null && selectedShot && (
-          <div style={{ animation: 'editPanelContentIn 0.22s 0.18s cubic-bezier(0.2,0,0,1) both' }}>
+        {undoClip && (
+          <div style={{ position: 'absolute', right: '1.5rem', bottom: '5.25rem', pointerEvents: 'auto' }}>
+            <button className="btn-outline-small" onClick={handleUndoReplace}>
+              Undo Replace
+            </button>
+          </div>
+        )}
+    </div>
+  );
+
+  const rightPanel = (
+    <div className="edit-side-panel clip-edit-panel" style={{ height: '100%' }}>
+      {editModalIndex !== null && selectedShot ? (
+        <div style={{ animation: 'editPanelContentIn 0.22s 0.18s cubic-bezier(0.2,0,0,1) both' }}>
 
           <div className="flex-between" style={{ marginBottom: '1.25rem' }}>
             <div>
-              <div className="sidebar-header-kicker">▪ Edit Clip</div>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', margin: 0 }}>Clip.</h3>
+              <div className="sidebar-header-kicker">Edit Clip</div>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', margin: 0 }}>
+                Edit Clip {editModalIndex + 1}
+              </h3>
+              <div className="field-note" style={{ marginTop: '0.25rem' }}>Shot {editModalIndex + 1} of {shots.length}</div>
             </div>
             <button className="modal-close-btn" onClick={() => setEditModalIndex(null)} style={{ borderRadius: '50%' }}>
               <X size={13} />
@@ -823,7 +875,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
               )}
             </div>
 
-            <div style={{ height: '1px', background: 'var(--border)' }} />
+            <div style={{ height: '0.0625rem', background: 'var(--border)' }} />
             <div className="replace-heading">Replace With</div>
 
             {/* Upload */}
@@ -841,7 +893,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 style={{
                   background: isDraggingVideo ? 'rgba(var(--cyan-rgb), 0.04)' : 'var(--bg-deep)',
                   boxShadow: 'var(--neo-inset)',
-                  border: isDraggingVideo ? '1.5px dashed var(--cyan-border)' : '1.5px dashed var(--border-mid)',
+                  border: isDraggingVideo ? '0.0938rem dashed var(--cyan-border)' : '0.0938rem dashed var(--border-mid)',
                   borderRadius: 'var(--radius)',
                   padding: '1.125rem',
                   display: 'flex',
@@ -875,10 +927,25 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 onChange={(e) => setPromptDraft(e.target.value)}
                 onFocus={(e) => { e.target.style.borderColor = 'var(--cyan)'; }}
                 onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
-                style={{ minHeight: '7.5rem', fontSize: '0.8125rem', padding: '0.75rem', lineHeight: 1.45, transition: 'border-color 0.15s' }}
+                style={{ minHeight: '12rem', fontSize: '0.8125rem', padding: '0.75rem', lineHeight: 1.45, transition: 'border-color 0.15s' }}
               />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.375rem' }}>
+                <button type="button" className="btn-outline-small" onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(promptDraft || '');
+                    setQueueSummary(`Prompt copied from shot ${editModalIndex + 1}.`);
+                  } catch {
+                    setGenerationError('Could not copy prompt to clipboard.');
+                  }
+                }}>
+                  <Copy size={12} /> Copy Prompt
+                </button>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6562rem', color: promptUsage >= 0.95 ? 'var(--error)' : promptUsage >= 0.8 ? 'var(--warning)' : 'var(--text-muted)', letterSpacing: '0.06em' }}>
+                  {promptLength} / {promptLimit}
+                </span>
+              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 6rem', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <div className="panel-form-grid panel-form-grid--narrow" style={{ marginTop: '0.5rem' }}>
                 <select className="select-std" value={modelDraft} onChange={(event) => handleModelDraftChange(event.target.value)} title="Video model" style={{ height: '2.375rem', padding: '0.5rem 0.625rem' }}>
                   {VIDEO_GENERATION_MODELS.map(option => (
                     <option key={option.value} value={option.value}>{option.label}</option>
@@ -886,23 +953,34 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
                 </select>
                 <select className="select-std" value={durationDraft} onChange={(e) => setDurationDraft(e.target.value)} style={{ height: '2.375rem', padding: '0.5rem 0.625rem' }}>
                   {durationOptions.map(seconds => (
-                    <option key={seconds} value={String(seconds)}>{seconds}s</option>
+                    <option key={seconds} value={String(seconds)}>
+                      {seconds}s{seconds === recommendedDuration ? ' (recommended)' : ''}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="field-note">
+                Shot planned: {plannedDuration.toFixed(1)}s. Recommended clip length: {recommendedDuration}s.
+              </div>
+              <div className="field-note">
                 Available clip lengths follow the selected model. Audio stays muted so the final edit stays synced to your main track.
               </div>
 
-              <button className="btn-outline btn-full" onClick={handleRewritePrompt} disabled={isRewritingPrompt || generatingIndex !== null}>
+              <button className="btn-action-generate btn-full" onClick={handleRewritePrompt} disabled={isRewritingPrompt || generatingIndex !== null}>
                 {isRewritingPrompt ? <><Loader2 size={13} className="spin" /> Rewriting…</> : <><RotateCcw size={13} /> Regenerate Prompt</>}
               </button>
-              <button className="btn-orange btn-full" onClick={handleGenerateOne} disabled={generatingIndex !== null || !promptDraft.trim()}>
+              <button className="btn-action-generate btn-full" onClick={async () => {
+                if (selectedShot.video_url) {
+                  const shouldReplace = confirm(`Replace existing clip for shot ${editModalIndex + 1}?`);
+                  if (!shouldReplace) return;
+                }
+                await handleGenerateOne();
+              }} disabled={generatingIndex !== null || !promptDraft.trim()}>
                 {generatingIndex === editModalIndex ? (
                   <><Loader2 size={14} className="spin" /> Generating...</>
                 ) : (
-                  <><Wand2 size={14} /> {selectedShot.video_error && !selectedShot.video_url ? 'Try Again' : 'Generate New'}</>
+                  <><Wand2 size={14} /> {selectedShot.video_error && !selectedShot.video_url ? 'Try Again' : selectedShot.video_url ? 'Replace Clip' : 'Generate New'}</>
                 )}
               </button>
 
@@ -913,10 +991,69 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
               )}
             </div>
           </div>
-          </div>
-          )}
         </div>
-      </div>
+      ) : (
+        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div className="panel-flat">
+            <div className="panel-meta-label">Clip Editor</div>
+            <p className="body-sm">
+              Click <strong>Edit</strong> on any clip card to open per-clip controls here.
+            </p>
+          </div>
+
+          <div className="panel-flat">
+            <div className="panel-meta-label">Model</div>
+            <select className="select-model" style={{ width: '100%' }} value={modelDraft} onChange={(event) => handleModelDraftChange(event.target.value)} title="Video model">
+              {VIDEO_GENERATION_MODELS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="panel-flat" style={{ marginTop: 'auto' }}>
+            <div className="panel-meta-label">Progress</div>
+            <p className="body-sm">
+              {shots.length
+                ? `${String(generatedCount).padStart(2, '0')} / ${String(shots.length).padStart(2, '0')} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
+                : 'Create and review video clips for each shot.'}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="screen active screen-fill" id="s9">
+      <WorkflowThreePaneShell
+        showLeftPanel={false}
+        sidebarTitle="Clips"
+        rightTitle={editModalIndex !== null ? 'Edit Clip' : 'Actions'}
+        storageKey="workflow-three-pane:s9"
+        sidebar={(
+          <div style={{ padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div className="panel-flat">
+              <div className="panel-meta-label">Clip Render</div>
+              <p className="body-sm">Turn approved frames into shot clips, then approve all clips for the editor step.</p>
+            </div>
+            <div className="panel-flat">
+              <div className="metric-large">{generatedCount}<span className="metric-small-label">ready</span></div>
+              <p className="body-sm body-sm--mt">{remainingCount} clips remaining.</p>
+            </div>
+          </div>
+        )}
+        main={mainPanel}
+        right={rightPanel}
+      />
+
+      <QueueStatusBar
+        jobs={videoQueue.jobs}
+        isActive={videoQueue.isActive}
+        stats={videoQueue.stats}
+        onAbort={videoQueue.abort}
+        onClear={videoQueue.clear}
+        label="Shot videos"
+      />
     </div>
   );
 }

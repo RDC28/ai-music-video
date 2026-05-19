@@ -23,8 +23,8 @@ export default function PaymentScreen() {
 
       <main
         style={{
-          padding: '56px 56px 80px',
-          maxWidth: '720px',
+          padding: '3.5rem 3.5rem 5rem',
+          maxWidth: '45rem',
           margin: '0 auto',
           width: '100%',
           boxSizing: 'border-box',
@@ -33,10 +33,10 @@ export default function PaymentScreen() {
         {isLoading ? (
           <div
             style={{
-              padding: '52px',
+              padding: '3.25rem',
               textAlign: 'center',
               color: 'var(--text-muted)',
-              fontSize: '14px',
+              fontSize: '0.875rem',
               fontFamily: 'var(--font-display)',
               fontStyle: 'italic',
             }}
@@ -45,39 +45,39 @@ export default function PaymentScreen() {
           </div>
         ) : (
           <>
-            <div style={{ marginBottom: '36px' }}>
-              <div className="kicker" style={{ marginBottom: '12px' }}>Studio · Account</div>
-              <h2 className="editorial-title editorial-h1" style={{ marginBottom: '10px' }}>
+            <div style={{ marginBottom: '2.25rem' }}>
+              <div className="kicker" style={{ marginBottom: '0.75rem' }}>Studio · Account</div>
+              <h2 className="editorial-title editorial-h1" style={{ marginBottom: '0.625rem' }}>
                 Payment <span className="text-grad">methods.</span>
               </h2>
-              <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.65 }}>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.65 }}>
                 Save a card here later, or top up directly from billing.
               </p>
             </div>
 
-            <div className="premium-panel" style={{ padding: '40px' }}>
+            <div className="premium-panel" style={{ padding: '2.5rem' }}>
               <div
                 style={{
-                  padding: '48px 32px',
+                  padding: '3rem 2rem',
                   textAlign: 'center',
                   background:
                     'radial-gradient(ellipse 70% 60% at 50% 30%, rgba(var(--cyan-rgb), 0.06), transparent 64%), rgba(var(--cyan-300-rgb), 0.022)',
                   borderRadius: 'var(--radius-xl)',
-                  border: '1px dashed rgba(var(--cyan-rgb), 0.18)',
+                  border: '0.0625rem dashed rgba(var(--cyan-rgb), 0.18)',
                 }}
               >
                 <div
                   style={{
-                    width: '72px',
-                    height: '72px',
-                    borderRadius: '24px',
-                    margin: '0 auto 24px',
+                    width: '4.5rem',
+                    height: '4.5rem',
+                    borderRadius: '1.5rem',
+                    margin: '0 auto 1.5rem',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     background: 'linear-gradient(135deg, rgba(var(--cyan-rgb), 0.16), rgba(var(--cyan-rgb), 0.04))',
-                    border: '1px solid rgba(var(--cyan-rgb), 0.28)',
-                    boxShadow: '0 14px 36px rgba(var(--cyan-rgb), 0.18), inset 0 1px 0 rgba(var(--cyan-300-rgb), 0.1)',
+                    border: '0.0625rem solid rgba(var(--cyan-rgb), 0.28)',
+                    boxShadow: '0 0.875rem 2.25rem rgba(var(--cyan-rgb), 0.18), inset 0 0.0625rem 0 rgba(var(--cyan-300-rgb), 0.1)',
                     color: 'var(--orange)',
                   }}
                 >
@@ -86,15 +86,15 @@ export default function PaymentScreen() {
                     <line x1="2" y1="10" x2="22" y2="10" />
                   </svg>
                 </div>
-                <div className="editorial-title editorial-h3" style={{ marginBottom: '10px' }}>
+                <div className="editorial-title editorial-h3" style={{ marginBottom: '0.625rem' }}>
                   No cards saved yet.
                 </div>
                 <div
                   style={{
-                    fontSize: '13.5px',
+                    fontSize: '0.8438rem',
                     color: 'var(--text-soft)',
                     lineHeight: 1.65,
-                    maxWidth: '420px',
+                    maxWidth: '26.25rem',
                     margin: '0 auto',
                   }}
                 >
@@ -103,7 +103,7 @@ export default function PaymentScreen() {
               </div>
               <button
                 className="btn-outline"
-                style={{ width: '100%', marginTop: '20px', opacity: 0.5, cursor: 'not-allowed', justifyContent: 'center' }}
+                style={{ width: '100%', marginTop: '1.25rem', opacity: 0.5, cursor: 'not-allowed', justifyContent: 'center' }}
                 disabled
               >
                 Add payment method

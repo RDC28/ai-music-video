@@ -1,11 +1,28 @@
 'use client';
 
-import { useState, useEffect, use, useCallback, useMemo, useTransition } from 'react';
+import { useState, useEffect, use, useCallback, useMemo, useTransition, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { createClient } from '@/utils/supabase';
 import { useRouter } from 'next/navigation';
 import StageRail from '@/components/StageRail';
 import WorkflowBuffer from '@/components/WorkflowBuffer';
+
+// ─── Knowledge-base auto-rebuild ─────────────────────────────────────────────
+// Fields that signal KB-relevant data has changed. Shot-list and video outputs
+// are excluded — they are downstream consumers of the KB, not inputs to it.
+const KB_TRIGGER_KEYS = new Set([
+  'characters', 'locations', 'wardrobe',
+  'script', 'analysis', 'style_bible',
+]);
+
+// How long to wait after the last relevant update before firing the rebuild.
+// Batches rapid successive changes (e.g. characters then wardrobe saved
+// within seconds of each other) into a single request.
+const KB_DEBOUNCE_MS = 8_000;
+
+// Client-side cooldown: don't queue a rebuild if the KB was built less than
+// this many ms ago. Server enforces a separate 10-min hard minimum on top.
+const KB_CLIENT_COOLDOWN_MS = 30 * 60 * 1000;
 
 const SCREEN_META = {
   1: { name: 'Home', title: 'Opening home' },
@@ -88,6 +105,67 @@ export default function CreateProject({ params }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
+  // ── KB rebuild state machine (survives re-renders via ref) ──────────────
+  // status: 'idle' | 'scheduled' | 'building'
+  // pendingState: the latest merged projectState snapshot to send when the
+  //   debounce fires — updated on every relevant change so rapid successive
+  //   updates always build with the freshest data.
+  const kbRef = useRef({ status: 'idle', timer: null, pendingState: null });
+
+  const scheduleKBRebuild = useCallback((mergedProjectState) => {
+    const kb = kbRef.current;
+
+    // Never queue while a build is in-flight — server cooldown covers the gap.
+    if (kb.status === 'building') return;
+
+    // Always update with the latest state so the eventual build is fresh.
+    kb.pendingState = mergedProjectState;
+
+    // Reset the debounce window; this collapses rapid multi-field saves into one call.
+    if (kb.timer) clearTimeout(kb.timer);
+    kb.status = 'scheduled';
+
+    kb.timer = setTimeout(async () => {
+      kb.timer = null;
+      const state = kb.pendingState;
+      kb.pendingState = null;
+
+      // Client-side cooldown — avoids hammering if the user keeps editing.
+      // The server enforces an additional 10-min hard minimum independently.
+      const lastBuilt = state?.knowledge_base?.built_at;
+      if (lastBuilt && Date.now() - new Date(lastBuilt).getTime() < KB_CLIENT_COOLDOWN_MS) {
+        kb.status = 'idle';
+        return;
+      }
+
+      kb.status = 'building';
+      try {
+        const res = await fetch('/api/build-knowledge-base', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId, projectState: state }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // Hydrate the local state with the new KB so agents in this session
+          // benefit immediately without waiting for a full page refresh.
+          if (data.knowledge_base && !data.skipped) {
+            setProjectData(prev => ({
+              ...prev,
+              project_state: { ...prev?.project_state, knowledge_base: data.knowledge_base },
+            }));
+          }
+        }
+      } catch (err) {
+        // Fire-and-forget — never surface KB errors to the user.
+        console.warn('[KB] Background rebuild failed silently:', err.message);
+      } finally {
+        kb.status = 'idle';
+      }
+    }, KB_DEBOUNCE_MS);
+  }, [projectId]);
+
   const fetchData = useCallback(async (id) => {
     // Fetch project
     const { data: project, error: projectError } = await supabase
@@ -167,24 +245,34 @@ export default function CreateProject({ params }) {
 
   const updateProjectData = async (updates) => {
     if (!projectId) return;
-    
+
+    const mergedState = { ...projectData?.project_state, ...updates };
+
     const { error } = await supabase
       .from('projects')
-      .update({ project_state: { ...projectData?.project_state, ...updates } })
+      .update({ project_state: mergedState })
       .eq('id', projectId);
-    
+
     if (!error) {
       setProjectData(prev => ({
         ...prev,
-        project_state: { ...prev?.project_state, ...updates }
+        project_state: mergedState,
       }));
+
+      // Trigger a background KB rebuild whenever KB-relevant data changes.
+      // The scheduler debounces rapid saves and enforces a cooldown so we
+      // never spam the generation API.
+      const hasKBRelevantUpdate = Object.keys(updates).some(k => KB_TRIGGER_KEYS.has(k));
+      if (hasKBRelevantUpdate) {
+        scheduleKBRebuild(mergedState);
+      }
     }
   };
 
   if (isInitialLoading) {
     return (
       <div className="workflow-app-loading" style={{ display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden' }}>
-        <main className="workflow-shell" style={{ flex: 1, padding: '14px', display: 'flex', flexDirection: 'column' }}>
+        <main className="workflow-shell" style={{ flex: 1, padding: '0.875rem', display: 'flex', flexDirection: 'column' }}>
           <WorkflowBuffer
             title="Opening your project"
             message="Bringing your latest work into view."
@@ -249,8 +337,9 @@ export default function CreateProject({ params }) {
         />
       )}
       {activeScreen === 7 && (
-        <GenerateShotListScreen 
-          onNavigate={goTo} 
+        <GenerateShotListScreen
+          onNavigate={goTo}
+          projectId={projectId}
           projectData={projectData?.project_state}
           onDataUpdate={updateProjectData}
         />

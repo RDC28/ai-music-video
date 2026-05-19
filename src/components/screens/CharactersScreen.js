@@ -1,19 +1,22 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { FileText, Loader2, Upload } from 'lucide-react';
+import { FileText, Loader2, RefreshCw, Upload } from 'lucide-react';
+import { useGenerationQueue } from '@/hooks/useGenerationQueue';
+import QueueStatusBar from '../QueueStatusBar';
 import { createClient } from '@/utils/supabase';
 import ProgressBar from '../ProgressBar';
+import WorkflowThreePaneShell from '../WorkflowThreePaneShell';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MODAL_BTN = {
   background: 'rgba(var(--cyan-300-rgb), 0.06)',
-  border: '1px solid rgba(var(--cyan-300-rgb), 0.08)',
+  border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.08)',
   color: 'var(--text-soft)',
-  padding: '7px 12px',
-  borderRadius: '6px',
-  fontSize: '11px',
+  padding: '0.4375rem 0.75rem',
+  borderRadius: '0.375rem',
+  fontSize: '0.6875rem',
   fontWeight: 600,
   cursor: 'pointer',
   letterSpacing: '0.03em',
@@ -316,26 +319,26 @@ function ImagePreviewModal({ imageUrl, label, onClose, onDelete }) {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(var(--ink-950-rgb), 0.97)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(var(--ink-950-rgb), 0.97)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.875rem' }}
       onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
     >
       {/* Toolbar */}
-      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <span style={{ color: 'var(--ink-800)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.12em', marginRight: '4px' }}>{label?.toUpperCase()}</span>
-        <span style={{ color: 'var(--ink-800)', fontSize: '11px', marginRight: '4px' }}>Scroll to zoom · Drag to pan</span>
-        <div style={{ width: '1px', height: '18px', background: 'var(--ink-800)' }} />
+      <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <span style={{ color: 'var(--ink-800)', fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.12em', marginRight: '0.25rem' }}>{label?.toUpperCase()}</span>
+        <span style={{ color: 'var(--ink-800)', fontSize: '0.6875rem', marginRight: '0.25rem' }}>Scroll to zoom · Drag to pan</span>
+        <div style={{ width: '0.0625rem', height: '1.125rem', background: 'var(--ink-800)' }} />
         {onDelete && (
-          <button onClick={onDelete} style={{ ...MODAL_BTN, color: 'var(--violet-400)', border: '1px solid rgba(var(--violet-rgb), 0.3)' }}>
+          <button onClick={onDelete} className="btn-action-danger" style={{ ...MODAL_BTN }}>
             Delete Image
           </button>
         )}
-        <button onClick={onClose} style={{ ...MODAL_BTN, color: 'var(--text-soft)', border: '1px solid rgba(var(--cyan-300-rgb), 0.1)' }}>Close</button>
+        <button onClick={onClose} style={{ ...MODAL_BTN, color: 'var(--text-soft)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.1)' }}>Close</button>
       </div>
 
       {/* Viewport */}
       <div
         ref={containerRef}
-        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: 'var(--ink-950)', borderRadius: '12px', border: '1px solid var(--ink-800)', cursor: drag ? 'grabbing' : 'grab' }}
+        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: 'var(--ink-950)', borderRadius: '0.75rem', border: '0.0625rem solid var(--ink-800)', cursor: drag ? 'grabbing' : 'grab' }}
         onMouseDown={onMouseDown}
         onWheel={onWheel}
       >
@@ -343,7 +346,7 @@ function ImagePreviewModal({ imageUrl, label, onClose, onDelete }) {
           ref={imgRef} src={imageUrl} alt={label} draggable={false}
           style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'center center', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
         />
-        <div style={{ position: 'absolute', bottom: '14px', left: '50%', transform: 'translateX(-50%)', color: 'var(--ink-800)', fontSize: '11px', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
+        <div style={{ position: 'absolute', bottom: '0.875rem', left: '50%', transform: 'translateX(-50%)', color: 'var(--ink-800)', fontSize: '0.6875rem', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
           Scroll to zoom · Drag to pan
         </div>
       </div>
@@ -353,11 +356,11 @@ function ImagePreviewModal({ imageUrl, label, onClose, onDelete }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function CharactersScreen({ onNavigate, projectData = [], projectState = {}, onDataUpdate, projectId }) {
+export default function CharactersScreen({ projectData = [], projectState = {}, onDataUpdate, projectId }) {
   const [activeTab, setActiveTab] = useState(0);
   const [globalLibrary, setGlobalLibrary] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [isPanelEditing, setIsPanelEditing] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
   const [createRefImage, setCreateRefImage] = useState(null);
@@ -379,12 +382,39 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
   const [imgRatios, setImgRatios] = useState({});
   const [anchorStatus, setAnchorStatus] = useState({});
 
+  // ── Comparison board state ────────────────────────────────────────────────
+  const [boardCards, setBoardCards] = useState([]);   // { id, charIndex, x, y }
+  const [cardZOrder, setCardZOrder] = useState([]);   // card IDs bottom→top
+  const [isDragOverBoard, setIsDragOverBoard] = useState(false);
+  const dragState = useRef(null);   // { cardId, startX, startY, startCardX, startCardY }
+  const resizeState = useRef(null); // { cardId, startX, startWidth }
+  const boardRef = useRef(null);
+
+  const CARD_DEFAULT_W = 220; // px
+  const CARD_MIN_W     = 140;
+  const CARD_MAX_W     = 700;
+
   const fileInputRef = useRef(null);
   const refFileInputRef = useRef(null);
   const collageRef = useRef(null);
   const projectCharacters = useMemo(() => (Array.isArray(projectData) ? projectData : []), [projectData]);
   const anchorInFlightRef = useRef(new Set());
   const latestCharactersRef = useRef(projectCharacters);
+  const anchorQueue = useGenerationQueue({ concurrency: 2 });
+
+  // Coalescing save — prevents last-write-wins race when 2 anchors complete simultaneously.
+  const anchorSaveQRef = useRef({ pending: false, latest: null });
+  const saveCharList = useCallback(async (characters) => {
+    anchorSaveQRef.current.latest = { characters };
+    if (anchorSaveQRef.current.pending) return;
+    anchorSaveQRef.current.pending = true;
+    while (anchorSaveQRef.current.latest) {
+      const d = anchorSaveQRef.current.latest;
+      anchorSaveQRef.current.latest = null;
+      try { await onDataUpdate(d); } catch (e) { console.error('[anchor save]', e); }
+    }
+    anchorSaveQRef.current.pending = false;
+  }, [onDataUpdate]);
   const [collageSize, setCollageSize] = useState({ width: PINBOARD_WIDTH, height: PINBOARD_HEIGHT });
   const supabase = useMemo(() => createClient(), []);
   const generatingReplaceIndex = Number.isInteger(generatingChar?.replaceIndex)
@@ -530,6 +560,68 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
       anchorInFlightRef.current.delete(normalizedName);
     }
   }, [onDataUpdate, projectId, projectState]);
+
+  // Force-refresh: strips the existing anchor URL then delegates to the same
+  // function used on page load — guarantees identical code path, no duplicate logic.
+  const forceRefreshAnchor = useCallback(async (character) => {
+    if (!character?.name) return;
+    const normalizedName = normalizeCharacterName(character.name);
+    // Clear any stuck in-flight entry so a previously failed attempt doesn't block retries.
+    anchorInFlightRef.current.delete(normalizedName);
+    // Strip anchor URL so generateAnchorForCharacter doesn't skip.
+    const stripped = { ...character, anchor_image_url: null, anchor_generated_at: null };
+    await generateAnchorForCharacter(stripped, projectState);
+  }, [generateAnchorForCharacter, projectState]);
+
+  // Queue-aware anchor job — throws on failure so the queue can retry on rate limits.
+  const runAnchorJobForQueue = useCallback(async (char) => {
+    const normalizedName = normalizeCharacterName(char.name);
+    anchorInFlightRef.current.delete(normalizedName);
+    anchorInFlightRef.current.add(normalizedName);
+    const stripped = { ...char, anchor_image_url: null, anchor_generated_at: null };
+    setAnchorStatus(prev => ({ ...prev, [char.name]: 'generating' }));
+    try {
+      const res = await fetch('/api/generate-character-anchor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, character: stripped, projectState }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success || !data?.anchor_image_url) {
+        const err = new Error(data?.reason || `Anchor generation failed for ${char.name}`);
+        err.status = res.status;
+        throw err;
+      }
+      setAnchorStatus(prev => ({ ...prev, [char.name]: 'done' }));
+      // Update ref immediately so concurrent jobs see the latest characters array.
+      const updatedChars = (Array.isArray(latestCharactersRef.current) ? latestCharactersRef.current : []).map(c =>
+        normalizeCharacterName(c?.name) === normalizedName
+          ? { ...c, anchor_image_url: data.anchor_image_url, anchor_generated_at: new Date().toISOString() }
+          : c
+      );
+      latestCharactersRef.current = updatedChars;
+      await saveCharList(updatedChars);
+      return data.anchor_image_url;
+    } catch (err) {
+      setAnchorStatus(prev => ({ ...prev, [char.name]: 'failed' }));
+      throw err; // queue handles retry
+    } finally {
+      anchorInFlightRef.current.delete(normalizedName);
+    }
+  }, [projectId, projectState, saveCharList]);
+
+  // Batch-refresh all anchors via the concurrent queue (2 at a time).
+  const refreshAllAnchors = useCallback(() => {
+    const chars = projectCharacters.filter(c => c?.name);
+    if (!chars.length) return;
+    anchorQueue.enqueue(
+      chars.map(char => ({
+        id: `anchor-${char.name}`,
+        label: char.name,
+        run: () => runAnchorJobForQueue(char),
+      }))
+    );
+  }, [projectCharacters, anchorQueue, runAnchorJobForQueue]);
 
   const base64ToBlob = (b64, mime) => {
     const bytes = atob(b64);
@@ -851,7 +943,7 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
         updatedChars[activeTab] = { ...projectCharacters[activeTab], name: editName.trim().toUpperCase(), description: editDesc.trim() };
         await onDataUpdate({ characters: updatedChars });
       }
-      setShowEditModal(false);
+      setIsPanelEditing(false);
     } catch (error) {
       console.error('Character rename failed:', error);
       alert('Character could not be renamed. Please try again.');
@@ -896,468 +988,605 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
     await onDataUpdate({ characters: updatedChars });
   };
 
+  // ── Comparison board helpers ──────────────────────────────────────────────
+
+  const bringToFront = useCallback((id) => {
+    setCardZOrder(prev => [...prev.filter(z => z !== id), id]);
+  }, []);
+
+  const addCardToBoard = useCallback((charIndex, dropX, dropY) => {
+    const existing = boardCards.find(c => c.charIndex === charIndex);
+    if (existing) { bringToFront(existing.id); setActiveTab(charIndex); return; }
+    const id = `card-${Date.now()}-${charIndex}`;
+    setBoardCards(prev => [...prev, { id, charIndex, x: Math.max(0, dropX - 110), y: Math.max(0, dropY - 60), width: CARD_DEFAULT_W }]);
+    setCardZOrder(prev => [...prev, id]);
+    setActiveTab(charIndex);
+  }, [boardCards, bringToFront]);
+
+  const removeCardFromBoard = useCallback((id) => {
+    setBoardCards(prev => prev.filter(c => c.id !== id));
+    setCardZOrder(prev => prev.filter(z => z !== id));
+  }, []);
+
+  const handleCardMouseDown = useCallback((e, card) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    bringToFront(card.id);
+    setActiveTab(card.charIndex);
+    dragState.current = { cardId: card.id, startX: e.clientX, startY: e.clientY, startCardX: card.x, startCardY: card.y };
+  }, [bringToFront]);
+
+  const handleResizeMouseDown = useCallback((e, card) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeState.current = { cardId: card.id, startX: e.clientX, startWidth: card.width ?? CARD_DEFAULT_W };
+  }, []);
+
+  // Global mouse handlers — shared by both drag-move and resize
+  useEffect(() => {
+    const onMove = (e) => {
+      if (dragState.current) {
+        const { cardId, startX, startY, startCardX, startCardY } = dragState.current;
+        setBoardCards(prev => prev.map(c => c.id === cardId
+          ? { ...c, x: Math.max(0, startCardX + e.clientX - startX), y: Math.max(0, startCardY + e.clientY - startY) }
+          : c));
+      } else if (resizeState.current) {
+        const { cardId, startX, startWidth } = resizeState.current;
+        const newW = Math.max(CARD_MIN_W, Math.min(CARD_MAX_W, startWidth + e.clientX - startX));
+        setBoardCards(prev => prev.map(c => c.id === cardId ? { ...c, width: newW } : c));
+      }
+    };
+    const onUp = () => { dragState.current = null; resizeState.current = null; };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+  }, []);
+
+  const handleBoardDrop = useCallback((e) => {
+    e.preventDefault();
+    setIsDragOverBoard(false);
+    const charIndex = parseInt(e.dataTransfer.getData('char-index'), 10);
+    if (isNaN(charIndex)) return;
+    const rect = boardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    addCardToBoard(charIndex, e.clientX - rect.left, e.clientY - rect.top);
+  }, [addCardToBoard]);
+
+  // Helper: get best preview image for a character
+  const getCharPreviewImage = useCallback((char) => {
+    if (!char) return null;
+    if (char.anchor_image_url) return { src: char.anchor_image_url, isAnchor: true };
+    const firstImg = char.images?.[0];
+    if (firstImg) {
+      const { src } = parseCharacterImage(firstImg, 0);
+      if (src) return { src, isAnchor: false };
+    }
+    return null;
+  }, []);
+
+  useEffect(() => { setIsPanelEditing(false); }, [activeTab, activeCategory]);
+
+  const openPanelEdit = useCallback(() => {
+    if (!activeChar) return;
+    setEditName(activeChar.name || '');
+    setEditDesc(activeChar.description || '');
+    setIsPanelEditing(true);
+  }, [activeChar]);
+
   return (
     <div className="screen active screen-fill" id="s4">
       <style>{`
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
         .skeleton-shimmer { background:linear-gradient(90deg,var(--bg-deep) 25%,var(--surface-2) 50%,var(--bg-deep) 75%); background-size:200% 100%; animation:shimmer 1.4s ease-in-out infinite; }
-        .img-card {
-          --board-card-scale: 1;
-          transition: transform 0.16s ease, filter 0.16s ease;
-        }
-        .img-card:hover {
-          --board-card-scale: 1.06;
-          z-index: 20;
-          filter: brightness(1.1);
+        .tab-pill.on-board::after {
+          content: '';
+          display: inline-block;
+          width: 0.375rem;
+          height: 0.375rem;
+          border-radius: 50%;
+          background: var(--cyan);
+          margin-left: 0.375rem;
+          vertical-align: middle;
+          box-shadow: 0 0 0.375rem rgba(var(--cyan-rgb), 0.6);
         }
       `}</style>
 
-      <div className="layout-sidebar-main">
-
-        {/* ── Sidebar ── */}
-        <div className="layout-sidebar scroll-y" style={{ width: '256px', minWidth: '256px', padding: '24px', height: '100%' }}>
-
-          <div style={{ marginBottom: '26px' }}>
-            <div className="kicker" style={{ marginBottom: '12px' }}>Character · Studio</div>
-            <h2 className="editorial-title editorial-h2" style={{ marginBottom: '10px' }}>
-              Build your <span className="text-grad">cast.</span>
-            </h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '12.5px', lineHeight: 1.6 }}>
-              {busy && generatingChar
-                ? `Saving ${generatingChar.images.filter(x => x.url).length}/${generatingChar.images.length} sheet…`
-                : busy ? 'Processing sheet…' : 'Upload a full sheet or create one.'}
-            </p>
-          </div>
-
-          {/* Category toggle */}
-          <div className="neo-inset" style={{ display: 'flex', padding: '4px', marginBottom: '22px' }}>
-            {['project', 'global'].map(cat => (
-              <button
-                key={cat}
-                onClick={() => { setActiveCategory(cat); setActiveTab(0); }}
-                style={{
-                  flex: 1,
-                  padding: '8px',
-                  borderRadius: '7px',
-                  border: activeCategory === cat ? '1px solid var(--cyan-border)' : '1px solid transparent',
-                  background: activeCategory === cat ? 'var(--surface-2)' : 'transparent',
-                  boxShadow: activeCategory === cat ? 'var(--neo-flat)' : 'none',
-                  color: activeCategory === cat ? 'var(--cyan)' : 'var(--text-muted)',
-                  fontWeight: 600,
-                  fontSize: '11px',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-body)',
-                  transition: 'background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out',
-                }}
-              >
-                {cat === 'project' ? 'Project' : 'History'}
-              </button>
-            ))}
-          </div>
-
-          {/* Actions */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
-            <button
-              className="btn-orange"
-              style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', outline: isDraggingSheet ? '2px dashed var(--cyan-border)' : 'none', outlineOffset: '2px', transition: 'outline 120ms ease-out' }}
-              onClick={() => {
-                setSheetReplaceTarget(null);
-                fileInputRef.current.click();
-              }}
-              onDragOver={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
-              onDragEnter={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
-              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingSheet(false); }}
-              onDrop={handleSheetDrop}
-              disabled={busy}
-            >
-              <Upload size={14} />
-              {isDraggingSheet ? 'Drop to upload' : isProcessingSheet ? 'Reading sheet...' : 'Upload Full Sheet'}
-            </button>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              disabled={busy}
-              className="btn-outline"
-              style={{ width: '100%', padding: '12px', justifyContent: 'center' }}
-            >
-              Create new
-            </button>
-            <button
-              onClick={handleGenerateFromScript}
-              disabled={busy}
-              className="btn-outline"
-              title="Generate references for the next character described in the script"
-              style={{ width: '100%', padding: '12px', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '7px' }}
-            >
-              <FileText size={14} />
-              Generate from Script
-            </button>
-
-            {isGenerating && (
-              <ProgressBar steps={CHARACTER_STEPS} currentStep={charProgressStep} />
-            )}
-          </div>
-
-          <div style={{ marginTop: 'auto', paddingTop: '24px' }}>
-            {anyAnchorsGenerating && (
-              <div style={{ marginBottom: '10px', color: 'var(--violet-400)', fontSize: '11px', lineHeight: 1.5 }}>
-                Identity anchors still processing — shot consistency will be better if you wait.
-              </div>
-            )}
-            <button className="btn-teal" style={{ width: '100%', padding: '13px', borderRadius: '8px', fontSize: '12px' }} onClick={() => onNavigate(5)}>
-              Continue to Locations →
-            </button>
-          </div>
-        </div>
-
-        {/* ── Right panel ── */}
-        <div className="main-content" style={{ background: 'var(--bg)' }}>
-
-          {/* Header */}
-          <div className="main-header" style={{ padding: '18px 32px' }}>
-            {/* Character tabs */}
-            <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '14px' }}>
-              {displayedCharacters.map((char, i) => (
-                <div
-                  key={char.id || i}
-                  onClick={() => setActiveTab(i)}
-                  className={`tab-pill ${activeTab === i ? 'active' : ''}`}
-                  style={{ whiteSpace: 'nowrap' }}
-                >
-                  <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '-0.01em' }}>
-                    {char.name}
-                  </span>
-                  {(char.isGeneratingReference || char.id === 'generating') && (
-                    <span style={{ marginLeft: '5px', opacity: 0.55, fontSize: '9px', fontFamily: 'var(--font-mono)' }}>
-                      {char.images.filter(x => x.url).length}/{char.images.length}
+      <WorkflowThreePaneShell
+        showLeftPanel={false}
+        rightTitle="Character Controls"
+        storageKey="workflow-three-pane:s4"
+        minRightWidth={320}
+        maxRightWidth={540}
+        defaultRightWidth={384}
+        main={(
+          <div className="main-content" style={{ background: 'var(--bg)' }}>
+            {/* Header */}
+            <div className="main-header" style={{ padding: '1.125rem 2rem' }}>
+              {/* Character tabs — draggable onto the comparison board */}
+              <div style={{ display: 'flex', gap: '0.375rem', overflowX: 'auto', paddingBottom: '0.875rem', alignItems: 'center' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', flexShrink: 0, marginRight: '0.25rem' }}>drag to board →</span>
+                {displayedCharacters.map((char, i) => (
+                  <div
+                    key={char.id || i}
+                    draggable={true}
+                    onDragStart={e => { e.dataTransfer.setData('char-index', String(i)); e.dataTransfer.effectAllowed = 'copy'; }}
+                    onClick={() => setActiveTab(i)}
+                    className={`tab-pill ${activeTab === i ? 'active' : ''}${boardCards.some(c => c.charIndex === i) ? ' on-board' : ''}`}
+                    style={{ whiteSpace: 'nowrap', cursor: 'grab' }}
+                  >
+                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '-0.01em' }}>
+                      {char.name}
                     </span>
-                  )}
-                  {!char.isGeneratingReference && anchorStatus[char.name] === 'generating' && (
-                    <span style={{ marginLeft: '6px', opacity: 0.75, fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <Loader2 size={10} className="spin" />
-                      ANCHOR
-                    </span>
-                  )}
-                  {!char.isGeneratingReference && (anchorStatus[char.name] === 'done' || char?.anchor_image_url) && (
-                    <span style={{ marginLeft: '6px', color: 'var(--cyan-400)', fontSize: '9px' }}>✓</span>
-                  )}
-                  {!char.isGeneratingReference && anchorStatus[char.name] === 'failed' && (
-                    <span style={{ marginLeft: '6px', color: 'var(--violet-400)', fontSize: '9px' }}>!</span>
-                  )}
-                </div>
-              ))}
-              {activeCategory === 'project' && !isGeneratingActive && (
-                <div
-                  onClick={() => setShowCreateModal(true)}
-                  className="tab-pill"
-                  style={{
-                    fontSize: '14px',
-                    color: 'var(--orange)',
-                    background: 'rgba(var(--violet-rgb), 0.06)',
-                    borderColor: 'rgba(var(--violet-rgb), 0.22)',
-                    cursor: 'pointer',
-                    padding: '5px 14px',
-                  }}
-                >
-                  +
-                </div>
-              )}
-            </div>
-
-            {/* Character info row */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-              <div>
-                <h1 className="editorial-title editorial-h2">
-                  {activeChar ? (
-                    <>
-                      {activeChar.name}
-                      <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>.</span>
-                    </>
-                  ) : (
-                    <>Cast <span className="text-grad">library.</span></>
-                  )}
-                </h1>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
-                  <span
+                    {(char.isGeneratingReference || char.id === 'generating') && (
+                      <span style={{ marginLeft: '0.3125rem', opacity: 0.55, fontSize: '0.5625rem', fontFamily: 'var(--font-mono)' }}>
+                        {char.images.filter(x => x.url).length}/{char.images.length}
+                      </span>
+                    )}
+                    {!char.isGeneratingReference && anchorStatus[char.name] === 'generating' && (
+                      <span style={{ marginLeft: '0.375rem', opacity: 0.75, fontSize: '0.5625rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Loader2 size={10} className="spin" />
+                        ANCHOR
+                      </span>
+                    )}
+                    {!char.isGeneratingReference && (anchorStatus[char.name] === 'done' || char?.anchor_image_url) && (
+                      <span style={{ marginLeft: '0.375rem', color: 'var(--cyan-400)', fontSize: '0.5625rem' }}>✓</span>
+                    )}
+                    {!char.isGeneratingReference && anchorStatus[char.name] === 'failed' && (
+                      <span style={{ marginLeft: '0.375rem', color: 'var(--violet-400)', fontSize: '0.5625rem' }}>!</span>
+                    )}
+                  </div>
+                ))}
+                {activeCategory === 'project' && !isGeneratingActive && (
+                  <div
+                    onClick={() => setShowCreateModal(true)}
+                    className="tab-pill"
                     style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '9.5px',
-                      fontWeight: 500,
-                      padding: '4px 10px',
-                      borderRadius: '999px',
-                      background: activeCategory === 'global' ? 'rgba(var(--violet-rgb), 0.1)' : 'rgba(var(--violet-rgb), 0.1)',
-                      color: activeCategory === 'global' ? 'var(--orange)' : 'var(--teal)',
-                      border: `1px solid ${activeCategory === 'global' ? 'rgba(var(--violet-rgb), 0.22)' : 'rgba(var(--violet-rgb), 0.22)'}`,
-                      letterSpacing: '0.18em',
+                      fontSize: '0.875rem',
+                      color: 'var(--orange)',
+                      background: 'rgba(var(--violet-rgb), 0.06)',
+                      borderColor: 'rgba(var(--violet-rgb), 0.22)',
+                      cursor: 'pointer',
+                      padding: '0.3125rem 0.875rem',
                     }}
                   >
-                    {activeCategory === 'global' ? '◆ GLOBAL' : '◇ PROJECT'}
-                  </span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.015em' }}>
-                    {truncateCharacterDescription(activeChar?.description) || 'No notes yet.'}
-                  </span>
-                  {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'generating' && (
-                    <span style={{ color: 'var(--cyan-400)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Loader2 size={12} className="spin" />
-                      Building identity anchor…
-                    </span>
-                  )}
-                  {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'failed' && (
-                    <span style={{ color: 'var(--violet-400)', fontSize: '11px' }}>
-                      Anchor failed — will use reference panels
-                    </span>
-                  )}
-                </div>
+                    +
+                  </div>
+                )}
               </div>
-              {activeChar && !isGeneratingActive && activeCategory === 'global' && (
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <button
-                    onClick={handleAddGlobalToProject}
-                    className="btn-teal"
-                    style={{ padding: '8px 14px', fontSize: '11.5px', whiteSpace: 'nowrap' }}
-                  >
-                    Add to project
-                  </button>
-                  <button
-                    onClick={() => { setEditName(activeChar.name); setEditDesc(activeChar.description || ''); setShowEditModal(true); }}
-                    className="btn-outline"
-                    style={{ padding: '8px 14px', fontSize: '11.5px', whiteSpace: 'nowrap' }}
-                  >
-                    Rename
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    className="btn-outline"
-                    style={{ padding: '8px 14px', fontSize: '11.5px', color: 'var(--violet-400)', borderColor: 'rgba(var(--violet-rgb), 0.2)' }}
-                  >
-                    Delete from history
-                  </button>
+
+              {/* Character info row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                <div>
+                  <h1 className="editorial-title editorial-h2">
+                    {activeChar ? (
+                      <>
+                        {activeChar.name}
+                        <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>.</span>
+                      </>
+                    ) : (
+                      <>Cast <span className="text-grad">library.</span></>
+                    )}
+                  </h1>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.5938rem',
+                        fontWeight: 500,
+                        padding: '0.25rem 0.625rem',
+                        borderRadius: '62.4375rem',
+                        background: activeCategory === 'global' ? 'rgba(var(--violet-rgb), 0.1)' : 'rgba(var(--violet-rgb), 0.1)',
+                        color: activeCategory === 'global' ? 'var(--orange)' : 'var(--teal)',
+                        border: `0.0625rem solid ${activeCategory === 'global' ? 'rgba(var(--violet-rgb), 0.22)' : 'rgba(var(--violet-rgb), 0.22)'}`,
+                        letterSpacing: '0.18em',
+                      }}
+                    >
+                      {activeCategory === 'global' ? '◆ GLOBAL' : '◇ PROJECT'}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.015em' }}>
+                      {truncateCharacterDescription(activeChar?.description) || 'No notes yet.'}
+                    </span>
+                    {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'generating' && (
+                      <span style={{ color: 'var(--cyan-400)', fontSize: '0.6875rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                        <Loader2 size={12} className="spin" />
+                        Building identity anchor…
+                      </span>
+                    )}
+                    {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'failed' && (
+                      <span style={{ color: 'var(--violet-400)', fontSize: '0.6875rem' }}>
+                        Anchor failed — will use reference panels
+                      </span>
+                    )}
+                  </div>
                 </div>
-              )}
-              {activeChar && !isGeneratingActive && activeCategory === 'project' && (
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  {activeAnchorState === 'done' && activeChar.anchor_image_url && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginRight: '8px' }}>
-                      <img
-                        src={activeChar.anchor_image_url}
-                        alt={`${activeChar.name} anchor`}
-                        style={{ width: '160px', height: '90px', objectFit: 'cover', borderRadius: '6px', border: '1px solid rgba(var(--cyan-300-rgb), 0.14)' }}
-                      />
-                      <div style={{ color: 'var(--cyan-400)', fontSize: '10px', fontWeight: 600 }}>
-                        Identity anchor ready ✓
+                {activeChar && !isGeneratingActive && activeCategory === 'global' && (
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <button onClick={handleAddGlobalToProject} className="btn-secondary" style={{ padding: '0.5rem 0.875rem', fontSize: '0.7188rem', whiteSpace: 'nowrap' }}>Add to project</button>
+                    <button onClick={handleDelete} className="btn-action-danger" style={{ padding: '0.5rem 0.875rem', fontSize: '0.7188rem' }}>Delete from history</button>
+                  </div>
+                )}
+                {activeChar && !isGeneratingActive && activeCategory === 'project' && (
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <button onClick={handleDelete} className="btn-action-danger" style={{ padding: '0.5rem 0.875rem', fontSize: '0.7188rem', fontWeight: 600 }}>Delete</button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Comparison board — drag character tabs from above onto this canvas */}
+            <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'hidden', padding: '0.5rem 1.5rem 1.125rem', boxSizing: 'border-box' }}>
+              <div
+                ref={boardRef}
+                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setIsDragOverBoard(true); }}
+                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOverBoard(false); }}
+                onDrop={handleBoardDrop}
+                style={{
+                  width: '100%', height: '100%',
+                  background: 'var(--bg-deep)',
+                  boxShadow: isDragOverBoard ? 'inset 0 0 0 0.125rem var(--cyan-border)' : 'var(--neo-inset)',
+                  border: `0.0625rem solid ${isDragOverBoard ? 'var(--cyan-border)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-lg)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  transition: 'border-color 120ms ease, box-shadow 120ms ease',
+                  backgroundImage: 'radial-gradient(rgba(var(--cyan-300-rgb), 0.035) 0.0625rem, transparent 0.0625rem)',
+                  backgroundSize: '1.5rem 1.5rem',
+                }}
+              >
+                {/* Empty state */}
+                {boardCards.length === 0 && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                    <div style={{ width: '3.25rem', height: '3.25rem', borderRadius: '0.875rem', background: 'var(--surface-2)', boxShadow: 'var(--neo-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', opacity: isDragOverBoard ? 1 : 0.6 }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
+                    </div>
+                    <div style={{ color: isDragOverBoard ? 'var(--cyan)' : 'var(--text-muted)', fontSize: '0.9375rem', fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', marginBottom: '0.375rem', transition: 'color 120ms ease' }}>
+                      {isDragOverBoard ? 'Drop to add to board' : 'Drag characters here to compare'}
+                    </div>
+                    <div style={{ color: 'var(--text-subtle)', fontSize: '0.75rem', fontFamily: 'var(--font-body)' }}>
+                      Drag character tabs from the bar above onto this board
+                    </div>
+                  </div>
+                )}
+
+                {/* Drop hint overlay when dragging over non-empty board */}
+                {boardCards.length > 0 && isDragOverBoard && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(var(--cyan-rgb), 0.04)', border: '0.125rem dashed var(--cyan-border)', borderRadius: 'var(--radius-lg)', pointerEvents: 'none', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.875rem', fontWeight: 700, color: 'var(--cyan)' }}>Drop to add character</span>
+                  </div>
+                )}
+
+                {/* Character cards */}
+                {boardCards.map(card => {
+                  const char = displayedCharacters[card.charIndex];
+                  if (!char) return null;
+                  const preview = getCharPreviewImage(char);
+                  const zIndex = cardZOrder.indexOf(card.id) + 1;
+                  const isSelected = activeTab === card.charIndex;
+                  const isGeneratingThis = (char.isGeneratingReference || char.id === 'generating');
+
+                  return (
+                    <div
+                      key={card.id}
+                      onMouseDown={e => handleCardMouseDown(e, card)}
+                      onClick={e => { e.stopPropagation(); setActiveTab(card.charIndex); bringToFront(card.id); }}
+                      style={{
+                        position: 'absolute',
+                        left: card.x,
+                        top: card.y,
+                        width: card.width ?? CARD_DEFAULT_W,
+                        background: 'var(--surface-2)',
+                        border: `0.0625rem solid ${isSelected ? 'var(--cyan-border)' : 'rgba(var(--cyan-300-rgb), 0.1)'}`,
+                        borderRadius: 'var(--radius-lg)',
+                        boxShadow: isSelected ? 'var(--neo-active)' : 'var(--neo-raised)',
+                        overflow: 'visible',
+                        cursor: dragState.current?.cardId === card.id ? 'grabbing' : 'grab',
+                        userSelect: 'none',
+                        zIndex,
+                        transition: 'border-color 120ms ease, box-shadow 120ms ease',
+                      }}
+                    >
+                      {/* Clip inner content (image + name) to the card boundary) */}
+                      <div style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+                      {/* Image area */}
+                      <div style={{ position: 'relative', width: '100%', background: 'var(--bg-deep)', aspectRatio: preview?.isAnchor ? '4/5' : '21/9', overflow: 'hidden' }}>
+                        {preview ? (
+                          <img
+                            src={preview.src}
+                            alt={char.name}
+                            draggable={false}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
+                          />
+                        ) : isGeneratingThis ? (
+                          <div className="skeleton-shimmer" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Loader2 size={20} className="spin" style={{ color: 'var(--cyan)', opacity: 0.6 }} />
+                          </div>
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(var(--cyan-300-rgb), 0.25)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
+                          </div>
+                        )}
+                        {/* Remove button */}
+                        <button
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => { e.stopPropagation(); removeCardFromBoard(card.id); }}
+                          style={{ position: 'absolute', top: '0.375rem', right: '0.375rem', width: '1.375rem', height: '1.375rem', borderRadius: '50%', background: 'rgba(var(--ink-950-rgb), 0.75)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.15)', color: 'var(--text-soft)', fontSize: '0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, backdropFilter: 'blur(0.25rem)' }}
+                        >×</button>
+                      </div>
+                      {/* Name strip */}
+                      <div style={{ padding: '0.5rem 0.625rem 0.4375rem', borderTop: `0.0625rem solid rgba(var(--cyan-300-rgb), 0.06)` }}>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.75rem', fontWeight: 700, color: isSelected ? 'var(--cyan)' : 'var(--text)', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', transition: 'color 120ms ease' }}>
+                          {char.name}
+                        </div>
+                        {char.description && (
+                          <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '0.125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>
+                            {char.description.slice(0, 55)}
+                          </div>
+                        )}
+                      </div>
+                      </div>{/* end inner clip wrapper */}
+
+                      {/* Resize handle — bottom-right corner */}
+                      <div
+                        onMouseDown={e => handleResizeMouseDown(e, card)}
+                        title="Drag to resize"
+                        style={{
+                          position: 'absolute',
+                          bottom: -1,
+                          right: -1,
+                          width: '1.125rem',
+                          height: '1.125rem',
+                          cursor: 'nwse-resize',
+                          display: 'flex',
+                          alignItems: 'flex-end',
+                          justifyContent: 'flex-end',
+                          padding: '0.1875rem',
+                          borderBottomRightRadius: 'var(--radius-lg)',
+                          zIndex: 2,
+                        }}
+                      >
+                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                          <path d="M7 1L1 7M7 4L4 7M7 7L7 7" stroke="rgba(var(--cyan-300-rgb),0.45)" strokeWidth="1.25" strokeLinecap="round"/>
+                        </svg>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+        right={(
+          <div className="layout-sidebar scroll-y" style={{ width: '100%', minWidth: 0, padding: '1rem', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
+
+            {isPanelEditing && activeChar ? (
+              /* ── Edit form ── */
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                  <div>
+                    <div className="kicker" style={{ marginBottom: '0.25rem' }}>Edit Character</div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '13rem' }}>{activeChar.name}</div>
+                  </div>
+                  <button onClick={() => setIsPanelEditing(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.375rem', cursor: 'pointer', padding: '0.125rem 0.375rem', lineHeight: 1, borderRadius: '0.375rem' }}>×</button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', flex: '1 1 auto' }}>
+                  <div>
+                    <label className="panel-meta-label" style={{ display: 'block', marginBottom: '0.375rem' }}>NAME</label>
+                    <input className="input-inset" value={editName} onChange={e => setEditName(e.target.value)} style={{ padding: '0.5625rem 0.75rem', fontSize: '0.8125rem', borderRadius: '0.5rem', width: '100%', boxSizing: 'border-box' }} />
+                  </div>
+
+                  <div>
+                    <label className="panel-meta-label" style={{ display: 'block', marginBottom: '0.375rem' }}>DESCRIPTION</label>
+                    <textarea className="textarea-inset" value={editDesc} onChange={e => setEditDesc(e.target.value)} style={{ padding: '0.5625rem 0.75rem', fontSize: '0.8125rem', borderRadius: '0.5rem', height: '6rem', resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
+                  </div>
+
+                  {activeCategory === 'project' && (
+                    <div>
+                      <div className="panel-meta-label" style={{ marginBottom: '0.5rem' }}>REPLACE SHEET</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4375rem' }}>
+                        <button className="btn-outline" style={{ padding: '0.5625rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', fontSize: '0.75rem', width: '100%' }}
+                          onClick={() => {
+                            setSheetReplaceTarget({ index: activeTab, name: (editName || activeChar?.name || '').trim().toUpperCase(), description: editDesc.trim() });
+                            setIsPanelEditing(false);
+                            fileInputRef.current?.click();
+                          }}
+                        >
+                          <Upload size={13} /> Upload New Sheet
+                        </button>
+                        <button className="btn-action-generate" style={{ padding: '0.5625rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', fontSize: '0.75rem', width: '100%' }}
+                          disabled={busy}
+                          onClick={() => { setIsPanelEditing(false); handleGenerateFromScript(); }}
+                        >
+                          <FileText size={13} /> Regenerate from Script
+                        </button>
                       </div>
                     </div>
                   )}
-                  <button
-                    onClick={() => { setEditName(activeChar.name); setEditDesc(activeChar.description || ''); setShowEditModal(true); }}
-                    className="btn-outline"
-                    style={{ padding: '8px 14px', fontSize: '11.5px' }}
-                  >
-                    Edit
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '1rem', marginTop: 'auto' }}>
+                  <button className="btn-orange" style={{ flex: 1, padding: '0.75rem', fontWeight: 700, fontSize: '0.8125rem' }} onClick={handleEditSave}>
+                    {activeCategory === 'global' ? 'Rename' : 'Save Changes'}
                   </button>
-                  <button
-                    onClick={handleDelete}
-                    style={{
-                      background: 'rgba(var(--violet-rgb), 0.06)',
-                      border: '1px solid rgba(var(--violet-rgb), 0.2)',
-                      color: 'var(--violet-400)',
-                      padding: '8px 14px',
-                      borderRadius: '999px',
-                      fontSize: '11.5px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      fontFamily: 'var(--font-body)',
-                      letterSpacing: '-0.005em',
-                      transition: 'background 0.18s, transform 0.3s var(--ease-spring)',
-                    }}
-                    onMouseOver={e => (e.currentTarget.style.background = 'rgba(var(--violet-rgb), 0.12)')}
-                    onMouseOut={e => (e.currentTarget.style.background = 'rgba(var(--violet-rgb), 0.06)')}
-                  >
-                    Delete
+                  <button className="btn-outline" style={{ flex: 1, padding: '0.75rem', fontSize: '0.8125rem' }} onClick={() => setIsPanelEditing(false)}>
+                    Cancel
                   </button>
                 </div>
-              )}
-            </div>
-          </div>
+              </>
+            ) : (
+              /* ── Normal view ── */
+              <>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <div className="kicker" style={{ marginBottom: '0.5rem' }}>Character · Studio</div>
+                  <h2 className="editorial-title editorial-h2" style={{ marginBottom: '0.375rem' }}>
+                    Build your <span className="text-grad">cast.</span>
+                  </h2>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.7188rem', lineHeight: 1.5 }}>
+                    {busy && generatingChar
+                      ? `Saving ${generatingChar.images.filter(x => x.url).length}/${generatingChar.images.length} sheet…`
+                      : busy ? 'Processing sheet…' : 'Upload a full sheet or create one.'}
+                  </p>
+                </div>
 
-          {/* Image collage */}
-          <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'hidden', padding: '8px 24px 18px', boxSizing: 'border-box' }}>
-            <div className="studio-board" ref={collageRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: 'var(--bg-deep)', boxShadow: 'var(--neo-inset)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxSizing: 'border-box', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {activeChar?.images?.length > 0 ? (() => {
-                const charIdx = activeCategory === 'project' ? activeTab : -1;
-                const collageItems = activeChar.images.map((img, i) => {
-                  const { imageData, src, label } = parseCharacterImage(img, i);
-                  const loading = !src;
-                  return {
-                    key: `${src || 'loading'}-${i}`,
-                    raw: imageData || img,
-                    index: i,
-                    src,
-                    label,
-                    loading,
-                    ratio: src ? (imgRatios[src] || getStoredImageRatio(imageData) || DEFAULT_COLLAGE_RATIO) : DEFAULT_COLLAGE_RATIO,
-                  };
-                });
-                const boxes = buildPinboardLayout(collageItems);
-                const boardScale = Math.max(
-                  0.1,
-                  Math.min(
-                    collageSize.width / PINBOARD_WIDTH,
-                    collageSize.height / PINBOARD_HEIGHT,
-                  ),
-                );
-                const boardWidth = PINBOARD_WIDTH * boardScale;
-                const boardHeight = PINBOARD_HEIGHT * boardScale;
-
-                return (
-                  <div style={{
-                    width: `${boardWidth}px`,
-                    height: `${boardHeight}px`,
-                    position: 'relative',
-                    overflow: 'hidden',
-                    border: `${Math.max(2, 4 * boardScale)}px solid var(--ink-800)`,
-                    borderRadius: `${Math.max(6, 12 * boardScale)}px`,
-                    backgroundColor: 'var(--ink-950)',
-                    backgroundImage: 'radial-gradient(rgba(var(--cyan-300-rgb), 0.04) 1px, transparent 1px)',
-                    backgroundPosition: '0 0',
-                    backgroundSize: `${Math.max(10, 20 * boardScale)}px ${Math.max(10, 20 * boardScale)}px`,
-                    boxShadow: '0 28px 80px rgba(var(--ink-950-rgb), 0.8), inset 0 0 0 1px rgba(var(--cyan-300-rgb), 0.02)',
-                    boxSizing: 'border-box',
-                  }}>
-                    <div style={{ position: 'absolute', inset: `${18 * boardScale}px`, border: '1px solid rgba(var(--cyan-300-rgb), 0.06)', pointerEvents: 'none' }} />
-                    {boxes.map(item => {
-                      const cardPadding = Math.max(1, 2 * boardScale);
-                      return (
-                        <div
-                          key={item.key}
-                          className="img-card"
-                          onClick={e => {
-                            e.stopPropagation();
-                            if (item.loading || charIdx < 0) return;
-                            setPreviewTarget({
-                              charIdx,
-                              imgIdx: item.index,
-                              url: item.src,
-                              label: item.label,
-                            });
-                          }}
-                          style={{
-                            background: 'rgba(var(--cyan-300-rgb), 0.9)',
-                            borderRadius: `${Math.max(2, 3 * boardScale)}px`,
-                            boxShadow: '0 8px 24px rgba(var(--ink-950-rgb), 0.5)',
-                            overflow: 'hidden',
-                            position: 'absolute',
-                            left: `${item.x * boardScale}px`,
-                            top: `${item.y * boardScale}px`,
-                            width: `${item.width * boardScale}px`,
-                            height: `${item.height * boardScale}px`,
-                            minWidth: 0,
-                            minHeight: 0,
-                            boxSizing: 'border-box',
-                            padding: `${cardPadding}px`,
-                            cursor: !item.loading && charIdx >= 0 ? 'pointer' : 'default',
-                            transform: 'scale(var(--board-card-scale))',
-                            transformOrigin: 'center center',
-                          }}>
-                          {item.loading
-                            ? <div className="skeleton-shimmer" style={{ width: '100%', height: '100%' }} />
-                            : <img
-                              key={item.src}
-                              src={item.src}
-                              alt={item.label}
-                              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: 'var(--cyan-300)' }}
-                              onLoad={e => {
-                                const ratio = e.currentTarget.naturalWidth / e.currentTarget.naturalHeight;
-                                setImgRatios(prev => prev[item.src] === ratio ? prev : { ...prev, [item.src]: ratio });
-                              }}
-                            />
-                          }
-                          {/* Label badge */}
-                          <div style={{ position: 'absolute', top: '8px', right: '8px', maxWidth: 'calc(100% - 16px)' }}>
-                            {renamingPanel?.charIdx === charIdx && renamingPanel?.imgIdx === item.index ? (
-                              <input
-                                autoFocus
-                                defaultValue={item.label}
-                                onBlur={e => handleRenameLabel(charIdx, item.index, e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') handleRenameLabel(charIdx, item.index, e.target.value);
-                                  if (e.key === 'Escape') setRenamingPanel(null);
-                                }}
-                                onClick={e => e.stopPropagation()}
-                                style={{ background: 'rgba(var(--ink-950-rgb), 0.92)', border: '1px solid var(--teal)', color: 'var(--text)', borderRadius: '4px', padding: '2px 7px', fontSize: '8px', fontWeight: 700, outline: 'none', width: '100px', maxWidth: '100%', letterSpacing: '0.05em' }}
-                              />
-                            ) : (
-                              <div
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  if (!item.loading && charIdx >= 0) {
-                                    setRenamingPanel({ charIdx, imgIdx: item.index });
-                                  }
-                                }}
-                                title={charIdx >= 0 ? 'Click to rename' : ''}
-                                style={{ padding: '2px 7px', background: 'rgba(var(--ink-950-rgb), 0.75)', borderRadius: '3px', fontSize: '8px', color: item.loading ? 'var(--ink-800)' : 'var(--text-soft)', backdropFilter: 'blur(8px)', fontWeight: 700, cursor: charIdx >= 0 ? 'text' : 'default', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'var(--font-display)' }}
-                              >
-                                {item.label.toUpperCase()}
-                              </div>
-                            )}
-                          </div>
+                {/* Active character image preview */}
+                {(() => {
+                  const preview = getCharPreviewImage(activeChar);
+                  if (!preview) return null;
+                  return (
+                    <div style={{ marginBottom: '0.5rem', borderRadius: 'var(--radius)', overflow: 'hidden', border: '0.0625rem solid var(--border-mid)', background: 'var(--bg-deep)', cursor: 'pointer' }}
+                      onClick={() => setPreviewTarget({ charIdx: activeCategory === 'project' ? activeTab : -1, imgIdx: 0, url: preview.src, label: activeChar.name })}
+                      title="Click to enlarge"
+                    >
+                      <img src={preview.src} alt={activeChar?.name} style={{ width: '100%', display: 'block', aspectRatio: preview.isAnchor ? '16/9' : '21/9', objectFit: 'cover' }} />
+                      <div style={{ padding: '0.375rem 0.625rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          {anchorStatus[activeChar?.name] === 'generating'
+                            ? <><Loader2 size={9} className="spin" /> Refreshing anchor…</>
+                            : preview.isAnchor ? '✓ Identity anchor' : 'Character sheet'}
+                        </span>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); forceRefreshAnchor(activeChar); }} disabled={anchorStatus[activeChar?.name] === 'generating'} title="Regenerate identity anchor" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'flex', alignItems: 'center' }}>
+                            <RefreshCw size={9} />
+                          </button>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--cyan)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>view ↗</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                );
-              })() : (
-                <div style={{ width: `${Math.min(PINBOARD_WIDTH, collageSize.width - 24)}px`, aspectRatio: `${PINBOARD_WIDTH} / ${PINBOARD_HEIGHT}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '1.5px dashed var(--border-mid)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-deep)' }}>
-                  <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'var(--surface-2)', boxShadow: 'var(--neo-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
-                  </div>
-                  <div style={{ color: 'var(--text)', fontSize: '15px', fontWeight: '700', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', marginBottom: '6px' }}>No character sheet yet</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-body)' }}>Upload a full character sheet or create one</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Edit button — shown when a character is selected */}
+                {activeChar && !isGeneratingActive && (
+                  <button onClick={openPanelEdit} className="btn-outline" style={{ width: '100%', padding: '0.5rem', fontSize: '0.6875rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem' }}>
+                    {activeCategory === 'global' ? 'Rename Character' : 'Edit Character'}
+                  </button>
+                )}
+
+                {/* Category toggle */}
+                <div className="neo-inset" style={{ display: 'flex', padding: '0.25rem', marginBottom: '1.375rem' }}>
+                  {['project', 'global'].map(cat => (
+                    <button key={cat} onClick={() => { setActiveCategory(cat); setActiveTab(0); }} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4375rem', border: activeCategory === cat ? '0.0625rem solid var(--cyan-border)' : '0.0625rem solid transparent', background: activeCategory === cat ? 'var(--surface-2)' : 'transparent', boxShadow: activeCategory === cat ? 'var(--neo-flat)' : 'none', color: activeCategory === cat ? 'var(--cyan)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.6875rem', cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out' }}>
+                      {cat === 'project' ? 'Project' : 'History'}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <button onClick={() => setShowCreateModal(true)} disabled={busy} className="btn-orange" style={{ width: '100%', padding: '0.75rem', justifyContent: 'center' }}>
+                    Create new
+                  </button>
+                  {isGenerating && <ProgressBar steps={CHARACTER_STEPS} currentStep={charProgressStep} />}
+                </div>
+
+                <div style={{ marginTop: 'auto', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {activeCategory === 'project' && projectCharacters.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                      <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Identity Anchors</div>
+                      <div style={{ display: 'flex', gap: '0.375rem' }}>
+                        {activeChar && !activeChar.isGeneratingReference && (
+                          <button className="btn-outline" style={{ flex: 1, padding: '0.5rem', fontSize: '0.6875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3125rem' }} onClick={() => forceRefreshAnchor(activeChar)} disabled={anchorStatus[activeChar?.name] === 'generating' || anyAnchorsGenerating}>
+                            {anchorStatus[activeChar?.name] === 'generating' ? <><Loader2 size={11} className="spin" /> Refreshing…</> : <><RefreshCw size={11} /> Refresh anchor</>}
+                          </button>
+                        )}
+                        <button className="btn-outline" style={{ flex: 1, padding: '0.5rem', fontSize: '0.6875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3125rem' }} onClick={refreshAllAnchors} disabled={anyAnchorsGenerating}>
+                          {anyAnchorsGenerating ? <><Loader2 size={11} className="spin" /> Running…</> : <><RefreshCw size={11} /> Refresh all</>}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {anyAnchorsGenerating && (
+                    <div style={{ color: 'var(--violet-400)', fontSize: '0.6875rem', lineHeight: 1.5 }}>
+                      Identity anchors processing — wait before generating shots for best consistency.
+                    </div>
+                  )}
+                  <div className="panel-flat">
+                    <div className="panel-meta-label">What is an identity anchor?</div>
+                    <p className="body-sm">An anchor is a single locked portrait generated from the character sheet. Every shot and clip generation uses it to keep the character's face, body, and outfit consistent across the entire video. Refresh it after uploading a new sheet or changing the character description.</p>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-        </div>
-      </div>{/* end layout-sidebar-main */}
+        )}
+      />
 
       {/* ── Create Modal ── */}
       {showCreateModal && (
         <div className="auth-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+          <div className="auth-modal" style={{ maxWidth: '28.75rem' }} onClick={e => e.stopPropagation()}>
             <button className="auth-close" onClick={() => setShowCreateModal(false)}>×</button>
-            <div className="kicker" style={{ marginBottom: '10px' }}>── Create New</div>
-            <div className="editorial-title editorial-h2" style={{ marginBottom: '10px' }}>
+            <div className="kicker" style={{ marginBottom: '0.625rem' }}>── Create New</div>
+            <div className="editorial-title editorial-h2" style={{ marginBottom: '1.25rem' }}>
               Sketch the <span className="text-grad">cast.</span>
             </div>
-            <div style={{ color: 'var(--text-soft)', fontSize: '13px', marginBottom: '24px', lineHeight: 1.6 }}>
-              Generate one full 21:9 character sheet for later shots.
+
+            {/* ── Option 1: Upload Full Sheet ── */}
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', marginBottom: '0.5rem' }}>Upload existing sheet</div>
+              <button
+                className="btn-outline"
+                style={{ width: '100%', padding: '0.6875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4375rem', fontSize: '0.8125rem', outline: isDraggingSheet ? '0.125rem dashed var(--cyan-border)' : 'none', outlineOffset: '0.125rem' }}
+                onClick={() => { setSheetReplaceTarget(null); setShowCreateModal(false); fileInputRef.current.click(); }}
+                onDragOver={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
+                onDragEnter={(e) => { e.preventDefault(); if (!busy) setIsDraggingSheet(true); }}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingSheet(false); }}
+                onDrop={(e) => { setShowCreateModal(false); handleSheetDrop(e); }}
+                disabled={busy}
+              >
+                <Upload size={14} />
+                {isDraggingSheet ? 'Drop to upload' : isProcessingSheet ? 'Reading sheet…' : 'Upload Full Sheet'}
+              </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* ── Option 2: Generate from Script ── */}
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', marginBottom: '0.5rem' }}>Generate from script</div>
+              <button
+                className="btn-action-generate"
+                style={{ width: '100%', padding: '0.6875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4375rem', fontSize: '0.8125rem' }}
+                onClick={() => { setShowCreateModal(false); handleGenerateFromScript(); }}
+                disabled={busy}
+              >
+                <FileText size={14} />
+                Generate from Script
+              </button>
+            </div>
+
+            {/* ── Divider ── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '1rem 0' }}>
+              <div style={{ flex: 1, height: '0.0625rem', background: 'rgba(var(--cyan-300-rgb), 0.07)' }} />
+              <span style={{ fontSize: '0.5625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.14em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>or describe from scratch</span>
+              <div style={{ flex: 1, height: '0.0625rem', background: 'rgba(var(--cyan-300-rgb), 0.07)' }} />
+            </div>
+
+            {/* ── Option 3: Generate from description ── */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
               <div>
-                <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>CHARACTER NAME</label>
-                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)} className="input-inset" style={{ padding: '10px 13px', background: 'var(--ink-900)', fontSize: '13px', borderRadius: '8px' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <label style={{ fontSize: '0.6562rem', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>CHARACTER NAME</label>
+                <input type="text" placeholder="e.g. VIKRAM" value={createName} onChange={e => setCreateName(e.target.value)} className="input-inset" style={{ padding: '0.625rem 0.8125rem', background: 'var(--ink-900)', fontSize: '0.8125rem', borderRadius: '0.5rem' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
               <div>
-                <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
+                <label style={{ fontSize: '0.6562rem', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
                 <textarea placeholder="Ancient Indian warrior, 40s, grey beard, dark red dhoti, gold jewellery..." value={createDesc} onChange={e => setCreateDesc(e.target.value)}
-                  className="textarea-inset" style={{ padding: '10px 13px', background: 'var(--ink-900)', fontSize: '13px', borderRadius: '8px', minHeight: '90px' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                  className="textarea-inset" style={{ padding: '0.625rem 0.8125rem', background: 'var(--ink-900)', fontSize: '0.8125rem', borderRadius: '0.5rem', minHeight: '4.5rem' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
 
               {/* Reference image */}
               <div>
-                <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
-                  REFERENCE IMAGE <span style={{ color: 'var(--ink-800)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+                <label style={{ fontSize: '0.6562rem', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+                  REFERENCE IMAGE <span style={{ color: 'var(--text-subtle)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
                 </label>
                 <input type="file" ref={refFileInputRef} onChange={handleRefImageSelect} style={{ display: 'none' }} accept="image/*" />
                 {createRefImage ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', background: 'var(--ink-950)', border: '1px solid rgba(var(--cyan-300-rgb), 0.07)', borderRadius: '8px' }}>
-                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '56px', height: '56px', objectFit: 'contain', background: 'var(--ink-950)', borderRadius: '6px', flexShrink: 0 }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem', background: 'var(--ink-950)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.07)', borderRadius: '0.5rem' }}>
+                    <img src={createRefImage.previewUrl} alt="Reference" style={{ width: '3.5rem', height: '3.5rem', objectFit: 'contain', background: 'var(--ink-950)', borderRadius: '0.375rem', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600 }}>Reference uploaded</div>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '10px', marginTop: '2px' }}>The sheet will match this character</div>
+                      <div style={{ color: 'var(--text-soft)', fontSize: '0.6875rem', fontWeight: 600 }}>Reference uploaded</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.625rem', marginTop: '0.125rem' }}>The sheet will match this character</div>
                     </div>
-                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'rgba(var(--violet-rgb), 0.1)', border: '1px solid rgba(var(--violet-rgb), 0.2)', color: 'var(--violet-400)', borderRadius: '5px', padding: '4px 8px', fontSize: '10px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>Remove</button>
+                    <button onClick={() => setCreateRefImage(null)} style={{ background: 'rgba(var(--violet-rgb), 0.1)', border: '0.0625rem solid rgba(var(--violet-rgb), 0.2)', color: 'var(--violet-400)', borderRadius: '0.3125rem', padding: '0.25rem 0.5rem', fontSize: '0.625rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>Remove</button>
                   </div>
                 ) : (
                   <button
@@ -1366,56 +1595,14 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
                     onDragEnter={(e) => { e.preventDefault(); setIsDraggingRef(true); }}
                     onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDraggingRef(false); }}
                     onDrop={handleRefDrop}
-                    style={{ width: '100%', padding: '10px', borderRadius: '8px', background: isDraggingRef ? 'rgba(var(--cyan-rgb), 0.06)' : 'rgba(var(--cyan-300-rgb), 0.04)', border: isDraggingRef ? '1px dashed var(--cyan-border)' : '1px dashed rgba(var(--cyan-300-rgb), 0.22)', color: 'var(--text-soft)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'border-color 120ms ease-out, background 120ms ease-out' }}>
+                    style={{ width: '100%', padding: '0.625rem', borderRadius: '0.5rem', background: isDraggingRef ? 'rgba(var(--cyan-rgb), 0.06)' : 'rgba(var(--cyan-300-rgb), 0.04)', border: isDraggingRef ? '0.0625rem dashed var(--cyan-border)' : '0.0625rem dashed rgba(var(--cyan-300-rgb), 0.22)', color: 'var(--text-soft)', fontSize: '0.6875rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'border-color 120ms ease-out, background 120ms ease-out' }}>
                     {isDraggingRef ? 'Drop image here' : 'Upload Reference Image'}
                   </button>
                 )}
               </div>
 
-              <button className="btn-orange" style={{ width: '100%', padding: '13px', fontSize: '12px' }} onClick={handleGenerateAngles}>
-                Create new
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Edit Modal ── */}
-      {showEditModal && activeChar && (
-        <div className="auth-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="auth-modal" style={{ maxWidth: '440px', background: 'var(--ink-900)' }} onClick={e => e.stopPropagation()}>
-            <button className="auth-close" onClick={() => setShowEditModal(false)}>×</button>
-            <div style={{ color: 'var(--text)', fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, marginBottom: '20px', letterSpacing: '-0.01em' }}>
-              {activeCategory === 'global' ? 'Rename Character' : 'Edit Character'}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>NAME</label>
-                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="input-inset" style={{ padding: '10px 13px', background: 'var(--ink-900)', fontSize: '13px', borderRadius: '8px' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
-              </div>
-              <div>
-                <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
-                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} className="textarea-inset" style={{ padding: '10px 13px', background: 'var(--ink-900)', fontSize: '13px', borderRadius: '8px', minHeight: '72px' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
-              </div>
-              {activeCategory === 'project' && (
-                <div style={{ borderTop: '1px solid rgba(var(--cyan-300-rgb), 0.05)', paddingTop: '14px' }}>
-                  <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.1em', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-display)' }}>REPLACE SHEET</label>
-                  <button onClick={() => {
-                    setSheetReplaceTarget({
-                      index: activeTab,
-                      name: (editName || activeChar.name || '').trim().toUpperCase(),
-                      description: editDesc.trim(),
-                    });
-                    setShowEditModal(false);
-                    fileInputRef.current.click();
-                  }}
-                    style={{ width: '100%', padding: '10px', borderRadius: '7px', background: 'rgba(var(--cyan-300-rgb), 0.04)', border: '1px solid rgba(var(--cyan-300-rgb), 0.14)', color: 'var(--text-soft)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-display)' }}>
-                    Upload New Character Sheet
-                  </button>
-                </div>
-              )}
-              <button className="btn-teal" style={{ width: '100%', padding: '13px', fontSize: '12px' }} onClick={handleEditSave}>
-                {activeCategory === 'global' ? 'Rename' : 'Save Changes'}
+              <button className="btn-action-generate" style={{ width: '100%', padding: '0.8125rem', fontSize: '0.75rem' }} onClick={handleGenerateAngles}>
+                Generate Character Sheet
               </button>
             </div>
           </div>
@@ -1438,34 +1625,43 @@ export default function CharactersScreen({ onNavigate, projectData = [], project
       {/* Script prompt preview modal */}
       {scriptPromptPreview && (
         <div className="modal-overlay">
-          <div className="modal-panel flex-col gap-16" style={{ maxWidth: '560px' }}>
+          <div className="modal-panel flex-col gap-16" style={{ maxWidth: '35rem' }}>
             <div>
-              <div className="panel-meta-label" style={{ marginBottom: '6px' }}>▪ Generate from Script</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>{scriptPromptPreview.name}</div>
+              <div className="panel-meta-label" style={{ marginBottom: '0.375rem' }}>▪ Generate from Script</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>{scriptPromptPreview.name}</div>
             </div>
-            <div className="panel-inset" style={{ maxHeight: '260px', fontSize: '12.5px' }}>
+            <div className="panel-inset" style={{ maxHeight: '16.25rem', fontSize: '0.7812rem' }}>
               {scriptPromptPreview.description}
             </div>
             <p className="body-sm">
               This prompt will be sent to the image model to generate character reference angles. Edit the description in the character card first if you need to adjust it.
             </p>
             <div className="flex-row gap-10">
-              <button onClick={handleConfirmScriptGenerate} className="btn-orange" style={{ flex: 1, padding: '13px', fontWeight: 700 }}>Generate References</button>
-              <button onClick={() => setScriptPromptPreview(null)} className="btn-outline" style={{ flex: 1, padding: '13px' }}>Cancel</button>
+              <button onClick={handleConfirmScriptGenerate} className="btn-action-generate" style={{ flex: 1, padding: '0.8125rem', fontWeight: 700 }}>Generate References</button>
+              <button onClick={() => setScriptPromptPreview(null)} className="btn-outline" style={{ flex: 1, padding: '0.8125rem' }}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
       {busy && (
-        <div className="flex-row gap-16" style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 10001, background: 'var(--ink-950)', border: '1px solid var(--cyan)', borderRadius: '12px', padding: '16px 20px', boxShadow: '0 8px 32px rgba(var(--ink-950-rgb), 0.5)', alignItems: 'center' }}>
+        <div className="flex-row gap-16" style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 10001, background: 'var(--ink-950)', border: '0.0625rem solid var(--cyan)', borderRadius: '0.75rem', padding: '1rem 1.25rem', boxShadow: '0 0.5rem 2rem rgba(var(--ink-950-rgb), 0.5)', alignItems: 'center' }}>
           <Loader2 size={24} className="spin" style={{ color: 'var(--cyan)' }} />
           <div>
-            <div style={{ color: 'var(--text)', fontSize: '13px', fontWeight: 600 }}>{isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating character sheet...'}</div>
-            <div style={{ color: 'var(--cyan)', fontSize: '10px', fontWeight: 700, marginTop: '2px', letterSpacing: '0.05em' }}>Please keep this page open</div>
+            <div style={{ color: 'var(--text)', fontSize: '0.8125rem', fontWeight: 600 }}>{isProcessingSheet ? (sheetProcessStatus || 'Reading sheet...') : 'Creating character sheet...'}</div>
+            <div style={{ color: 'var(--cyan)', fontSize: '0.625rem', fontWeight: 700, marginTop: '0.125rem', letterSpacing: '0.05em' }}>Please keep this page open</div>
           </div>
         </div>
       )}
+
+      <QueueStatusBar
+        jobs={anchorQueue.jobs}
+        isActive={anchorQueue.isActive}
+        stats={anchorQueue.stats}
+        onAbort={anchorQueue.abort}
+        onClear={anchorQueue.clear}
+        label="Identity anchors"
+      />
     </div>
   );
 }

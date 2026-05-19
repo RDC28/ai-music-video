@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/utils/supabase-admin";
+import { isKBUsable, getCharacterEntry, getStyleLock } from "@/utils/knowledgeBase";
+import { extractScriptContext, buildCharacterIntelligenceBlock, buildOutfitIntelligenceBlock } from "@/utils/scriptContext";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -152,38 +154,74 @@ async function loadReferenceImages(references = []) {
   return loaded.filter(Boolean);
 }
 
-function buildAnchorPrompt(character = {}) {
+function buildAnchorPrompt(character = {}, projectState = {}) {
   const triggerCharLabel = "CHAR_ANCHOR";
-  return `Generate a single clean character portrait for a music video production.
-This is a locked identity reference frame — it will be used to maintain character
-consistency across all shots in the music video.
+
+  const kb = projectState?.knowledge_base;
+  const kbUsable = isKBUsable(kb);
+  const charEntry = kbUsable ? getCharacterEntry(kb, character.name) : null;
+  const styleLock = kbUsable ? getStyleLock(kb) : "";
+
+  // KB prompt_lock gives richer, pre-distilled visual identity than raw fields
+  const charIdentityLock = charEntry?.prompt_lock
+    || compact(character.visual_prompt || character.description, 400);
+  const charPhysique = charEntry?.physique || "";
+  const charFace = charEntry?.face || "";
+
+  // Script-derived character intelligence
+  const ctx = extractScriptContext({ projectState, characterName: character.name });
+  const charIntelligence  = buildCharacterIntelligenceBlock(ctx);
+  const outfitIntelligence = buildOutfitIntelligenceBlock(ctx);
+
+  return `Generate a single 21:9 ultra-wide CHARACTER REFERENCE SHEET for a music video production.
+This is the definitive locked identity document for this character — it will be used to maintain perfect visual consistency across every shot, image, and video clip in the production.
 
 Anonymous production label: ${triggerCharLabel}
 
-CHARACTER IDENTITY (from attached reference images):
-- Attached Image 1 is the primary face reference: copy exact face shape, skin tone,
-  eye colour, nose, lips, hairline, hair colour and style, age, and body proportions.
-- If Image 2 is attached: copy exact outfit, clothing colour, fabric, silhouette,
-  accessories, and footwear.
-- If Image 3 is attached: use as secondary outfit/body confirmation only.
+CHARACTER IDENTITY — copy exactly from the attached reference images:
+- Image 1 (primary face reference): copy exact face shape, skin tone, eye colour, nose, lips, hairline, hair colour and texture, age, and body proportions.
+- Image 2 if present: copy exact outfit, clothing colour, fabric weave and texture, silhouette, accessories, and footwear precisely.
+- Image 3 if present: use as secondary outfit and body proportion confirmation.
 
-CHARACTER DESCRIPTION (use only if reference images are insufficient):
-${compact(character.visual_prompt || character.description, 400)}
-Costume: ${compact(character.costume, 300)}
+CHARACTER DESCRIPTION (use when reference images are insufficient or to confirm details):
+${charIdentityLock}
+${charPhysique ? `Physique: ${charPhysique}` : ""}
+${charFace ? `Face: ${charFace}` : ""}
+Costume: ${compact(charEntry?.default_outfit || character.costume, 300)}
+${styleLock ? `\nProject visual style reference: ${compact(styleLock, 200)}` : ""}
 
-ANCHOR FRAME RULES:
-1. Medium-close shot (waist to top of head), slight 3/4 angle toward camera
-2. Plain neutral background — dark charcoal or deep blue-grey, no patterns, no locations
-3. Soft diffused frontal lighting — face must be fully lit with no harsh shadows
-4. Natural relaxed standing pose, neutral expression looking slightly off-camera
-5. Full outfit visible from waist up — clothing details must be sharp and clear
-6. No text, no labels, no borders, no watermarks, no split panels
-7. Photorealistic, sharp focus on face and upper body
-8. This is a production reference frame, not a movie scene — clean studio feel
-9. Native 16:9 widescreen, subject centered in safe zone
+SCRIPT & STORY INTELLIGENCE (how the character appears in the story — use to inform appearance):
+${charIntelligence}
 
-OUTPUT: One photorealistic character portrait that could serve as the definitive
-visual identity reference for this character throughout an entire film production.`;
+${outfitIntelligence}
+
+CANVAS AND LAYOUT:
+- Single 21:9 horizontal sheet — do NOT generate a 16:9 frame
+- Plain warm beige or soft neutral studio backdrop throughout, clean and consistent
+- 9 panels arranged as follows:
+  PANEL 1 (large, far left, approximately 30% of canvas width): large mid portrait — waist to top of head, slight 3/4 angle, main identity panel
+  PANEL 2: full-body front standing — head to toe, arms relaxed at sides, full costume visible
+  PANEL 3: full-body left profile standing — complete silhouette visible
+  PANEL 4: full-body right profile standing — complete silhouette visible
+  PANEL 5: full-body back standing — rear view, hair and back of costume visible
+  PANEL 6 (top-right area): close-up front portrait — head and upper chest, straight-on
+  PANEL 7 (top-right area): close-up back head portrait — rear head and shoulders
+  PANEL 8 (bottom-right area): close-up left three-quarter portrait — left side face and shoulder
+  PANEL 9 (bottom-right area): close-up right three-quarter portrait — right side face and shoulder
+- Clean white or beige visible dividers or spacing between all panels
+- Character's face and full costume must be identical and consistent across all 9 panels
+
+FRAMING AND QUALITY RULES:
+1. Never crop face or costume details in any panel — show the full required area in each panel
+2. Full-body panels must show the complete figure head-to-toe with no cropping
+3. Close-up panels must include the full head and upper chest/shoulder area
+4. Soft diffused frontal studio lighting — face fully lit, no harsh shadows anywhere
+5. Neutral relaxed pose in all panels — no action, no dramatic expression
+6. Photorealistic, sharp focus on face, outfit details, fabric texture, and accessories in every panel
+7. No text, no labels, no borders, no watermarks — clean production-art presentation
+8. This is a costume and identity reference document, not a movie scene
+
+OUTPUT: One single 21:9 photorealistic character reference sheet ready for a professional film production costume and visual effects department.`;
 }
 
 function parseGeneratedImage(result) {
@@ -297,7 +335,7 @@ export async function POST(req) {
     }
 
     try {
-      const anchorPrompt = buildAnchorPrompt(character);
+      const anchorPrompt = buildAnchorPrompt(character, projectState);
       const anchorModelName =
         process.env.GOOGLE_ANCHOR_MODEL ||
         process.env.GOOGLE_IMAGE_MODEL ||

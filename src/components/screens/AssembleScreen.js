@@ -543,13 +543,13 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
         />
       )}
 
-      <div style={{ width: '260px', height: '100%', flexShrink: 0, background: 'var(--card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <div className="kicker" style={{ marginBottom: '8px' }}>── Library</div>
-          <div className="editorial-title editorial-h3" style={{ fontSize: '20px' }}>
+      <div style={{ width: '16.25rem', height: '100%', flexShrink: 0, background: 'var(--card)', borderRight: '0.0625rem solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '1.125rem 1.125rem 0.875rem', borderBottom: '0.0625rem solid var(--border)', flexShrink: 0 }}>
+          <div className="kicker" style={{ marginBottom: '0.5rem' }}>── Library</div>
+          <div className="editorial-title editorial-h3" style={{ fontSize: '1.25rem' }}>
             Generated clips.
           </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '0.375rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
             {String(generatedCount).padStart(2,'0')} / {String(shots.length || 0).padStart(2,'0')} ready
           </div>
         </div>
@@ -584,14 +584,14 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                 whileTap={isReady && !shouldReduceMotion ? { scale: 0.97 } : undefined}
                 transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
                 style={{
-                  border: `1px solid ${isReady ? 'var(--border-mid)' : 'var(--border)'}`,
-                  borderRadius: '10px',
+                  border: `0.0625rem solid ${isReady ? 'var(--border-mid)' : 'var(--border)'}`,
+                  borderRadius: '0.625rem',
                   overflow: 'hidden',
                   background: 'var(--surface)',
                   cursor: isReady ? 'grab' : 'default',
                   opacity: isReady ? 1 : 0.58,
                   position: 'relative',
-                  boxShadow: '0 8px 22px rgba(var(--ink-950-rgb), 0.24)',
+                  boxShadow: '0 0.5rem 1.375rem rgba(var(--ink-950-rgb), 0.24)',
                 }}
               >
                 <div className="editor-clip-frame">
@@ -613,15 +613,15 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                   )}
                   </div>
                   <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 42%, rgba(var(--ink-950-rgb), 0.76) 100%)', pointerEvents: 'none' }} />
-                  <div style={{ position: 'absolute', left: '8px', right: '8px', bottom: '7px', minWidth: 0 }}>
-                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 1px 8px rgba(var(--ink-950-rgb), 0.78)' }}>
+                  <div style={{ position: 'absolute', left: '0.5rem', right: '0.5rem', bottom: '0.4375rem', minWidth: 0 }}>
+                    <div style={{ fontSize: '0.625rem', fontWeight: 800, color: 'var(--text)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 0.0625rem 0.5rem rgba(var(--ink-950-rgb), 0.78)' }}>
                       {index + 1}. {shot.n || `Shot ${index + 1}`}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
-                      <span style={{ fontSize: '8px', fontWeight: 900, color: isReady ? 'var(--ink-950)' : 'rgba(var(--cyan-300-rgb), 0.68)', background: isReady ? 'var(--teal)' : 'rgba(var(--ink-950-rgb), 0.58)', padding: '2px 5px', borderRadius: '4px', fontFamily: 'var(--font-display)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: '0.1875rem' }}>
+                      <span style={{ fontSize: '0.5rem', fontWeight: 900, color: isReady ? 'var(--ink-950)' : 'rgba(var(--cyan-300-rgb), 0.68)', background: isReady ? 'var(--teal)' : 'rgba(var(--ink-950-rgb), 0.58)', padding: '0.125rem 0.3125rem', borderRadius: '0.25rem', fontFamily: 'var(--font-display)' }}>
                         {isReady ? 'READY' : 'MISSING'}
                       </span>
-                      <span style={{ fontSize: '9px', color: 'rgba(var(--cyan-300-rgb), 0.68)' }}>
+                      <span style={{ fontSize: '0.5625rem', color: 'rgba(var(--cyan-300-rgb), 0.68)' }}>
                         {formatSeconds(shotDuration(shot))}
                       </span>
                     </div>
@@ -634,8 +634,8 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
-        <div style={{ flex: 1, minHeight: 0, padding: '12px 16px 10px', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 260px', gap: '14px' }}>
-          <div style={{ minWidth: 0, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ink-950)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden', position: 'relative' }}>
+        <div style={{ flex: 1, minHeight: 0, padding: '0.75rem 1rem 0.625rem', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 16.25rem', gap: '0.875rem' }}>
+          <div style={{ minWidth: 0, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ink-950)', borderRadius: '0.625rem', border: '0.0625rem solid var(--border)', overflow: 'hidden', position: 'relative' }}>
             {activeShot?.video_url ? (
               <video
                 key={`${activeClip?.id}-${activeShot.video_url}`}
@@ -653,11 +653,11 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
             ) : (
               <canvas ref={fallbackPreviewCanvasRef} width={800} height={450} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
             )}
-            <div style={{ position: 'absolute', left: '14px', top: '12px', background: 'rgba(var(--ink-950-rgb), 0.62)', border: '1px solid rgba(var(--cyan-300-rgb), 0.1)', borderRadius: '7px', padding: '8px 10px', maxWidth: '62%' }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 800, color: 'var(--dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ position: 'absolute', left: '0.875rem', top: '0.75rem', background: 'rgba(var(--ink-950-rgb), 0.62)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.1)', borderRadius: '0.4375rem', padding: '0.5rem 0.625rem', maxWidth: '62%' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.75rem', fontWeight: 800, color: 'var(--dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {activeClip ? `${activeClip.shotIndex + 1}. ${activeShot?.n || 'Timeline Clip'}` : 'Timeline Preview'}
               </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>
+              <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '0.1875rem' }}>
                 {activeClip ? `${formatTime(activeClip.start)} - ${formatTime(activeClip.start + activeClip.duration)} · trimmed to ${formatSeconds(activeClip.duration)}` : 'Drop clips onto the timeline'}
               </div>
             </div>
@@ -667,17 +667,17 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
             style={{
               background:
                 'linear-gradient(160deg, rgba(var(--cyan-300-rgb), 0.045), rgba(var(--cyan-300-rgb), 0.012)), var(--card)',
-              border: '1px solid rgba(var(--cyan-300-rgb), 0.085)',
+              border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.085)',
               borderRadius: 'var(--radius-lg)',
-              padding: '18px',
+              padding: '1.125rem',
               display: 'flex',
               flexDirection: 'column',
               minHeight: 0,
               boxShadow: 'var(--shadow-card)',
-              backdropFilter: 'blur(12px)',
+              backdropFilter: 'blur(0.75rem)',
             }}
           >
-            <div className="kicker" style={{ marginBottom: '14px' }}>── Inspector</div>
+            <div className="kicker" style={{ marginBottom: '0.875rem' }}>── Inspector</div>
             <AnimatePresence mode="wait">
             {selectedClip ? (
               <motion.div
@@ -692,33 +692,33 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                   style={{
                     fontFamily: 'var(--font-display)',
                     fontStyle: 'italic',
-                    fontSize: '20px',
+                    fontSize: '1.25rem',
                     fontWeight: 500,
                     color: 'var(--dark)',
                     lineHeight: 1.1,
-                    marginBottom: '10px',
+                    marginBottom: '0.625rem',
                     letterSpacing: '-0.022em',
                   }}
                 >
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontStyle: 'normal', color: 'var(--text-muted)', marginRight: '8px', letterSpacing: '0.08em' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontStyle: 'normal', color: 'var(--text-muted)', marginRight: '0.5rem', letterSpacing: '0.08em' }}>
                     {String(selectedClip.shotIndex + 1).padStart(2, '0')}
                   </span>
                   {selectedShot?.n || 'Selected clip'}
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' }}>
                   {selectedShot?.video_prompt || selectedShot?.p || selectedShot?.prompt || 'No prompt available'}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.875rem' }}>
                   <InfoPill label="Start" value={formatTime(selectedClip.start)} />
                   <InfoPill label="Duration" value={formatSeconds(selectedClip.duration)} />
                   <InfoPill label="Source In" value={formatSeconds(getClipSourceIn(selectedClip, videoDurations[selectedClip.shotIndex]))} />
                   <InfoPill label="Source Out" value={formatSeconds(getClipSourceOut(selectedClip, videoDurations[selectedClip.shotIndex]))} />
                 </div>
 
-                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', border: '1px solid rgba(var(--violet-rgb), 0.2)', background: 'rgba(var(--violet-rgb), 0.06)', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                  <Scissors size={15} color="var(--teal)" style={{ marginTop: '1px', flexShrink: 0 }} />
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                <div style={{ marginTop: '0.75rem', padding: '0.625rem', borderRadius: '0.5rem', border: '0.0625rem solid rgba(var(--violet-rgb), 0.2)', background: 'rgba(var(--violet-rgb), 0.06)', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                  <Scissors size={15} color="var(--teal)" style={{ marginTop: '0.0625rem', flexShrink: 0 }} />
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
                     The clip is fit to the exact shot duration by trimming evenly from the head and tail when the generated video is longer.
                   </div>
                 </div>
@@ -727,7 +727,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                   className="btn-outline"
                   onClick={handleDownload}
                   disabled={!selectedShot?.video_url}
-                  style={{ marginTop: 'auto', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                  style={{ marginTop: 'auto', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4375rem' }}
                 >
                   <Download size={14} />
                   Download Clip
@@ -741,7 +741,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                 exit={{ opacity: 0 }}
                 transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
               >
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
                   Drop generated clips onto the timeline to build the final edit.
                 </div>
               </motion.div>
@@ -753,29 +753,29 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
-          padding: '10px 18px',
+          gap: '1rem',
+          padding: '0.625rem 1.125rem',
           background: 'var(--card)',
-          borderTop: '1px solid var(--border)',
-          borderBottom: '1px solid var(--border)',
+          borderTop: '0.0625rem solid var(--border)',
+          borderBottom: '0.0625rem solid var(--border)',
           flexShrink: 0,
         }}>
-          <span style={{ fontSize: '12.5px', fontWeight: 500, minWidth: '46px', color: 'var(--dark)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>{formatTime(currentTime)}</span>
+          <span style={{ fontSize: '0.7812rem', fontWeight: 500, minWidth: '2.875rem', color: 'var(--dark)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>{formatTime(currentTime)}</span>
           <motion.button
             onClick={togglePlay}
             whileTap={!shouldReduceMotion ? { scale: 0.92 } : undefined}
             transition={{ duration: 0.1, ease: [0.16, 1, 0.3, 1] }}
             style={{
               borderRadius: '50%',
-              width: '38px',
-              height: '38px',
+              width: '2.375rem',
+              height: '2.375rem',
               padding: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               background: isPlaying ? 'var(--orange)' : 'var(--surface)',
               color: isPlaying ? 'var(--ink-950)' : 'var(--dark)',
-              border: '1px solid var(--border-mid)',
+              border: '0.0625rem solid var(--border-mid)',
               cursor: 'pointer',
               transition: 'background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out',
             }}
@@ -783,13 +783,13 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
           >
             {isPlaying ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
           </motion.button>
-          <span style={{ fontSize: '12.5px', fontWeight: 500, minWidth: '46px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>{formatTime(displayDuration)}</span>
+          <span style={{ fontSize: '0.7812rem', fontWeight: 500, minWidth: '2.875rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>{formatTime(displayDuration)}</span>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginLeft: 'auto', borderLeft: '1px solid var(--border)', paddingLeft: '18px' }}>
-            <button className="btn-outline" onClick={() => setTimelineZoom(zoom - 3)} style={{ width: '32px', height: '30px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Zoom out">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5625rem', marginLeft: 'auto', borderLeft: '0.0625rem solid var(--border)', paddingLeft: '1.125rem' }}>
+            <button className="btn-outline" onClick={() => setTimelineZoom(zoom - 3)} style={{ width: '2rem', height: '1.875rem', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Zoom out">
               <ZoomOut size={14} />
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '180px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', minWidth: '11.25rem' }}>
               <input
                 type="range"
                 min={MIN_ZOOM}
@@ -800,24 +800,24 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                 aria-label="Timeline zoom"
                 style={{ flex: 1, accentColor: 'var(--teal)', cursor: 'pointer' }}
               />
-              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-muted)', minWidth: '52px', textAlign: 'right', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>
+              <span style={{ fontSize: '0.625rem', fontWeight: 800, color: 'var(--text-muted)', minWidth: '3.25rem', textAlign: 'right', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>
                 {zoom}px/s
               </span>
             </div>
-            <button className="btn-outline" onClick={() => setTimelineZoom(zoom + 5)} style={{ width: '32px', height: '30px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Zoom in">
+            <button className="btn-outline" onClick={() => setTimelineZoom(zoom + 5)} style={{ width: '2rem', height: '1.875rem', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Zoom in">
               <ZoomIn size={14} />
             </button>
           </div>
         </div>
 
-        <div style={{ flexShrink: 0, padding: '10px 16px 12px', background: 'rgba(var(--ink-950-rgb), 0.18)', borderTop: '1px solid var(--border)' }}>
-          <div style={{ height: '210px', border: '1px solid var(--border)', borderRadius: '10px', background: 'var(--card)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', fontWeight: 800, color: 'var(--dark)', fontFamily: 'var(--font-display)' }}>
+        <div style={{ flexShrink: 0, padding: '0.625rem 1rem 0.75rem', background: 'rgba(var(--ink-950-rgb), 0.18)', borderTop: '0.0625rem solid var(--border)' }}>
+          <div style={{ height: '13.125rem', border: '0.0625rem solid var(--border)', borderRadius: '0.625rem', background: 'var(--card)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '0.5rem 0.75rem', borderBottom: '0.0625rem solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.6875rem', fontWeight: 800, color: 'var(--dark)', fontFamily: 'var(--font-display)' }}>
                 <Film size={14} color="var(--teal)" />
                 Timeline
               </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>
                 Drag clips, scroll to pan, pinch or Ctrl+wheel to zoom
               </div>
             </div>
@@ -837,12 +837,12 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                   width: `${timelineWidth + TIMELINE_PADDING * 2}px`,
                   minHeight: '100%',
                   position: 'relative',
-                  padding: `0 ${TIMELINE_PADDING}px 16px`,
+                  padding: `0 ${TIMELINE_PADDING}px 1rem`,
                   boxSizing: 'border-box',
                   cursor: 'pointer',
                 }}
               >
-                <div style={{ position: 'sticky', top: 0, height: '28px', background: 'var(--card)', borderBottom: '1px solid var(--border)', zIndex: 8 }}>
+                <div style={{ position: 'sticky', top: 0, height: '1.75rem', background: 'var(--card)', borderBottom: '0.0625rem solid var(--border)', zIndex: 8 }}>
                   {ticks.map((_, index) => (
                     <div
                       key={index}
@@ -851,12 +851,12 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                         left: `${TIMELINE_PADDING + index * tickStep * zoom}px`,
                         top: 0,
                         height: '100%',
-                        borderLeft: '1px solid rgba(var(--cyan-300-rgb), 0.08)',
-                        paddingLeft: '6px',
+                        borderLeft: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.08)',
+                        paddingLeft: '0.375rem',
                         display: 'flex',
                         alignItems: 'center',
                         color: 'var(--text-muted)',
-                        fontSize: '10px',
+                        fontSize: '0.625rem',
                         fontWeight: 700,
                         fontFamily: 'var(--font-mono)',
                       }}
@@ -866,7 +866,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                   ))}
                 </div>
 
-                <div style={{ height: '70px', marginTop: '10px', position: 'relative', borderRadius: '8px', background: 'rgba(var(--cyan-300-rgb), 0.03)', border: '1px dashed rgba(var(--cyan-300-rgb), 0.1)' }}>
+                <div style={{ height: '4.375rem', marginTop: '0.625rem', position: 'relative', borderRadius: '0.5rem', background: 'rgba(var(--cyan-300-rgb), 0.03)', border: '0.0625rem dashed rgba(var(--cyan-300-rgb), 0.1)' }}>
                   <TrackLabel icon={<Film size={13} />} label="Video" />
                   {sortedClips.map(clip => {
                     const shot = shots[clip.shotIndex];
@@ -900,24 +900,24 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                         style={{
                           position: 'absolute',
                           left: `${left}px`,
-                          top: '26px',
+                          top: '1.625rem',
                           width: `${clipWidth}px`,
-                          height: '34px',
-                          borderRadius: '6px',
+                          height: '2.125rem',
+                          borderRadius: '0.375rem',
                           background: shot?.video_url ? 'linear-gradient(90deg, rgba(var(--violet-rgb), 0.95), rgba(var(--violet-rgb), 0.75))' : 'rgba(var(--cyan-300-rgb), 0.12)',
-                          border: `1px solid ${isSelected ? 'var(--dark)' : 'rgba(var(--cyan-300-rgb), 0.18)'}`,
-                          boxShadow: isSelected ? '0 0 0 2px rgba(var(--violet-rgb), 0.25)' : 'none',
+                          border: `0.0625rem solid ${isSelected ? 'var(--dark)' : 'rgba(var(--cyan-300-rgb), 0.18)'}`,
+                          boxShadow: isSelected ? '0 0 0 0.125rem rgba(var(--violet-rgb), 0.25)' : 'none',
                           color: 'var(--ink-950)',
                           overflow: 'hidden',
                           cursor: 'grab',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '6px',
-                          padding: '0 8px',
+                          gap: '0.375rem',
+                          padding: '0 0.5rem',
                         }}
                       >
                         <GripHorizontal size={13} style={{ flexShrink: 0 }} />
-                        <span style={{ fontSize: '10px', fontWeight: 900, fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span style={{ fontSize: '0.625rem', fontWeight: 900, fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {clip.shotIndex + 1}. {shot?.n || 'Clip'} · {formatSeconds(clip.duration)}
                         </span>
                       </motion.div>
@@ -925,27 +925,27 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                   })}
                 </div>
 
-                <div style={{ height: '52px', marginTop: '8px', position: 'relative', borderRadius: '8px', background: 'rgba(var(--cyan-300-rgb), 0.03)', border: '1px dashed rgba(var(--cyan-300-rgb), 0.1)' }}>
+                <div style={{ height: '3.25rem', marginTop: '0.5rem', position: 'relative', borderRadius: '0.5rem', background: 'rgba(var(--cyan-300-rgb), 0.03)', border: '0.0625rem dashed rgba(var(--cyan-300-rgb), 0.1)' }}>
                   <TrackLabel icon={<Music size={13} />} label="Audio" />
                   <div style={{
                     position: 'absolute',
                     left: 0,
-                    top: '22px',
+                    top: '1.375rem',
                     width: `${Math.max((audioDuration || displayDuration) * zoom, 160)}px`,
-                    height: '22px',
-                    borderRadius: '5px',
+                    height: '1.375rem',
+                    borderRadius: '0.3125rem',
                     background: 'linear-gradient(90deg, var(--violet), rgba(var(--violet-rgb), 0.7))',
                     color: 'var(--ink-950)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
-                    padding: '0 10px',
+                    gap: '0.5rem',
+                    padding: '0 0.625rem',
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
-                    border: '1px solid rgba(var(--cyan-300-rgb), 0.12)',
+                    border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.12)',
                   }}>
                     <Music size={12} style={{ flexShrink: 0 }} />
-                    <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.04em', fontFamily: 'var(--font-display)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ fontSize: '0.625rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.04em', fontFamily: 'var(--font-display)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {audioFileName}
                     </span>
                   </div>
@@ -955,21 +955,21 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                   position: 'absolute',
                   top: 0,
                   left: `${playheadPosition}px`,
-                  width: '2px',
+                  width: '0.125rem',
                   height: '100%',
                   background: 'var(--teal)',
                   zIndex: 12,
                   pointerEvents: 'none',
                 }}>
                   <div style={{
-                    width: '10px',
-                    height: '10px',
+                    width: '0.625rem',
+                    height: '0.625rem',
                     background: 'var(--teal)',
                     borderRadius: '50%',
                     position: 'absolute',
-                    top: '24px',
-                    left: '-4px',
-                    border: '1.5px solid rgba(var(--ink-950-rgb), 0.5)',
+                    top: '1.5rem',
+                    left: '-0.25rem',
+                    border: '0.0938rem solid rgba(var(--ink-950-rgb), 0.5)',
                   }} />
                 </div>
               </div>
@@ -977,8 +977,8 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', flexShrink: 0, padding: '0 16px 12px' }}>
-          <button className="btn-teal" style={{ padding: '8px 18px', fontSize: '12px' }} onClick={() => setShowExport(true)}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', flexShrink: 0, padding: '0 1rem 0.75rem' }}>
+          <button className="btn-secondary" style={{ padding: '0.5rem 1.125rem', fontSize: '0.75rem' }} onClick={() => setShowExport(true)}>
             Export Video
           </button>
         </div>
@@ -993,19 +993,19 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
           animate="visible"
           exit="exit"
           style={{
-            width: '300px',
+            width: '18.75rem',
             height: '100%',
             background: 'var(--card)',
-            borderLeft: '1px solid var(--border-mid)',
-            padding: '28px',
+            borderLeft: '0.0625rem solid var(--border-mid)',
+            padding: '1.75rem',
             display: 'flex',
             flexDirection: 'column',
             overflowY: 'auto',
             flexShrink: 0,
-            boxShadow: '-8px 0 32px rgba(var(--ink-950-rgb), 0.3)',
+            boxShadow: '-0.5rem 0 2rem rgba(var(--ink-950-rgb), 0.3)',
           }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-            <div className="editorial-title editorial-h3" style={{ fontSize: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div className="editorial-title editorial-h3" style={{ fontSize: '1.5rem' }}>
               Final <span className="text-grad">export.</span>
             </div>
             <motion.button
@@ -1019,11 +1019,11 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                 color: 'var(--text-muted)',
                 cursor: 'pointer',
                 lineHeight: 1,
-                padding: '6px',
+                padding: '0.375rem',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderRadius: '6px',
+                borderRadius: '0.375rem',
               }}
               aria-label="Close export settings"
             >
@@ -1031,9 +1031,9 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
             </motion.button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
             <div>
-              <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>
+              <label style={{ fontSize: '0.6562rem', fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)' }}>
                 Resolution
               </label>
               <select
@@ -1042,11 +1042,11 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                 disabled={isShotstackRendering}
                 style={{
                   width: '100%',
-                  padding: '10px 14px',
-                  border: '1px solid var(--border-mid)',
-                  borderRadius: '8px',
+                  padding: '0.625rem 0.875rem',
+                  border: '0.0625rem solid var(--border-mid)',
+                  borderRadius: '0.5rem',
                   fontFamily: 'var(--font-body)',
-                  fontSize: '13px',
+                  fontSize: '0.8125rem',
                   outline: 'none',
                   background: 'var(--surface)',
                   color: 'var(--dark)',
@@ -1062,7 +1062,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
             </div>
 
             <div>
-              <label style={{ fontSize: '10.5px', fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase', display: 'block', marginBottom: '8px', fontFamily: 'var(--font-mono)' }}>
+              <label style={{ fontSize: '0.6562rem', fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)' }}>
                 Quality
               </label>
               <select
@@ -1071,11 +1071,11 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
                 disabled={isShotstackRendering}
                 style={{
                   width: '100%',
-                  padding: '10px 14px',
-                  border: '1px solid var(--border-mid)',
-                  borderRadius: '8px',
+                  padding: '0.625rem 0.875rem',
+                  border: '0.0625rem solid var(--border-mid)',
+                  borderRadius: '0.5rem',
                   fontFamily: 'var(--font-body)',
-                  fontSize: '13px',
+                  fontSize: '0.8125rem',
                   outline: 'none',
                   background: 'var(--surface)',
                   color: 'var(--dark)',
@@ -1089,32 +1089,32 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
               </select>
             </div>
 
-            <div style={{ background: 'var(--surface)', borderRadius: '8px', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid var(--border)' }}>
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Edit Length</span>
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 800, color: 'var(--dark)' }}>{formatTime(displayDuration)}</span>
+            <div style={{ background: 'var(--surface)', borderRadius: '0.5rem', padding: '0.75rem 0.875rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '0.0625rem solid var(--border)' }}>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Edit Length</span>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.875rem', fontWeight: 800, color: 'var(--dark)' }}>{formatTime(displayDuration)}</span>
             </div>
 
-            <div style={{ background: 'var(--surface)', borderRadius: '8px', padding: '12px 14px', border: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Export Status</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 800, color: exportRenderStatus === 'done' ? 'var(--teal)' : 'var(--dark)' }}>
+            <div style={{ background: 'var(--surface)', borderRadius: '0.5rem', padding: '0.75rem 0.875rem', border: '0.0625rem solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.625rem' }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Export Status</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.6875rem', fontWeight: 800, color: exportRenderStatus === 'done' ? 'var(--teal)' : 'var(--dark)' }}>
                   {isShotstackRendering ? <Loader2 size={12} className="spin" /> : exportRenderStatus === 'done' ? <CheckCircle2 size={12} /> : <Film size={12} />}
                   {shotstackStatusLabel(exportRenderStatus)}
                 </span>
               </div>
               {exportRenderId && (
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '0.5rem', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {exportRenderId}
                 </div>
               )}
               {exportStatusMessage && (
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', lineHeight: 1.45 }}>
+                <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '0.5rem', lineHeight: 1.45 }}>
                   {exportStatusMessage}
                 </div>
               )}
               {exportError && (
-                <div style={{ marginTop: '9px', color: 'var(--violet-400)', display: 'flex', gap: '7px', fontSize: '11px', lineHeight: 1.45 }}>
-                  <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: '1px' }} />
+                <div style={{ marginTop: '0.5625rem', color: 'var(--violet-400)', display: 'flex', gap: '0.4375rem', fontSize: '0.6875rem', lineHeight: 1.45 }}>
+                  <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: '0.0625rem' }} />
                   <span>{exportError}</span>
                 </div>
               )}
@@ -1125,7 +1125,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
             className="btn-orange"
             onClick={exportVideoUrl ? handleExportDownload : handleShotstackExport}
             disabled={isShotstackRendering}
-            style={{ width: '100%', marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: isShotstackRendering ? 0.72 : 1 }}
+            style={{ width: '100%', marginTop: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', opacity: isShotstackRendering ? 0.72 : 1 }}
           >
             {isShotstackRendering ? (
               <>
@@ -1149,7 +1149,7 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
               className="btn-outline"
               onClick={handleShotstackExport}
               disabled={isShotstackRendering}
-              style={{ width: '100%', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '12px' }}
+              style={{ width: '100%', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontSize: '0.75rem' }}
             >
               <Film size={13} />
               Export Again
@@ -1164,11 +1164,11 @@ export default function AssembleScreen({ isActive, projectId, audioUrl, projectD
 
 function InfoPill({ label, value }) {
   return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--surface)', padding: '8px 9px' }}>
-      <div style={{ fontSize: '9.5px', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.16em', fontFamily: 'var(--font-mono)' }}>
+    <div style={{ border: '0.0625rem solid var(--border)', borderRadius: '0.5rem', background: 'var(--surface)', padding: '0.5rem 0.5625rem' }}>
+      <div style={{ fontSize: '0.5938rem', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.16em', fontFamily: 'var(--font-mono)' }}>
         {label}
       </div>
-      <div style={{ fontSize: '13px', color: 'var(--dark)', fontWeight: 500, marginTop: '4px', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
+      <div style={{ fontSize: '0.8125rem', color: 'var(--dark)', fontWeight: 500, marginTop: '0.25rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
         {value}
       </div>
     </div>
@@ -1179,12 +1179,12 @@ function TrackLabel({ icon, label }) {
   return (
     <div style={{
       position: 'absolute',
-      left: '8px',
-      top: '5px',
+      left: '0.5rem',
+      top: '0.3125rem',
       display: 'flex',
       alignItems: 'center',
-      gap: '6px',
-      fontSize: '10px',
+      gap: '0.375rem',
+      fontSize: '0.625rem',
       fontWeight: 800,
       color: 'var(--text-muted)',
       fontFamily: 'var(--font-display)',

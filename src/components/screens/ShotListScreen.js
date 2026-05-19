@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
-  CheckCircle2,
   Copy,
   ImagePlus,
   Loader2,
@@ -19,6 +18,7 @@ import {
 import { drawClubScene } from '@/utils/drawClubScene';
 import { DEFAULT_IMAGE_MODEL, IMAGE_GENERATION_MODELS, resolveImageModelOption } from '@/utils/generationModels';
 import { getPlannedVideoDuration, getProjectAudioDuration, getShotTimingLabel, normalizeShot, normalizeShotListForVeo } from '@/utils/shotList';
+import WorkflowThreePaneShell from '../WorkflowThreePaneShell';
 
 // Styles moved to components.css as .input-inset, .form-label, .icon-btn
 
@@ -52,13 +52,10 @@ async function readJsonResponse(response) {
 }
 
 export default function ShotListScreen({
-  onNavigate,
   projectId,
   isActive,
   projectData,
   onDataUpdate,
-  onContinueToFrames,
-  continueLabel = 'Continue to Clips',
 }) {
   const audioDuration = useMemo(() => getProjectAudioDuration(projectData), [projectData]);
   const shots = useMemo(
@@ -313,24 +310,12 @@ export default function ShotListScreen({
     await runGenerationQueue(remainingIndices, { label: 'Generate remaining frames' });
   };
 
-  const handleContinue = async () => {
-    await commitShots(shots, { shots_arranged: true, current_step: 9 });
-    if (typeof onContinueToFrames === 'function') {
-      onContinueToFrames();
-      return;
-    }
-    onNavigate(9);
-  };
-
   const generatedCount = shots.filter((shot) => shot.image_url).length;
   const remainingCount = Math.max(shots.length - generatedCount, 0);
   const failedCount = shots.filter((shot) => !shot.image_url && shot.image_error).length;
 
-  return (
-    <div className={`screen active screen-row${hasActiveEdit ? ' shot-edit-open' : ''}`} id="s8">
-
-      {/* LEFT PANEL */}
-      <div className="layout-main">
+  const mainPanel = (
+    <div className="layout-main">
 
         {/* Header */}
         <div className="panel-header shot-header">
@@ -349,8 +334,7 @@ export default function ShotListScreen({
           </div>
 
           <div className="shot-header-actions">
-            <button className="btn-outline" onClick={() => onNavigate(7)} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>← Shot Plan</button>
-            <button className="btn-outline" onClick={handleAddShot} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <button className="btn-outline" onClick={handleAddShot} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
               <Plus size={14} /> + Add shot
             </button>
             <select className="select-model" value={modelDraft} onChange={(event) => setModelDraft(event.target.value)} title="Image model">
@@ -359,23 +343,20 @@ export default function ShotListScreen({
               ))}
             </select>
             <button
-              className="btn-teal"
+              className="btn-action-generate"
               onClick={handleGenerateRemaining}
               disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4375rem' }}
             >
               {isGeneratingAll ? <><Loader2 size={14} className="spin" /> Generating</> : <><Wand2 size={14} /> {remainingCount === shots.length ? 'Generate Frames' : `Generate Remaining (${remainingCount})`}</>}
             </button>
             <button
-              className="btn-outline"
+              className="btn-action-generate"
               onClick={handleGenerateAll}
               disabled={!shots.length || isGeneratingAll || generatingIndex !== null}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
             >
               <RotateCcw size={14} /> Regenerate All
-            </button>
-            <button className="btn-orange" onClick={handleContinue} disabled={!shots.length} style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
-              {continueLabel} <CheckCircle2 size={14} />
             </button>
           </div>
 
@@ -396,36 +377,36 @@ export default function ShotListScreen({
         )}
 
         {/* Shots list */}
-        <div id="shotListItems" className="shot-list-viewport" style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        <div id="shotListItems" className="shot-list-viewport" style={{ flex: 1, overflowY: 'auto', padding: '0.5rem 0' }}>
           {shots.length > 0 ? (
             shots.map((shot, index) => (
               <div
                 key={`${shot.n}-${index}`}
                 style={{
-                  padding: '12px 24px',
-                  borderBottom: '1px solid var(--border)',
+                  padding: '0.75rem 1.5rem',
+                  borderBottom: '0.0625rem solid var(--border)',
                   display: 'grid',
-                  gridTemplateColumns: '42px 84px minmax(0, 1fr) 228px',
-                  gap: '12px',
+                  gridTemplateColumns: '2.625rem 5.25rem minmax(0, 1fr) 14.25rem',
+                  gap: '0.75rem',
                   alignItems: 'start',
                   background: editingIndex === index ? 'var(--cyan-dim)' : 'transparent',
-                  borderLeft: `3px solid ${editingIndex === index ? 'var(--cyan)' : 'transparent'}`,
+                  borderLeft: `0.1875rem solid ${editingIndex === index ? 'var(--cyan)' : 'transparent'}`,
                   transition: 'background 0.2s',
                 }}
               >
                 {/* Col 1: Shot number badge */}
                 <div style={{
-                  width: '38px',
-                  height: '38px',
+                  width: '2.375rem',
+                  height: '2.375rem',
                   borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   background: 'var(--surface-2)',
                   boxShadow: editingIndex === index ? 'var(--neo-active)' : 'var(--neo-flat)',
-                  border: editingIndex === index ? '1px solid var(--cyan-border)' : '1px solid var(--border)',
+                  border: editingIndex === index ? '0.0625rem solid var(--cyan-border)' : '0.0625rem solid var(--border)',
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '12px',
+                  fontSize: '0.75rem',
                   color: editingIndex === index ? 'var(--cyan)' : 'var(--text-soft)',
                   letterSpacing: '0.04em',
                   flexShrink: 0,
@@ -436,9 +417,9 @@ export default function ShotListScreen({
                 {/* Col 2: Timing */}
                 <div style={{
                   fontFamily: 'var(--font-mono)',
-                  fontSize: '12px',
+                  fontSize: '0.75rem',
                   color: 'var(--cyan-400)',
-                  paddingTop: '8px',
+                  paddingTop: '0.5rem',
                   letterSpacing: '0.06em',
                 }}>
                   {getShotTimingLabel(shot, audioDuration)}
@@ -448,29 +429,32 @@ export default function ShotListScreen({
                 <div style={{ minWidth: 0 }}>
                   <div style={{
                     fontFamily: 'var(--font-display)',
-                    fontSize: '16px',
+                    fontSize: '1rem',
                     fontWeight: 700,
                     color: editingIndex === index ? 'var(--cyan)' : 'var(--text)',
-                    marginBottom: '4px',
+                    marginBottom: '0.25rem',
                     letterSpacing: '-0.02em',
                     lineHeight: 1.2,
                   }}>
                     {shot.n}
                   </div>
-                  <div style={{
+                  <div
+                    title={shot.p || 'No prompt supplied yet.'}
+                    style={{
                     fontFamily: 'var(--font-body)',
-                    fontSize: '13px',
+                    fontSize: '0.8125rem',
                     color: 'var(--text-soft)',
                     lineHeight: 1.55,
                     overflow: 'hidden',
                     display: '-webkit-box',
                     WebkitLineClamp: 2,
                     WebkitBoxOrient: 'vertical',
-                    marginBottom: '6px',
-                  }}>
+                    marginBottom: '0.375rem',
+                  }}
+                  >
                     {shot.p || 'No prompt supplied yet.'}
                   </div>
-                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '0.3125rem', flexWrap: 'wrap' }}>
                     {[shot.shot_size, shot.movement, (shot.characters || [])[0], (shot.locations || [])[0]]
                       .filter(Boolean)
                       .map((tag) => (
@@ -485,36 +469,36 @@ export default function ShotListScreen({
                 </div>
 
                 {/* Col 4: Frame preview */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
-                  <div className="shot-thumb neo-flat" style={{ width: '208px', height: '118px', border: '1px solid var(--border)', position: 'relative' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexShrink: 0 }}>
+                  <div className="shot-thumb neo-flat" style={{ width: '13rem', height: '7.375rem', border: '0.0625rem solid var(--border)', position: 'relative' }}>
                     {shot.image_url ? (
                       <Image
                         src={shot.image_url}
                         alt={shot.n || `Shot ${index + 1}`}
                         fill
-                        sizes="208px"
+                        sizes="13rem"
                         style={{ objectFit: 'cover', display: 'block' }}
                       />
                     ) : (
                       <canvas ref={(el) => (canvasRefs.current[index] = el)} width={208} height={118} style={{ display: 'block' }} />
                     )}
                     {generatingIndex === index && (
-                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.68)', color: 'var(--cyan)', fontSize: '12px', fontWeight: 700 }}>
+                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.68)', color: 'var(--cyan)', fontSize: '0.75rem', fontWeight: 700 }}>
                         <Loader2 size={13} className="spin" /> Generating...
                       </div>
                     )}
                   </div>
-                  <div style={{ fontSize: '12px', color: shot.image_url ? 'var(--cyan)' : 'var(--text-soft)', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
+                  <div style={{ fontSize: '0.75rem', color: shot.image_url ? 'var(--cyan)' : 'var(--text-soft)', letterSpacing: '0.06em', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
                     {shot.image_url ? 'Frame ready' : 'No frame yet'}
                   </div>
                   {!shot.image_url && shot.image_error?.message && (
-                    <div className="flex-row gap-6" style={{ fontSize: '11px', color: 'var(--error)', alignItems: 'center' }}>
+                    <div className="flex-row gap-6" style={{ fontSize: '0.6875rem', color: 'var(--error)', alignItems: 'center' }}>
                       <AlertTriangle size={12} />
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shot.image_error.message}</span>
                     </div>
                   )}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '2px' }}>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginTop: '0.125rem' }}>
+                    <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
                       <button className="icon-btn" style={{ opacity: index === 0 ? 0.46 : 1 }} onClick={() => handleMove(index, -1)} disabled={index === 0} title="Move up">
                         <ArrowUp size={13} />
                       </button>
@@ -524,7 +508,7 @@ export default function ShotListScreen({
                       <button className="icon-btn" onClick={() => handleDuplicate(index)} title="Duplicate">
                         <Copy size={13} />
                       </button>
-                      <button className="icon-btn" style={{ color: 'var(--error)' }} onClick={() => handleDelete(index)} title="Delete">
+                      <button className="icon-btn icon-btn--danger" onClick={() => handleDelete(index)} title="Delete">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -532,10 +516,10 @@ export default function ShotListScreen({
                       className={editingIndex === index ? 'btn-primary' : 'btn-outline'}
                       onClick={() => startEditing(index)}
                       style={{
-                        fontSize: '12.5px',
+                        fontSize: '0.7812rem',
                         fontWeight: 700,
-                        padding: '7px 14px',
-                        minHeight: '32px',
+                        padding: '0.4375rem 0.875rem',
+                        minHeight: '2rem',
                         borderRadius: 'var(--radius)',
                         fontFamily: 'var(--font-body)',
                         whiteSpace: 'nowrap',
@@ -555,13 +539,13 @@ export default function ShotListScreen({
               alignItems: 'center',
               justifyContent: 'center',
               flex: 1,
-              padding: '80px 40px',
-              gap: '16px',
+              padding: '5rem 2.5rem',
+              gap: '1rem',
             }}>
               <div style={{
-                width: '52px',
-                height: '52px',
-                borderRadius: '14px',
+                width: '3.25rem',
+                height: '3.25rem',
+                borderRadius: '0.875rem',
                 boxShadow: 'var(--neo-raised)',
                 display: 'flex',
                 alignItems: 'center',
@@ -572,30 +556,27 @@ export default function ShotListScreen({
               </div>
               <div style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: '18px',
+                fontSize: '1.125rem',
                 fontWeight: 700,
                 color: 'var(--text)',
                 textAlign: 'center',
               }}>
                 No approved shots yet.
               </div>
-              <button className="btn-teal" onClick={() => onNavigate(7)}>
-                Generate or Import Shot List
-              </button>
             </div>
           )}
         </div>
-      </div>
+    </div>
+  );
 
-      {/* RIGHT PANEL — Edit sidebar */}
-      {hasActiveEdit && (
-        <div className="edit-side-panel shot-edit-panel" style={{ animation: 'slideInRight 0.22s cubic-bezier(0.2, 0, 0, 1)' }}>
+  const rightPanel = hasActiveEdit ? (
+    <div className="edit-side-panel shot-edit-panel" style={{ height: '100%', animation: 'slideInRight 0.22s cubic-bezier(0.2, 0, 0, 1)' }}>
           {/* Sidebar header */}
           <div style={{ position: 'relative', marginBottom: '0' }}>
-            <div className="sidebar-header-kicker" style={{ marginBottom: '6px' }}>
+            <div className="sidebar-header-kicker" style={{ marginBottom: '0.375rem' }}>
               ▪ Editing · Shot {String(editingIndex + 1).padStart(2, '0')}
             </div>
-            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', margin: 0 }}>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', margin: 0 }}>
               Shot details.
             </h3>
             <button
@@ -606,9 +587,9 @@ export default function ShotListScreen({
                 top: 0,
                 right: 0,
                 borderRadius: '50%',
-                border: '1px solid var(--border)',
+                border: '0.0625rem solid var(--border)',
                 color: 'var(--text-soft)',
-                fontSize: '16px',
+                fontSize: '1rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -622,7 +603,7 @@ export default function ShotListScreen({
           </div>
 
           {/* Form */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, marginTop: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1, marginTop: '1rem' }}>
 
             {/* Shot Title */}
             <div>
@@ -638,7 +619,7 @@ export default function ShotListScreen({
             </div>
 
             {/* Start / End / Duration */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+            <div className="panel-form-grid panel-form-grid--triple">
               <div>
                 <label className="form-label">Start</label>
                 <input
@@ -674,13 +655,13 @@ export default function ShotListScreen({
                   onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
                   onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
                 />
-                <div className="field-note" style={{ marginTop: '4px' }}>
+                <div className="field-note" style={{ marginTop: '0.25rem' }}>
                   Timeline duration up to 8s. Clip: {getPlannedVideoDuration(editDraft, 6)}s.
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div className="panel-form-grid panel-form-grid--double">
               <div>
                 <label className="form-label">Characters</label>
                 <input
@@ -708,7 +689,7 @@ export default function ShotListScreen({
             </div>
 
             {/* Shot Size + Movement */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div className="panel-form-grid panel-form-grid--double">
               <div>
                 <label className="form-label">Shot Size</label>
                 <input
@@ -733,7 +714,7 @@ export default function ShotListScreen({
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px' }}>
+            <div className="panel-form-grid panel-form-grid--split">
               <div>
                 <label className="form-label">Camera</label>
                 <input
@@ -765,30 +746,30 @@ export default function ShotListScreen({
                 className="textarea-inset"
                 value={editDraft.p || ''}
                 onChange={(e) => setEditDraft(prev => ({ ...prev, p: e.target.value }))}
-                style={{ minHeight: '96px' }}
+                style={{ minHeight: '6rem' }}
                 onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
                 onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />
             </div>
 
-            <div style={{ height: '1px', background: 'var(--border)' }} />
+            <div style={{ height: '0.0625rem', background: 'var(--border)' }} />
 
             <div>
-              <div className="panel-meta-label" style={{ marginBottom: '8px' }}>Frame Preview</div>
+              <div className="panel-meta-label" style={{ marginBottom: '0.5rem' }}>Frame Preview</div>
               <div className="panel-inset" style={{ aspectRatio: '16/9', padding: 0, overflow: 'hidden', position: 'relative' }}>
                 {shots[editingIndex]?.image_url ? (
                   <Image
                     src={shots[editingIndex].image_url}
                     alt={editDraft.n || 'Frame preview'}
                     fill
-                    sizes="(max-width: 1024px) 100vw, 360px"
+                    sizes="(max-width: 64rem) 100vw, 22.5rem"
                     style={{ objectFit: 'cover', display: 'block' }}
                   />
                 ) : (
                   <canvas ref={modalCanvasRef} width={560} height={315} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 )}
                 {generatingIndex === editingIndex && (
-                  <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.68)', color: 'var(--cyan)', fontSize: '12px', fontWeight: 700 }}>
+                  <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.68)', color: 'var(--cyan)', fontSize: '0.75rem', fontWeight: 700 }}>
                     <Loader2 size={14} className="spin" /> Generating...
                   </div>
                 )}
@@ -801,7 +782,7 @@ export default function ShotListScreen({
                 className="textarea-inset"
                 value={editDraft.image_prompt || ''}
                 onChange={(e) => setEditDraft(prev => ({ ...prev, image_prompt: e.target.value }))}
-                style={{ minHeight: '112px' }}
+                style={{ minHeight: '7rem' }}
                 onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
                 onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />
@@ -809,7 +790,7 @@ export default function ShotListScreen({
                 className="select-model"
                 value={modelDraft}
                 onChange={(event) => setModelDraft(event.target.value)}
-                style={{ width: '100%', marginTop: '8px' }}
+                style={{ width: '100%', marginTop: '0.5rem' }}
                 title="Image model"
               >
                 {IMAGE_GENERATION_MODELS.map((option) => (
@@ -817,15 +798,15 @@ export default function ShotListScreen({
                 ))}
               </select>
               <button
-                className="btn-teal"
+                className="btn-action-generate"
                 onClick={handleGenerateOne}
                 disabled={generatingIndex !== null || !(editDraft.image_prompt || editDraft.p || '').trim()}
-                style={{ width: '100%', marginTop: '8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                style={{ width: '100%', marginTop: '0.5rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.4375rem' }}
               >
                 {generatingIndex === editingIndex ? <><Loader2 size={14} className="spin" /> Generating...</> : <><Wand2 size={14} /> Generate Frame</>}
               </button>
               {shots[editingIndex]?.image_error?.message && (
-                <div className="flex-row gap-6" style={{ marginTop: '8px', color: 'var(--error)', fontSize: '11px', alignItems: 'center' }}>
+                <div className="flex-row gap-6" style={{ marginTop: '0.5rem', color: 'var(--error)', fontSize: '0.6875rem', alignItems: 'center' }}>
                   <AlertTriangle size={13} />
                   <span>{shots[editingIndex].image_error.message}</span>
                 </div>
@@ -838,7 +819,7 @@ export default function ShotListScreen({
                 className="textarea-inset"
                 value={editDraft.video_prompt || ''}
                 onChange={(e) => setEditDraft(prev => ({ ...prev, video_prompt: e.target.value }))}
-                style={{ minHeight: '112px' }}
+                style={{ minHeight: '7rem' }}
                 onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
                 onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
               />
@@ -852,8 +833,51 @@ export default function ShotListScreen({
               Save Shot
             </button>
           </div>
-        </div>
-      )}
+    </div>
+  ) : (
+    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', height: '100%' }}>
+      <div className="panel-flat">
+        <div className="panel-meta-label">Shot Editor</div>
+        <p className="body-sm">
+          Click <strong>Edit</strong> on a shot row to open its detailed controls here.
+        </p>
+      </div>
+
+      <div className="panel-flat" style={{ marginTop: 'auto' }}>
+        <div className="panel-meta-label">Progress</div>
+        <p className="body-sm">
+          {`${generatedCount}/${shots.length} frames ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`}
+        </p>
+        {queueSummary && <p className="queue-msg shot-screen-feedback" style={{ marginTop: '0.5rem' }}>{queueSummary}</p>}
+        {generationError && <p className="queue-msg queue-msg--error shot-screen-feedback" style={{ marginTop: '0.5rem' }}>{generationError}</p>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="screen active screen-fill" id="s8">
+      <WorkflowThreePaneShell
+        showLeftPanel={false}
+        sidebarTitle="Shots"
+        rightTitle={hasActiveEdit ? 'Edit Shot' : 'Actions'}
+        storageKey="workflow-three-pane:s8"
+        rightPanelClassName={hasActiveEdit ? 'shot-edit-shell-pane' : ''}
+        sidebar={(
+          <div style={{ padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div className="panel-flat">
+              <div className="panel-meta-label">▪ Sequence</div>
+              <p className="body-sm">Arrange shot order, timing, prompts, and frame generation before clips.</p>
+            </div>
+            <div className="panel-flat">
+              <div className="panel-meta-label">Stats</div>
+              <div className="metric-large">{shots.length}<span className="metric-small-label">shots</span></div>
+              <p className="body-sm body-sm--mt">{generatedCount} frames generated.</p>
+            </div>
+          </div>
+        )}
+        main={mainPanel}
+        right={rightPanel}
+      />
     </div>
   );
 }

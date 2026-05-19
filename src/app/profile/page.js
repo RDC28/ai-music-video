@@ -55,8 +55,8 @@ export default function ProfileScreen() {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '14px 0',
-    borderBottom: '1px solid var(--border)',
+    padding: '0.875rem 0',
+    borderBottom: '0.0625rem solid var(--border)',
   };
 
   return (
@@ -65,20 +65,20 @@ export default function ProfileScreen() {
 
       <main
         style={{
-          padding: '56px 56px 80px',
-          maxWidth: '720px',
+          padding: '3.5rem 3.5rem 5rem',
+          maxWidth: '45rem',
           margin: '0 auto',
           width: '100%',
           boxSizing: 'border-box',
         }}
       >
         {/* Page title */}
-        <div style={{ marginBottom: '36px' }}>
-          <div className="kicker" style={{ marginBottom: '12px' }}>Studio · You</div>
-          <h2 className="editorial-title editorial-h1" style={{ marginBottom: '10px' }}>
+        <div style={{ marginBottom: '2.25rem' }}>
+          <div className="kicker" style={{ marginBottom: '0.75rem' }}>Studio · You</div>
+          <h2 className="editorial-title editorial-h1" style={{ marginBottom: '0.625rem' }}>
             Your <span className="text-grad">profile.</span>
           </h2>
-          <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.65 }}>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.65 }}>
             Manage how the studio sees you.
           </p>
         </div>
@@ -86,10 +86,10 @@ export default function ProfileScreen() {
         {isLoading ? (
           <div
             style={{
-              padding: '52px',
+              padding: '3.25rem',
               textAlign: 'center',
               color: 'var(--text-muted)',
-              fontSize: '14px',
+              fontSize: '0.875rem',
               fontFamily: 'var(--font-display)',
               fontStyle: 'italic',
             }}
@@ -99,15 +99,15 @@ export default function ProfileScreen() {
         ) : (
           <>
             {/* Profile card */}
-            <div className="premium-panel" style={{ padding: '32px', marginBottom: '20px' }}>
-              <div className="kicker" style={{ marginBottom: '24px' }}>── Profile</div>
+            <div className="premium-panel" style={{ padding: '2rem', marginBottom: '1.25rem' }}>
+              <div className="kicker" style={{ marginBottom: '1.5rem' }}>── Profile</div>
 
               {/* Avatar + info */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '22px', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.375rem', marginBottom: '1.5rem' }}>
                 <div
                   style={{
-                    width: '72px',
-                    height: '72px',
+                    width: '4.5rem',
+                    height: '4.5rem',
                     borderRadius: '50%',
                     background: 'linear-gradient(135deg, var(--orange), var(--teal))',
                     display: 'flex',
@@ -116,10 +116,10 @@ export default function ProfileScreen() {
                     fontFamily: 'var(--font-display)',
                     fontStyle: 'italic',
                     fontWeight: 600,
-                    fontSize: '32px',
+                    fontSize: '2rem',
                     color: 'var(--ink-950)',
                     flexShrink: 0,
-                    boxShadow: '0 16px 40px rgba(var(--cyan-rgb), 0.32), inset 0 2px 0 rgba(var(--cyan-300-rgb), 0.4)',
+                    boxShadow: '0 1rem 2.5rem rgba(var(--cyan-rgb), 0.32), inset 0 0.125rem 0 rgba(var(--cyan-300-rgb), 0.4)',
                     letterSpacing: '-0.025em',
                   }}
                 >
@@ -128,18 +128,18 @@ export default function ProfileScreen() {
 
                 <div style={{ flex: 1 }}>
                   {isEditing ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
                       <input
                         type="text"
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
                         style={{
-                          padding: '12px 16px',
-                          border: '1px solid rgba(var(--cyan-rgb), 0.5)',
+                          padding: '0.75rem 1rem',
+                          border: '0.0625rem solid rgba(var(--cyan-rgb), 0.5)',
                           borderRadius: 'var(--radius-sm)',
                           fontFamily: 'var(--font-display)',
                           fontStyle: 'italic',
-                          fontSize: '20px',
+                          fontSize: '1.25rem',
                           fontWeight: 500,
                           outline: 'none',
                           background: 'rgba(var(--cyan-300-rgb), 0.04)',
@@ -147,14 +147,14 @@ export default function ProfileScreen() {
                           width: '100%',
                           boxSizing: 'border-box',
                           letterSpacing: '-0.022em',
-                          boxShadow: '0 0 0 4px rgba(var(--cyan-rgb), 0.08)',
+                          boxShadow: '0 0 0 0.25rem rgba(var(--cyan-rgb), 0.08)',
                         }}
                         autoFocus
                       />
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
                           className="btn-orange"
-                          style={{ padding: '8px 18px', fontSize: '12px' }}
+                          style={{ padding: '0.5rem 1.125rem', fontSize: '0.75rem' }}
                           onClick={handleSave}
                           disabled={isSaving}
                         >
@@ -162,7 +162,7 @@ export default function ProfileScreen() {
                         </button>
                         <button
                           className="btn-outline"
-                          style={{ padding: '8px 18px', fontSize: '12px' }}
+                          style={{ padding: '0.5rem 1.125rem', fontSize: '0.75rem' }}
                           onClick={() => { setIsEditing(false); setEditName(profile?.full_name || ''); }}
                           disabled={isSaving}
                         >
@@ -172,12 +172,12 @@ export default function ProfileScreen() {
                     </div>
                   ) : (
                     <>
-                      <div className="editorial-title editorial-h2" style={{ fontSize: 'clamp(24px, 3vw, 32px)', marginBottom: '6px' }}>
+                      <div className="editorial-title editorial-h2" style={{ fontSize: 'clamp(1.5rem, 3vw, 2rem)', marginBottom: '0.375rem' }}>
                         {profile?.full_name || 'Unnamed.'}
                       </div>
                       <div
                         style={{
-                          fontSize: '12.5px',
+                          fontSize: '0.7812rem',
                           color: 'var(--text-muted)',
                           fontFamily: 'var(--font-mono)',
                           letterSpacing: '0.06em',
@@ -193,7 +193,7 @@ export default function ProfileScreen() {
               {!isEditing && (
                 <button
                   className="btn-outline"
-                  style={{ width: '100%', fontSize: '12px', justifyContent: 'center' }}
+                  style={{ width: '100%', fontSize: '0.75rem', justifyContent: 'center' }}
                   onClick={() => setIsEditing(true)}
                 >
                   Edit name
@@ -202,13 +202,13 @@ export default function ProfileScreen() {
             </div>
 
             {/* Account info */}
-            <div className="premium-panel" style={{ padding: '32px' }}>
-              <div className="kicker kicker--muted" style={{ marginBottom: '20px' }}>── Account</div>
+            <div className="premium-panel" style={{ padding: '2rem' }}>
+              <div className="kicker kicker--muted" style={{ marginBottom: '1.25rem' }}>── Account</div>
 
               <div style={rowStyle}>
                 <span
                   style={{
-                    fontSize: '11px',
+                    fontSize: '0.6875rem',
                     color: 'var(--text-muted)',
                     fontFamily: 'var(--font-mono)',
                     letterSpacing: '0.16em',
@@ -219,7 +219,7 @@ export default function ProfileScreen() {
                 </span>
                 <span
                   style={{
-                    fontSize: '24px',
+                    fontSize: '1.5rem',
                     fontWeight: 500,
                     fontFamily: 'var(--font-display)',
                     fontStyle: 'italic',
@@ -236,7 +236,7 @@ export default function ProfileScreen() {
               <div style={{ ...rowStyle, borderBottom: 'none' }}>
                 <span
                   style={{
-                    fontSize: '11px',
+                    fontSize: '0.6875rem',
                     color: 'var(--text-muted)',
                     fontFamily: 'var(--font-mono)',
                     letterSpacing: '0.16em',
@@ -247,7 +247,7 @@ export default function ProfileScreen() {
                 </span>
                 <span
                   style={{
-                    fontSize: '15px',
+                    fontSize: '0.9375rem',
                     fontWeight: 500,
                     color: 'var(--dark)',
                     fontFamily: 'var(--font-display)',

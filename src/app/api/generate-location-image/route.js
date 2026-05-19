@@ -1,4 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { isKBUsable, getLocationEntry, getStyleLock } from "@/utils/knowledgeBase";
+import { extractScriptContext, buildLocationIntelligenceBlock } from "@/utils/scriptContext";
 import {
   getFallbackModels,
   IMAGE_MODEL_FALLBACKS,
@@ -41,31 +43,59 @@ export async function POST(req) {
       return NextResponse.json({ error: "Location generation is temporarily unavailable." }, { status: 500 });
     }
 
-    const { 
-      base64, 
-      mimeType, 
-      label, 
-      locationDescription, 
-      angleDescription 
+    const {
+      base64,
+      mimeType,
+      label,
+      locationDescription,
+      angleDescription,
+      locationName,
+      projectState,
     } = await req.json();
+
+    // Pull KB location + style locks if available
+    const kb = projectState?.knowledge_base;
+    const kbUsable = isKBUsable(kb);
+    const locEntry = kbUsable && locationName ? getLocationEntry(kb, locationName) : null;
+    const kbStyleLock = kbUsable ? getStyleLock(kb) : "";
+    const kbLocationContext = locEntry?.prompt_lock
+      ? `\nKNOWLEDGE BASE LOCATION LOCK:\n${locEntry.prompt_lock}`
+      : "";
+    const kbStyleContext = kbStyleLock
+      ? `\nKNOWLEDGE BASE VISUAL STYLE:\n${kbStyleLock}`
+      : "";
+
+    // Script-derived location intelligence
+    const scriptCtx = locationName
+      ? extractScriptContext({ projectState, locationName })
+      : null;
+    const scriptLocationBlock = scriptCtx
+      ? buildLocationIntelligenceBlock(scriptCtx)
+      : "";
+    const scriptLocationContext = scriptLocationBlock
+      ? `\nSCRIPT & STORY INTELLIGENCE (how this location appears in the story):\n${scriptLocationBlock}`
+      : "";
 
     // 1. REFERENCE-LOCKED GENERATION (Sequential Flow)
     if (base64 && locationDescription && angleDescription) {
       console.log(`NB Pro generating reference-locked location angle: ${label}`);
-      
-      const prompt = `
-        STRICT LOCATION IDENTITY LOCK.
-        MATCH THIS EXACT ENVIRONMENT from the provided master reference image.
-        TARGET VIEW/ANGLE: ${angleDescription}
-        LOCATION DETAILS: ${locationDescription}
-        
-        RULES:
-        1. Preserve the exact architecture, geography, materials, props, signage, color palette, weather logic, and environmental details.
-        2. Change ONLY the camera angle/viewpoint/framing needed for "${label}".
-        3. Output one clean cinematic environment reference, not a collage or moodboard.
-        4. No text, labels, split panels, borders, watermarks, or unrelated locations.
-        5. Keep this view consistent enough to sit beside the other reference images as the same place.
-      `;
+
+      const prompt = `Generate a single cinematic LOCATION REFERENCE VIEW locked to the master reference image provided.
+
+STRICT ENVIRONMENT IDENTITY LOCK — copy from the master reference image:
+Preserve the exact architecture, materials, surface textures, props, signage, colour palette, vegetation, weather atmosphere, and spatial layout. Every identifiable environmental detail must match.
+
+TARGET VIEW FOR THIS PANEL: ${angleDescription}
+LOCATION DETAILS: ${locationDescription}
+${kbLocationContext}
+${scriptLocationContext}
+
+RULES:
+1. Change ONLY the camera angle and viewpoint — the environment itself must be identical to the master
+2. Output one clean photorealistic cinematic location view — not a collage, not a moodboard
+3. Cinematic production-design quality: show depth, foreground detail, midground, background layers
+4. No text, labels, split panels, borders, watermarks, or unrelated locations
+5. This view must sit visually beside the master reference as the same place from a different angle`;
 
       const { generatedB64, model } = await generateImage([{
           role: "user",
@@ -78,22 +108,47 @@ export async function POST(req) {
       return NextResponse.json({ success: true, imageBase64: generatedB64, image_model: model });
     }
 
-    // 2. MASTER WIDE SHOT GENERATION (First Angle)
-    if (locationDescription && angleDescription) {
-      console.log(`NB Pro generating master wide shot: ${label}`);
-      
-      const fullPrompt = `Generate a high-end, cinematic MASTER LOCATION IDENTITY REFERENCE.
+    // 2. FULL LOCATION SHEET — single 21:9 image, no angleDescription required
+    // Triggered when only locationDescription is provided (no base64, no angle).
+    if (locationDescription) {
+      console.log(`Generating full 21:9 location reference sheet: ${label || locationName}`);
+
+      const fullPrompt = `Generate a single 21:9 ultra-wide LOCATION REFERENCE SHEET for a music video production.
+
+PURPOSE: This sheet is the definitive environment reference for this location. Production will use it to recreate the exact setting for every shot filmed here — maintaining consistent architecture, materials, colour, atmosphere, and lighting across all scenes.
+
 LOCATION BRIEF:
 ${locationDescription}
+${kbLocationContext}
+${kbStyleContext}
+${scriptLocationContext}
 
-TARGET VIEW:
-${angleDescription}
+CANVAS AND LAYOUT:
+- Single 21:9 horizontal sheet — do NOT generate a 16:9 frame
+- Consistent time of day, weather, and atmosphere across all panels
+- 8–9 panels covering a full 360° view of the location plus key details:
+  PANEL 1 (large, far left, ~30% canvas width): establishing wide shot — the definitive hero view of the location showing full environment
+  PANEL 2: wide shot from opposite direction — 180° reverse of panel 1
+  PANEL 3: left flank view — 90° left of panel 1
+  PANEL 4: right flank view — 90° right of panel 1
+  PANEL 5: interior or foreground close-up — a key set-dressing detail, prop, or surface texture that defines the space
+  PANEL 6: overhead or elevated angle — bird's eye or high angle showing spatial layout
+  PANEL 7: low angle / ground level — character's eye-level view showing environment depth and floor surface
+  PANEL 8: key atmospheric detail — lighting condition, sky, ambient element (dust, neon, foliage, crowd density) that defines the mood
+  PANEL 9 (optional): secondary area or adjacent space within the same location
+- Clean visible dividers or spacing between all panels
+- Every panel must be clearly readable as the same location
 
-STRICT OUTPUT RULES:
-- One coherent location only, no collage, no split panels, no text or labels.
-- Photorealistic cinematic lighting and a clear production-design presentation.
-- Make the architecture, layout, materials, set dressing, palette, geography, and atmosphere distinctive and repeatable for later reference-locked views.
-- Ensure the requested view is clearly readable and not cropped awkwardly.`;
+PRODUCTION RULES:
+1. No text, no labels, no borders, no watermarks — clean production-art presentation
+2. Photorealistic cinematic quality — foreground, midground, background layers all present
+3. Architecture, materials, signage, props, and colour palette must be identical across all panels
+4. Lighting direction and time of day must be consistent across all panels
+5. No people, no characters in any panel — environment only
+6. Make every environmental detail distinctive and repeatable: a filmmaker must be able to recreate this set
+${kbStyleLock ? "7. Follow the visual style lock above for colour grade and lighting language." : ""}
+
+OUTPUT: One single 21:9 photorealistic location reference sheet ready for a professional production design department.`;
 
       const { generatedB64, model } = await generateImage(
         [{ role: "user", parts: [{ text: fullPrompt }] }],

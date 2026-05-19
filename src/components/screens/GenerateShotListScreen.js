@@ -3,7 +3,6 @@
 import { useRef, useState } from 'react';
 import {
   AlertCircle,
-  CheckCircle2,
   Clapperboard,
   Eye,
   FileText,
@@ -15,6 +14,7 @@ import {
   Users,
 } from 'lucide-react';
 import { countTranscriptWords, getProjectAudioDuration, getShotTimingLabel, normalizeShotListForVeo } from '@/utils/shotList';
+import WorkflowThreePaneShell from '../WorkflowThreePaneShell';
 
 // Styles moved to components.css as .gen-shot-panel, .form-label
 
@@ -63,7 +63,7 @@ function hasWardrobeOverride(outfit, locationName) {
   ));
 }
 
-export default function GenerateShotListScreen({ onNavigate, projectData, onDataUpdate }) {
+export default function GenerateShotListScreen({ onNavigate, projectId, projectData, onDataUpdate }) {
   const audioDuration = getProjectAudioDuration(projectData);
   const initialShots = normalizeShotListForVeo(projectData?.shot_list || [], { audioDuration });
   const [isGenerating, setIsGenerating] = useState(false);
@@ -246,7 +246,7 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
   };
 
   return (
-    <div className="screen active screen-fill flex-col" id="s7">
+    <div className="screen active screen-fill" id="s7">
       <input
         type="file"
         ref={fileInputRef}
@@ -255,349 +255,269 @@ export default function GenerateShotListScreen({ onNavigate, projectData, onData
         style={{ display: 'none' }}
       />
 
-      {/* HEADER — compact */}
-      <div style={{
-        padding: '14px 28px',
-        borderBottom: '1px solid var(--border)',
-        flexShrink: 0,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: '16px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
-          <div>
-            <div style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: '9px',
-              color: 'var(--cyan)',
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              marginBottom: '3px',
-            }}>
-              &#9642; Shot &middot; Plan
+      <WorkflowThreePaneShell
+        showLeftPanel={false}
+        sidebarTitle="Context"
+        rightTitle="Plan Actions"
+        storageKey="workflow-three-pane:s7"
+        sidebar={(
+          <div className="flex-col gap-10" style={{ padding: '0.875rem' }}>
+            <div className="panel-flat">
+              <div className="panel-meta-label">▪ Shot Plan Context</div>
+              <p className="body-sm">These sources are used to generate production-safe shots.</p>
             </div>
-            <h1 style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: '22px',
-              fontWeight: 700,
-              letterSpacing: '-0.025em',
-              color: 'var(--text)',
-              margin: 0,
-              lineHeight: 1.15,
-            }}>
-              Generate &amp; approve.
-            </h1>
+            <div className="panel-flat">
+              <div className="flex-col gap-8">
+                {contextItems.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.label} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem',
+                      borderRadius: 'var(--radius)',
+                      border: `0.0625rem solid ${item.ready ? 'var(--cyan-border)' : 'var(--border)'}`,
+                      background: item.ready ? 'rgba(var(--cyan-rgb), 0.06)' : 'var(--bg-deep)',
+                    }}>
+                      <Icon size={13} color={item.ready ? 'var(--cyan)' : 'var(--text-muted)'} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.75rem', fontWeight: 700 }}>{item.value}</div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{item.label}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, margin: 0, maxWidth: '400px', borderLeft: '1px solid var(--border)', paddingLeft: '16px' }}>
-            Build a timed production plan from the song, story, cast, and locations before shots move forward.
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-          <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '12px' }}>
-            Open shots &rarr;
-          </button>
-          <button
-            className="btn-orange"
-            onClick={handleApprove}
-            disabled={!previewShots.length || isApproving}
-            style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '7px' }}
-          >
-            {isApproving ? 'Approving…' : 'Approve shot list'}
-            {!isApproving && <CheckCircle2 size={13} />}
-          </button>
-        </div>
-      </div>
-
-      {/* CONTEXT STRIP — compact single row */}
-      <div style={{
-        padding: '8px 28px',
-        borderBottom: '1px solid var(--border)',
-        flexShrink: 0,
-        display: 'flex',
-        flexWrap: 'nowrap',
-        gap: '8px',
-        overflowX: 'auto',
-        scrollbarWidth: 'none',
-      }}>
-        {contextItems.map(item => {
-          const Icon = item.icon;
-          return (
-            <div
-              key={item.label}
-              style={{
-                background: 'var(--surface-2)',
-                border: `1px solid ${item.ready ? 'var(--cyan-border)' : 'var(--border)'}`,
-                borderRadius: 'var(--radius)',
-                padding: '7px 12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                flexShrink: 0,
-              }}
-            >
-              <Icon size={13} color={item.ready ? 'var(--cyan)' : 'var(--text-muted)'} />
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
-                <span style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  color: item.ready ? 'var(--text)' : 'var(--text-muted)',
-                }}>
-                  {item.value}
-                </span>
-                <span style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '9px',
-                  color: 'var(--text-muted)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                }}>
-                  {item.label}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* MAIN CONTENT — permanent 2-column: left=actions, right=shot list */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', minHeight: 0 }}>
-
-        {/* LEFT COLUMN: Generate (top) + Upload (bottom) */}
-        <div style={{
-          width: '44%',
-          flexShrink: 0,
-          borderRight: '1px solid var(--border)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}>
-          {/* Generate panel — takes remaining space */}
-          <div style={{
-            flex: 1,
-            padding: '20px 24px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '14px',
-            borderBottom: '1px solid var(--border)',
-            overflowY: 'auto',
-          }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-              <div style={{
-                width: '40px', height: '40px', borderRadius: '10px',
-                background: 'var(--bg-deep)', boxShadow: 'var(--neo-raised)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <Sparkles size={18} color="var(--cyan)" />
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '15px', fontWeight: 700, color: 'var(--text)', marginBottom: '5px' }}>
-                  Generate Shot Plan
-                </div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '12px', lineHeight: 1.6, margin: 0 }}>
-                  Uses vocal timing, timed words, the master story, approved cast, and locations to keep shots production-ready.
+        )}
+        main={(
+          <div className="flex-col" style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
+            <div className="panel-header">
+              <div>
+                <div className="sidebar-header-kicker">▪ Shot · Plan</div>
+                <h1 className="shot-screen-title" style={{ fontSize: '2rem', whiteSpace: 'normal' }}>Generate &amp; approve.</h1>
+                <p className="body-sm" style={{ marginTop: '0.5rem', maxWidth: '40rem' }}>
+                  Build a timed production plan from the song, story, cast, and locations before shots move forward.
                 </p>
               </div>
             </div>
 
-            {(error || missingContext.length > 0) && (
-              <div style={{
-                background: 'rgba(var(--violet-rgb), 0.06)', border: '1px solid rgba(var(--violet-rgb), 0.2)',
-                borderRadius: 'var(--radius)', padding: '10px 12px',
-                display: 'flex', gap: '8px', alignItems: 'flex-start',
-              }}>
-                <AlertCircle size={13} color="var(--violet-400)" style={{ flexShrink: 0, marginTop: '1px' }} />
-                <span style={{ fontSize: '12px', color: 'var(--violet-400)', lineHeight: 1.5 }}>
-                  {error || `Missing: ${missingContext.join(', ')}. You can still generate with what's available.`}
-                </span>
-              </div>
-            )}
-
-            <button
-              className="btn-orange"
-              onClick={handleGenerate}
-              disabled={isGenerating || !canGenerate}
-              style={{ width: '100%', fontSize: '13px', display: 'inline-flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
-            >
-              <Clapperboard size={15} />
-              {isGenerating ? 'Generating shot plan…' : 'Generate Shot Plan'}
-            </button>
-          </div>
-
-          {/* Upload panel — pinned at bottom */}
-          <div style={{
-            flexShrink: 0,
-            padding: '16px 24px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-            background: 'var(--bg-deep)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Upload size={13} color="var(--text-muted)" />
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>
-                Bring Your Own Shot List
-              </span>
-            </div>
-            <textarea
-              className="textarea-inset"
-              value={manualText}
-              onChange={(e) => setManualText(e.target.value)}
-              placeholder={'Shot 1 - Wide shot of THE ARTIST...\nShot 2 - Close-up at first vocal phrase...'}
-              style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', height: '80px' }}
-              onFocus={e => { e.target.style.borderColor = 'var(--cyan-border)'; }}
-              onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
-            />
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                className="btn-outline"
-                onClick={() => fileInputRef.current?.click()}
-                style={{ fontSize: '11px', flex: 1, justifyContent: 'center', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-              >
-                <Upload size={12} /> Upload File
-              </button>
-              <button
-                className="btn-outline"
-                onClick={handleManualPreview}
-                disabled={!manualText.trim()}
-                style={{ fontSize: '11px', flex: 1, justifyContent: 'center', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-              >
-                <Eye size={12} /> Preview Mine
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: Shot list preview — takes all remaining height */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-          {previewShots.length > 0 ? (
-            <>
-              {/* Preview header */}
-              <div style={{
-                padding: '10px 20px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                borderBottom: '1px solid var(--border)',
-                flexShrink: 0,
-                gap: '12px',
-                background: 'rgba(var(--ink-900-rgb), 0.8)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--cyan)', letterSpacing: '0.14em', textTransform: 'uppercase', flexShrink: 0 }}>
-                    &#9642; Preview
-                  </div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 700, color: 'var(--text)', flexShrink: 0 }}>
-                    {previewShots.length} shots
-                  </div>
-                  {coverageNotes && (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '11px', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                      {coverageNotes}
-                    </div>
-                  )}
-                </div>
-                <button
-                  className="btn-teal"
-                  onClick={handleApprove}
-                  disabled={isApproving}
-                  style={{ fontSize: '11px', flexShrink: 0, padding: '7px 14px' }}
-                >
-                  {isApproving ? 'Approving...' : 'Approve and Arrange'}
-                </button>
-              </div>
-
-              {/* Shot rows — scrollable full height */}
-              <div style={{ overflowY: 'auto', flex: 1, padding: '0 20px' }}>
-                {previewShots.map((shot, index) => (
-                  <div
-                    key={`${shot.n}-${index}`}
-                    style={{
-                      padding: '11px 0',
-                      borderBottom: '1px solid var(--border)',
-                      display: 'grid',
-                      gridTemplateColumns: '64px 1fr 160px',
-                      gap: '12px',
-                      alignItems: 'start',
-                    }}
-                  >
-                    {/* Timing */}
-                    <div style={{
-                      background: 'var(--bg-deep)',
-                      boxShadow: 'var(--neo-inset)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius)',
-                      padding: '6px 8px',
-                      textAlign: 'center',
-                    }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--cyan)' }}>
-                        {getShotTimingLabel(shot)}
-                      </span>
-                    </div>
-
-                    {/* Shot info */}
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{
-                        fontFamily: 'var(--font-display)',
-                        fontSize: '13px',
-                        fontWeight: 700,
-                        color: 'var(--text)',
-                        marginBottom: '3px',
-                        letterSpacing: '-0.01em',
-                      }}>
-                        {index + 1}. {shot.n}
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {previewShots.length > 0 ? (
+                <>
+                  <div style={{
+                    padding: '0.625rem 1.25rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    borderBottom: '0.0625rem solid var(--border)',
+                    flexShrink: 0,
+                    gap: '0.75rem',
+                    background: 'rgba(var(--ink-900-rgb), 0.8)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', minWidth: 0 }}>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5625rem', color: 'var(--cyan)', letterSpacing: '0.14em', textTransform: 'uppercase', flexShrink: 0 }}>
+                        &#9642; Preview
                       </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                        {shot.p || 'No prompt supplied yet.'}
+                      <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text)', flexShrink: 0 }}>
+                        {previewShots.length} shots
                       </div>
-                      {shot.lyrics && (
-                        <div style={{
-                          fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic',
-                          marginTop: '4px', borderLeft: '2px solid var(--border-mid)', paddingLeft: '7px',
-                        }}>
-                          &ldquo;{shot.lyrics}&rdquo;
+                      {coverageNotes && (
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.6875rem', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                          {coverageNotes}
                         </div>
                       )}
                     </div>
-
-                    {/* Tags */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      {[...(shot.characters || []), ...(shot.locations || [])].slice(0, 4).map(tag => (
-                        <span key={tag} className="tag-badge">{tag}</span>
-                      ))}
-                    </div>
+                    <button
+                      className="btn-secondary"
+                      onClick={handleApprove}
+                      disabled={isApproving}
+                      style={{ fontSize: '0.6875rem', flexShrink: 0, padding: '0.4375rem 0.875rem' }}
+                    >
+                      {isApproving ? 'Approving...' : 'Approve and Arrange'}
+                    </button>
                   </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            /* Empty state */
-            <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: '14px',
-              padding: '40px 24px', textAlign: 'center',
-            }}>
-              <div style={{
-                width: '52px', height: '52px', borderRadius: '14px',
-                background: 'var(--surface-2)', boxShadow: 'var(--neo-raised)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Clapperboard size={22} color="var(--cyan)" />
-              </div>
-              <div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: 700, color: 'var(--text)', marginBottom: '6px', letterSpacing: '-0.02em' }}>
-                  No shots yet
+
+                  <div style={{ overflowY: 'auto', flex: 1, padding: '0 1.25rem' }}>
+                    {previewShots.map((shot, index) => (
+                      <div
+                        key={`${shot.n}-${index}`}
+                        style={{
+                          padding: '0.6875rem 0',
+                          borderBottom: '0.0625rem solid var(--border)',
+                          display: 'grid',
+                          gridTemplateColumns: '4rem 1fr 10rem',
+                          gap: '0.75rem',
+                          alignItems: 'start',
+                        }}
+                      >
+                        <div style={{
+                          background: 'var(--bg-deep)',
+                          boxShadow: 'var(--neo-inset)',
+                          border: '0.0625rem solid var(--border)',
+                          borderRadius: 'var(--radius)',
+                          padding: '0.375rem 0.5rem',
+                          textAlign: 'center',
+                        }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--cyan)' }}>
+                            {getShotTimingLabel(shot)}
+                          </span>
+                        </div>
+
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{
+                            fontFamily: 'var(--font-display)',
+                            fontSize: '0.8125rem',
+                            fontWeight: 700,
+                            color: 'var(--text)',
+                            marginBottom: '0.1875rem',
+                            letterSpacing: '-0.01em',
+                          }}>
+                            {index + 1}. {shot.n}
+                          </div>
+                          <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                            {shot.p || 'No prompt supplied yet.'}
+                          </div>
+                          {shot.lyrics && (
+                            <div style={{
+                              fontSize: '0.6875rem', color: 'var(--text-muted)', fontStyle: 'italic',
+                              marginTop: '0.25rem', borderLeft: '0.125rem solid var(--border-mid)', paddingLeft: '0.4375rem',
+                            }}>
+                              &ldquo;{shot.lyrics}&rdquo;
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                          {[...(shot.characters || []), ...(shot.locations || [])].slice(0, 4).map(tag => (
+                            <span key={tag} className="tag-badge">{tag}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div style={{
+                  flex: 1, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center', gap: '0.875rem',
+                  padding: '2.5rem 1.5rem', textAlign: 'center',
+                }}>
+                  <div style={{
+                    width: '3.25rem', height: '3.25rem', borderRadius: '0.875rem',
+                    background: 'var(--surface-2)', boxShadow: 'var(--neo-raised)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Clapperboard size={22} color="var(--cyan)" />
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.375rem', letterSpacing: '-0.02em' }}>
+                      No shots yet
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.6, maxWidth: '15rem' }}>
+                      Generate a shot plan or paste your own to see the preview here.
+                    </p>
+                  </div>
                 </div>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6, maxWidth: '240px' }}>
-                  Generate a shot plan or paste your own to see the preview here.
+              )}
+            </div>
+          </div>
+        )}
+        right={(
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+
+              <div className="panel-flat">
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                  <div style={{
+                    width: '2.5rem', height: '2.5rem', borderRadius: '0.625rem',
+                    background: 'var(--bg-deep)', boxShadow: 'var(--neo-raised)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>
+                    <Sparkles size={18} color="var(--cyan)" />
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.3125rem' }}>
+                      Generate Shot Plan
+                    </div>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', lineHeight: 1.6, margin: 0 }}>
+                      Uses vocal timing, timed words, the master story, approved cast, and locations to keep shots production-ready.
+                    </p>
+                  </div>
+                </div>
+
+                {(error || missingContext.length > 0) && (
+                  <div style={{
+                    marginTop: '0.75rem',
+                    background: 'rgba(var(--violet-rgb), 0.06)', border: '0.0625rem solid rgba(var(--violet-rgb), 0.2)',
+                    borderRadius: 'var(--radius)', padding: '0.625rem 0.75rem',
+                    display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
+                  }}>
+                    <AlertCircle size={13} color="var(--violet-400)" style={{ flexShrink: 0, marginTop: '0.0625rem' }} />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--violet-400)', lineHeight: 1.5 }}>
+                      {error || `Missing: ${missingContext.join(', ')}. You can still generate with what's available.`}
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  className="btn-action-generate"
+                  onClick={handleGenerate}
+                  disabled={isGenerating || !canGenerate}
+                  style={{ width: '100%', marginTop: '0.75rem', fontSize: '0.8125rem', display: 'inline-flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  <Clapperboard size={15} />
+                  {isGenerating ? 'Generating shot plan…' : 'Generate Shot Plan'}
+                </button>
+              </div>
+
+              <div className="panel-flat">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.625rem' }}>
+                  <Upload size={13} color="var(--text-muted)" />
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text)' }}>
+                    Bring Your Own Shot List
+                  </span>
+                </div>
+                <textarea
+                  className="textarea-inset"
+                  value={manualText}
+                  onChange={(e) => setManualText(e.target.value)}
+                  placeholder={'Shot 1 - Wide shot of THE ARTIST...\nShot 2 - Close-up at first vocal phrase...'}
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', height: '5rem' }}
+                  onFocus={e => { e.target.style.borderColor = 'var(--cyan-border)'; }}
+                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
+                />
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <button
+                    className="btn-outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{ fontSize: '0.6875rem', flex: 1, justifyContent: 'center', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                  >
+                    <Upload size={12} /> Upload File
+                  </button>
+                  <button
+                    className="btn-outline"
+                    onClick={handleManualPreview}
+                    disabled={!manualText.trim()}
+                    style={{ fontSize: '0.6875rem', flex: 1, justifyContent: 'center', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
+                  >
+                    <Eye size={12} /> Preview Mine
+                  </button>
+                </div>
+              </div>
+
+              <div className="panel-flat" style={{ marginTop: 'auto' }}>
+                <div className="panel-meta-label">Tip</div>
+                <p className="body-sm">
+                  Approve the list from the center panel. Use the left stage bar to move to Shots.
                 </p>
               </div>
             </div>
-          )}
-        </div>
-
-      </div>
+          </div>
+        )}
+      />
     </div>
   );
 }

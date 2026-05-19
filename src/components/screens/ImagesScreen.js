@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, ImagePlus, Loader2, RotateCcw, Wand2, X } from 'lucide-react';
+import { useGenerationQueue } from '@/hooks/useGenerationQueue';
+import QueueStatusBar from '../QueueStatusBar';
 import { drawClubScene } from '@/utils/drawClubScene';
 import { DEFAULT_IMAGE_MODEL, IMAGE_GENERATION_MODELS, resolveImageModelOption } from '@/utils/generationModels';
 import { normalizeShotList } from '@/utils/shotList';
@@ -26,11 +28,11 @@ function ExpandableText({ text, style }) {
           style={{
             background: 'none',
             border: 'none',
-            padding: '0 0 0 4px',
+            padding: '0 0 0 0.25rem',
             cursor: 'pointer',
             color: 'var(--cyan)',
             fontFamily: 'var(--font-mono)',
-            fontSize: '10px',
+            fontSize: '0.625rem',
             fontWeight: 700,
             letterSpacing: '0.05em',
             verticalAlign: 'middle',
@@ -364,10 +366,36 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   const [promptDraft, setPromptDraft] = useState('');
   const [modelDraft, setModelDraft] = useState(DEFAULT_IMAGE_MODEL);
   const [isApproving, setIsApproving] = useState(false);
-  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [generatingIndex, setGeneratingIndex] = useState(null);
-  const [generationError, setGenerationError] = useState('');
-  const [queueSummary, setQueueSummary] = useState('');
+
+  // ── Concurrent batch queue ──────────────────────────────────────────────────
+  // concurrency=1: the route already fires 2 Gemini candidates concurrently per shot
+  // (QUALITY_CANDIDATE_COUNT). Running 2 queue slots × 2 candidates = 4 simultaneous
+  // Gemini requests which consistently triggers rate limits.
+  const imageQueue = useGenerationQueue({ concurrency: 1 });
+
+  // Always-current shots ref so concurrent jobs read the latest state.
+  const shotsRef = useRef(shots);
+  useEffect(() => { shotsRef.current = shots; }, [shots]);
+
+  // Reset generatingIndex when the queue finishes so buttons re-enable.
+  useEffect(() => {
+    if (!imageQueue.isActive) setGeneratingIndex(null);
+  }, [imageQueue.isActive]);
+
+  // Coalescing save: at most one onDataUpdate in-flight; the last data always wins.
+  const saveQRef = useRef({ pending: false, latest: null });
+  const saveShotList = useCallback(async (data) => {
+    saveQRef.current.latest = { shot_list: data };
+    if (saveQRef.current.pending) return;
+    saveQRef.current.pending = true;
+    while (saveQRef.current.latest) {
+      const d = saveQRef.current.latest;
+      saveQRef.current.latest = null;
+      try { await onDataUpdate(d); } catch (e) { console.error('[shots save]', e); }
+    }
+    saveQRef.current.pending = false;
+  }, [onDataUpdate]);
   const [isRewritingPrompt, setIsRewritingPrompt] = useState(false);
   const projectCharacterPool = Array.isArray(projectData)
     ? []
@@ -442,46 +470,38 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
     ));
   };
 
-  const runGenerationQueue = async (indices, { promptOverrides = {}, label = 'Image generation' } = {}) => {
+  // Enqueues shot image jobs — 2 run concurrently with automatic retry on quota errors.
+  const runGenerationQueue = (indices, { promptOverrides = {} } = {}) => {
     if (!indices.length) return;
-
-    setIsGeneratingAll(indices.length > 1);
-    setGenerationError('');
-    setQueueSummary(`${label} started for ${indices.length} shot${indices.length === 1 ? '' : 's'}.`);
-
-    let nextShots = [...shots];
-    let successCount = 0;
-    let failureCount = 0;
-
-    for (const index of indices) {
-      try {
-        nextShots = await requestShotImage(index, promptOverrides[index], nextShots);
-        successCount += 1;
-      } catch (error) {
-        console.error(`Shot ${index + 1} image generation failed:`, error);
-        nextShots = markShotFailure(nextShots, index, error);
-        failureCount += 1;
-      }
-
-      setShots(nextShots);
-      await onDataUpdate({ shot_list: nextShots });
-    }
-
-    setGeneratingIndex(null);
-    setIsGeneratingAll(false);
-
-    if (failureCount) {
-      setGenerationError(`${failureCount} shot${failureCount === 1 ? '' : 's'} need another try. Generate Remaining will retry unfinished frames.`);
-    }
-    setQueueSummary(`${successCount} ready, ${failureCount} need retry, ${nextShots.filter(shot => !shot.image_url).length} remaining.`);
+    imageQueue.enqueue(
+      indices.map(index => ({
+        id: `img-${index}-${Date.now()}`,
+        label: `Shot ${index + 1}`,
+        run: async () => {
+          const source = shotsRef.current;
+          try {
+            const updatedShots = await requestShotImage(index, promptOverrides[index] ?? null, source);
+            const updatedShot = updatedShots[index];
+            setShots(prev => prev.map((s, i) => i === index ? updatedShot : s));
+            shotsRef.current = shotsRef.current.map((s, i) => i === index ? updatedShot : s);
+            await saveShotList(shotsRef.current);
+            return updatedShot;
+          } catch (err) {
+            // Mark the shot card as failed so the error state shows in the UI.
+            const failed = markShotFailure(shotsRef.current, index, err);
+            setShots(prev => markShotFailure(prev, index, err));
+            shotsRef.current = failed;
+            try { await saveShotList(failed); } catch { /* best-effort */ }
+            throw err; // re-throw so the queue can retry on quota/rate errors
+          }
+        },
+      }))
+    );
   };
 
-  const handleGenerateOne = async () => {
+  const handleGenerateOne = () => {
     if (editModalIndex === null) return;
-    await runGenerationQueue([editModalIndex], {
-      promptOverrides: { [editModalIndex]: promptDraft },
-      label: `Shot ${editModalIndex + 1}`,
-    });
+    runGenerationQueue([editModalIndex], { promptOverrides: { [editModalIndex]: promptDraft } });
   };
 
   const handleRewritePrompt = async () => {
@@ -508,19 +528,18 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
     }
   };
 
-  const handleGenerateAll = async () => {
-    if (!shots.length || isGeneratingAll) return;
-    await runGenerationQueue(shots.map((_, index) => index), { label: 'Generate all' });
+  const handleGenerateAll = () => {
+    if (!shots.length || imageQueue.isActive) return;
+    runGenerationQueue(shots.map((_, index) => index));
   };
 
-  const handleGenerateRemaining = async () => {
-    if (!shots.length || isGeneratingAll) return;
+  const handleGenerateRemaining = () => {
+    if (!shots.length || imageQueue.isActive) return;
     const remainingIndices = shots
       .map((shot, index) => ({ shot, index }))
       .filter(({ shot }) => !shot.image_url)
       .map(({ index }) => index);
-
-    await runGenerationQueue(remainingIndices, { label: 'Generate remaining' });
+    runGenerationQueue(remainingIndices);
   };
 
   const handleApproveAll = async () => {
@@ -548,16 +567,14 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
         <div className="panel-header">
           <div className="panel-header-left">
             <div className="sidebar-header-kicker">▪ Frames · Render</div>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '30px', fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--text)', margin: '0 0 8px', lineHeight: 1.1 }}>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.875rem', fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--text)', margin: '0 0 0.5rem', lineHeight: 1.1 }}>
               Paint each frame.
             </h2>
-            <div className="panel-meta-label" style={{ marginBottom: queueSummary || generationError ? '4px' : 0 }}>
+            <div className="panel-meta-label">
               {shots.length
                 ? `${generatedCount}/${shots.length} ready · ${remainingCount} remaining${failedCount ? ` · ${failedCount} retry` : ''}`
                 : '0/0 ready · 0 remaining'}
             </div>
-            {queueSummary && <p className="queue-msg" style={{ margin: '4px 0 0' }}>{queueSummary}</p>}
-            {generationError && <p className="queue-msg queue-msg--error" style={{ margin: '4px 0 0' }}>{generationError}</p>}
           </div>
 
           <div className="panel-header-right">
@@ -568,12 +585,12 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
             </select>
             <div className="flex-row gap-8" style={{ alignItems: 'center' }}>
               <button
-                className="btn-teal"
+                className="btn-secondary"
                 onClick={handleGenerateRemaining}
-                disabled={!shots.length || remainingCount === 0 || isGeneratingAll || generatingIndex !== null}
+                disabled={!shots.length || remainingCount === 0 || imageQueue.isActive || generatingIndex !== null}
               >
-                {isGeneratingAll ? (
-                  <><Loader2 size={14} className="spin" /> Generating {generatingIndex !== null ? `${generatingIndex + 1}/${shots.length}` : 'Images'}</>
+                {imageQueue.isActive ? (
+                  <><Loader2 size={14} className="spin" /> {imageQueue.stats.running > 1 ? `${imageQueue.stats.done}/${imageQueue.stats.total} done` : generatingIndex !== null ? `Shot ${generatingIndex + 1}` : 'Generating…'}</>
                 ) : (
                   <><Wand2 size={14} /> {remainingCount === shots.length ? 'Generate Frames' : `Generate Remaining (${remainingCount})`}</>
                 )}
@@ -581,12 +598,12 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
               <button
                 className="btn-outline"
                 onClick={handleGenerateAll}
-                disabled={!shots.length || isGeneratingAll || generatingIndex !== null}
+                disabled={!shots.length || imageQueue.isActive || generatingIndex !== null}
                 title="Regenerate every shot, including completed images"
               >
                 <RotateCcw size={14} /> Regenerate All
               </button>
-              <button className="btn-teal" onClick={handleApproveAll} disabled={isApproving}>
+              <button className="btn-secondary" onClick={handleApproveAll} disabled={isApproving}>
                 {isApproving ? 'Saving...' : <><Check size={14} /> Approve All</>}
               </button>
             </div>
@@ -608,32 +625,32 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                   <div className="shot-number">{String(i + 1).padStart(2, '0')}</div>
                   <div style={{
                     fontFamily: 'var(--font-display)',
-                    fontSize: '16px',
+                    fontSize: '1rem',
                     fontWeight: 700,
                     color: editModalIndex === i ? 'var(--cyan)' : 'var(--text)',
                     letterSpacing: '-0.01em',
-                    marginBottom: '4px',
+                    marginBottom: '0.25rem',
                     lineHeight: 1.2,
                   }}>
                     {shot.n || shot.title || `Shot ${i + 1}`}
                   </div>
                   <ExpandableText
                     text={shot.p || shot.prompt || 'No prompt available'}
-                    style={{ fontFamily: 'var(--font-body)', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.55, marginBottom: '8px' }}
+                    style={{ fontFamily: 'var(--font-body)', fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.55, marginBottom: '0.5rem' }}
                   />
-                  <div className="flex-row" style={{ flexWrap: 'wrap', gap: '5px' }}>
+                  <div className="flex-row" style={{ flexWrap: 'wrap', gap: '0.3125rem' }}>
                     {sceneCharacterTags.length ? sceneCharacterTags.map((tag) => (
-                      <span key={`${shot.n || i}-${tag}`} className="chip chip--teal" style={{ fontSize: '9px', padding: '3px 8px' }}>
+                      <span key={`${shot.n || i}-${tag}`} className="chip chip--teal" style={{ fontSize: '0.5625rem', padding: '0.1875rem 0.5rem' }}>
                         {tag}
                       </span>
                     )) : (
-                      <span className="chip chip--ghost" style={{ fontSize: '9px', padding: '3px 8px' }}>
+                      <span className="chip chip--ghost" style={{ fontSize: '0.5625rem', padding: '0.1875rem 0.5rem' }}>
                         No named characters
                       </span>
                     )}
                   </div>
                   {!shot.image_url && shot.image_error && (
-                    <div className="flex-row gap-6" style={{ marginTop: '7px', color: 'var(--error)', fontSize: '11px', alignItems: 'center' }}>
+                    <div className="flex-row gap-6" style={{ marginTop: '0.4375rem', color: 'var(--error)', fontSize: '0.6875rem', alignItems: 'center' }}>
                       <AlertTriangle size={13} />
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {shot.image_error.message}
@@ -644,26 +661,26 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
 
                 {/* Right column — image preview */}
                 <div style={{ flexShrink: 0 }}>
-                  <div className="shot-thumb neo-flat" style={{ width: '220px', height: '128px', border: '1px solid var(--border)', position: 'relative' }}>
+                  <div className="shot-thumb neo-flat" style={{ width: '13.75rem', height: '8rem', border: '0.0625rem solid var(--border)', position: 'relative' }}>
                     {shot.image_url ? (
                       <img src={shot.image_url} alt={shot.n || `Shot ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     ) : (
                       <canvas ref={(el) => (canvasRefs.current[i] = el)} width={220} height={128} style={{ display: 'block' }} />
                     )}
                     {generatingIndex === i && (
-                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.7)', color: 'var(--cyan)', fontSize: '11px', fontWeight: 700 }}>
+                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.7)', color: 'var(--cyan)', fontSize: '0.6875rem', fontWeight: 700 }}>
                         <Loader2 size={13} className="spin" /> Generating...
                       </div>
                     )}
                     {!shot.image_url && shot.image_error && generatingIndex !== i && (
-                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.7)', color: 'var(--error)', fontSize: '11px', fontWeight: 700 }}>
+                      <div className="flex-center gap-6" style={{ position: 'absolute', inset: 0, background: 'rgba(var(--ink-950-rgb), 0.7)', color: 'var(--error)', fontSize: '0.6875rem', fontWeight: 700 }}>
                         Try again
                       </div>
                     )}
                   </div>
                   <button
                     className="btn-outline"
-                    style={{ fontSize: '11px', padding: '6px 12px', marginTop: '8px', opacity: editModalIndex === i ? 0.5 : 1, cursor: editModalIndex === i ? 'default' : 'pointer', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+                    style={{ fontSize: '0.6875rem', padding: '0.375rem 0.75rem', marginTop: '0.5rem', opacity: editModalIndex === i ? 0.5 : 1, cursor: editModalIndex === i ? 'default' : 'pointer', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3125rem' }}
                     onClick={() => openEditor(i)}
                   >
                     {editModalIndex === i ? 'Editing...' : shot.image_url ? 'Edit & Regenerate' : shot.image_error ? 'Try Again' : 'Edit & Generate'}
@@ -672,14 +689,14 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
               </div>
             );
           }) : (
-            <div className="flex-col flex-center gap-16" style={{ padding: '80px 40px' }}>
-              <div className="icon-box-lg" style={{ width: '52px', height: '52px' }}>
+            <div className="flex-col flex-center gap-16" style={{ padding: '5rem 2.5rem' }}>
+              <div className="icon-box-lg" style={{ width: '3.25rem', height: '3.25rem' }}>
                 <ImagePlus size={22} color="var(--cyan)" />
               </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em', textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em', textAlign: 'center' }}>
                 No shots generated yet.
               </div>
-              <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '12px' }}>
+              <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '0.75rem' }}>
                 Back to Shots
               </button>
             </div>
@@ -697,13 +714,13 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
             animate="visible"
             exit="exit"
             className="flex-col scroll-y"
-            style={{ position: 'sticky', top: 0, width: '440px', height: '100%', background: 'var(--surface-2)', boxShadow: '-4px 0 20px rgba(var(--ink-950-rgb), 0.4)', borderLeft: '1px solid var(--border-mid)', padding: '24px', flexShrink: 0 }}
+            style={{ position: 'sticky', top: 0, width: '27.5rem', height: '100%', background: 'var(--surface-2)', boxShadow: '-0.25rem 0 1.25rem rgba(var(--ink-950-rgb), 0.4)', borderLeft: '0.0625rem solid var(--border-mid)', padding: '1.5rem', flexShrink: 0 }}
           >
             {/* Panel header */}
-            <div className="flex-between" style={{ marginBottom: '20px' }}>
+            <div className="flex-between" style={{ marginBottom: '1.25rem' }}>
               <div>
                 <div className="sidebar-header-kicker">▪ Edit Frame</div>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--text)', margin: 0, letterSpacing: '-0.02em' }}>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', margin: 0, letterSpacing: '-0.02em' }}>
                   Frame.
                 </h3>
               </div>
@@ -716,9 +733,9 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
             <div className="flex-col gap-16">
 
               {/* Two-column grid: Current image + Frame Status */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div>
-                  <div className="panel-meta-label" style={{ marginBottom: '8px' }}>Current</div>
+                  <div className="panel-meta-label" style={{ marginBottom: '0.5rem' }}>Current</div>
                   <div className="panel-inset" style={{ aspectRatio: '16/9', padding: 0, flex: 'none', overflow: 'hidden' }}>
                     {selectedShot.image_url ? (
                       <img src={selectedShot.image_url} alt={selectedShot.n || 'Current shot'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -728,16 +745,16 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                   </div>
                 </div>
                 <div>
-                  <div className="panel-meta-label" style={{ marginBottom: '8px' }}>Frame Status</div>
+                  <div className="panel-meta-label" style={{ marginBottom: '0.5rem' }}>Frame Status</div>
                   <div className="panel-inset flex-col flex-center gap-6" style={{ aspectRatio: '16/9', flex: 'none', whiteSpace: 'normal' }}>
                     <span style={{
-                      fontSize: '11px', fontWeight: 600, textAlign: 'center', padding: '0 8px',
+                      fontSize: '0.6875rem', fontWeight: 600, textAlign: 'center', padding: '0 0.5rem',
                       color: generatingIndex === editModalIndex ? 'var(--cyan)' : selectedShot.image_url ? 'var(--cyan)' : selectedShot.image_error ? 'var(--error)' : 'var(--text-muted)',
                     }}>
                       {generatingIndex === editModalIndex ? 'Generating now...' : selectedShot.image_url ? 'Generated' : selectedShot.image_error ? 'Ready to try again' : 'Not created yet'}
                     </span>
                     {!selectedShot.image_url && selectedShot.image_error && (
-                      <span style={{ fontSize: '10px', color: 'var(--error)', lineHeight: 1.4, textAlign: 'center', padding: '0 8px' }}>
+                      <span style={{ fontSize: '0.625rem', color: 'var(--error)', lineHeight: 1.4, textAlign: 'center', padding: '0 0.5rem' }}>
                         {selectedShot.image_error.message}
                       </span>
                     )}
@@ -745,26 +762,26 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                 </div>
               </div>
 
-              <div style={{ height: '1px', background: 'var(--border)' }} />
+              <div style={{ height: '0.0625rem', background: 'var(--border)' }} />
 
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text)' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.8125rem', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text)' }}>
                 Replace With
               </div>
 
               {/* Section 1: Upload */}
               <div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text)', marginBottom: '0.5rem' }}>
                   1. Upload Your Own
                 </div>
-                <div className="flex-col flex-center gap-8" style={{ background: 'var(--bg-deep)', boxShadow: 'var(--neo-inset)', border: '1.5px dashed var(--border-mid)', borderRadius: 'var(--radius)', padding: '20px', opacity: 0.55 }}>
+                <div className="flex-col flex-center gap-8" style={{ background: 'var(--bg-deep)', boxShadow: 'var(--neo-inset)', border: '0.0938rem dashed var(--border-mid)', borderRadius: 'var(--radius)', padding: '1.25rem', opacity: 0.55 }}>
                   <ImagePlus size={20} color="var(--text-muted)" />
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Browse Files</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Browse Files</span>
                 </div>
               </div>
 
               {/* Section 2: Generate from Prompt */}
               <div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text)', marginBottom: '0.5rem' }}>
                   2. Generate from Prompt
                 </div>
                 <textarea
@@ -773,13 +790,13 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                   onChange={(e) => setPromptDraft(e.target.value)}
                   onFocus={(e) => { e.target.style.borderColor = 'var(--cyan-border)'; }}
                   onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; }}
-                  style={{ minHeight: '108px', fontSize: '13px', padding: '12px', lineHeight: 1.45, transition: 'border-color 0.15s' }}
+                  style={{ minHeight: '6.75rem', fontSize: '0.8125rem', padding: '0.75rem', lineHeight: 1.45, transition: 'border-color 0.15s' }}
                 />
                 <select
                   className="select-model"
                   value={modelDraft}
                   onChange={(event) => setModelDraft(event.target.value)}
-                  style={{ width: '100%', marginTop: '8px' }}
+                  style={{ width: '100%', marginTop: '0.5rem' }}
                   title="Image model"
                 >
                   {IMAGE_GENERATION_MODELS.map(option => (
@@ -790,7 +807,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                   className="btn-outline"
                   onClick={handleRewritePrompt}
                   disabled={isRewritingPrompt || generatingIndex !== null}
-                  style={{ width: '100%', fontSize: '12px', padding: '10px', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                  style={{ width: '100%', fontSize: '0.75rem', padding: '0.625rem', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4375rem' }}
                 >
                   {isRewritingPrompt ? <><Loader2 size={13} className="spin" /> Rewriting…</> : <><RotateCcw size={13} /> Regenerate Prompt</>}
                 </button>
@@ -798,7 +815,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                   className="btn-orange"
                   onClick={handleGenerateOne}
                   disabled={generatingIndex !== null || !promptDraft.trim()}
-                  style={{ width: '100%', fontSize: '12px', padding: '10px', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px' }}
+                  style={{ width: '100%', fontSize: '0.75rem', padding: '0.625rem', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4375rem' }}
                 >
                   {generatingIndex === editModalIndex ? (
                     <><Loader2 size={14} className="spin" /> Generating...</>
@@ -812,6 +829,15 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
           </motion.div>
         )}
       </AnimatePresence>
+
+      <QueueStatusBar
+        jobs={imageQueue.jobs}
+        isActive={imageQueue.isActive}
+        stats={imageQueue.stats}
+        onAbort={imageQueue.abort}
+        onClear={imageQueue.clear}
+        label="Shot images"
+      />
     </div>
   );
 }

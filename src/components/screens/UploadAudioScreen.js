@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/utils/supabase';
-import { ArrowRight, Music2, Pause, Play, RefreshCw, Sparkles, UploadCloud, Loader2 } from 'lucide-react';
+import { Music2, Pause, Play, RefreshCw, Sparkles, UploadCloud, Loader2 } from 'lucide-react';
 import ProgressBar from '../ProgressBar';
+import WorkflowThreePaneShell from '../WorkflowThreePaneShell';
 
-export default function UploadAudioScreen({ onNavigate, projectId, existingAudioUrl, onUploadSuccess, projectState, onDataUpdate }) {
+export default function UploadAudioScreen({ projectId, existingAudioUrl, onUploadSuccess, projectState, onDataUpdate }) {
   const [isUploading, setIsUploading]   = useState(false);
   const [isAnalyzing, setIsAnalyzing]   = useState(false);
   const [progressStep, setProgressStep] = useState(-1);
@@ -144,393 +145,353 @@ export default function UploadAudioScreen({ onNavigate, projectId, existingAudio
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="screen active" id="s2">
+    <div className="screen active screen-fill" id="s2">
       <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="audio/*" style={{ display: 'none' }} />
       {existingAudioUrl && <audio ref={audioRef} src={existingAudioUrl} />}
 
-      {/* Header */}
-      <div className="screen-header-modern">
-        <div>
-          <div className="screen-kicker">Track · Setup</div>
-          <h1 className="screen-title">Bring the song.</h1>
-          <p className="screen-subtitle">
-            {existingAudioUrl
-              ? hasAnalysis
-                ? 'Your track insights are ready. Continue into the creative plan.'
-                : 'Track uploaded. Analyze it to extract tempo, lyrics, and mood cues.'
-              : 'Drop in your music file — MP3, WAV, or FLAC up to 200 MB.'}
-          </p>
-        </div>
-        <div className="screen-actions">
-          {existingAudioUrl && (
-            <button type="button" className="btn-outline" onClick={() => !isAnalyzing && fileInputRef.current?.click()} disabled={isAnalyzing || isUploading}>
-              <RefreshCw size={13} />
-              Replace
-            </button>
-          )}
-          {hasAnalysis && (
-            <button type="button" className="btn-teal" onClick={() => onNavigate(3)}>
-              Continue
-              <ArrowRight size={13} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Asymmetric 62/38 layout */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '62fr 38fr',
-        gap: '20px',
-        padding: '0 24px 24px',
-        flex: 1,
-        minHeight: 0,
-      }}>
-
-        {/* ── Main area ── */}
-        <section style={{
-          background: 'var(--surface-2)',
-          boxShadow: 'var(--neo-raised)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-xl)',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          {existingAudioUrl && !isUploading ? (
-            /* Player state */
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '28px', flex: 1 }}>
-              {/* Play button + track name */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
-                <button
-                  type="button"
-                  onClick={togglePlay}
-                  aria-label={isPlaying ? 'Pause' : 'Play'}
-                  style={{
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '50%',
-                    background: 'var(--surface)',
-                    boxShadow: isPlaying ? 'var(--neo-active)' : 'var(--neo-raised)',
-                    border: `1px solid ${isPlaying ? 'var(--cyan-border)' : 'var(--border-mid)'}`,
-                    color: isPlaying ? 'var(--cyan)' : 'var(--text)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    transition: 'box-shadow 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out',
-                  }}
-                >
-                  {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-                </button>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: '22px',
-                    fontWeight: '700',
-                    color: 'var(--text)',
-                    letterSpacing: '-0.025em',
-                    marginBottom: '4px',
-                  }}>
-                    {hasAnalysis ? 'Insights ready.' : 'Ready for analysis.'}
-                  </div>
-                  <div style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '10px',
-                    color: 'var(--text-muted)',
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
-                  }}>
-                    {hasAnalysis
-                      ? `${projectState.analysis.genre || 'Track'} · ${projectState.analysis.mood || ''}`
-                      : 'Track uploaded · awaiting analysis'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Scrubber */}
+      <WorkflowThreePaneShell
+        showLeftPanel={false}
+        sidebarTitle="Track"
+        rightTitle="Actions"
+        storageKey="workflow-three-pane:s2"
+        sidebar={null}
+        main={(
+          <div className="flex-col" style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
+            <div className="screen-header-modern">
               <div>
-                <div style={{
-                  position: 'relative',
-                  height: '4px',
-                  borderRadius: '999px',
-                  background: 'var(--bg-deep)',
-                  boxShadow: 'var(--neo-inset)',
-                  overflow: 'hidden',
-                  marginBottom: '10px',
-                }}>
-                  <div style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    height: '100%',
-                    width: `${progressPct}%`,
-                    background: 'var(--cyan)',
-                    borderRadius: '999px',
-                    transition: 'width 100ms linear',
-                  }} />
-                  <input
-                    type="range"
-                    min="0"
-                    max={duration || 0}
-                    value={currentTime}
-                    onChange={handleSeek}
-                    aria-label="Audio timeline"
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      width: '100%',
-                      opacity: 0,
-                      cursor: 'pointer',
-                      margin: 0,
-                    }}
-                  />
-                </div>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '10px',
-                  color: 'var(--text-muted)',
-                  letterSpacing: '0.06em',
-                }}>
-                  <span>{formatTime(currentTime)}</span>
-                  <span>−{formatTime(Math.max(0, (duration || 0) - currentTime))}</span>
-                </div>
+                <div className="screen-kicker">Track · Setup</div>
+                <h1 className="screen-title">Bring the song.</h1>
+                <p className="screen-subtitle">
+                  {existingAudioUrl
+                    ? hasAnalysis
+                      ? 'Your track insights are ready. Continue into the creative plan.'
+                      : 'Track uploaded. Analyze it to extract tempo, lyrics, and mood cues.'
+                    : 'Drop in your music file — MP3, WAV, or FLAC up to 200 MB.'}
+                </p>
               </div>
+            </div>
 
-              {/* Insights summary */}
-              {hasAnalysis && (
-                <div style={{
-                  background: 'var(--bg-deep)',
-                  boxShadow: 'var(--neo-inset)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius)',
-                  padding: '16px',
-                }}>
-                  <div style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: '10px',
-                    fontWeight: '700',
-                    letterSpacing: '0.14em',
-                    textTransform: 'uppercase',
-                    color: 'var(--text-muted)',
-                    marginBottom: '8px',
-                  }}>
-                    ▪ Song Insights
+            <div style={{ padding: '0 1.5rem 1.5rem', flex: 1, minHeight: 0 }}>
+              <section style={{
+                background: 'var(--surface-2)',
+                boxShadow: 'var(--neo-raised)',
+                border: '0.0625rem solid var(--border)',
+                borderRadius: 'var(--radius-xl)',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                minHeight: 0,
+              }}>
+                {existingAudioUrl && !isUploading ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.75rem', flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.125rem' }}>
+                      <button
+                        type="button"
+                        onClick={togglePlay}
+                        aria-label={isPlaying ? 'Pause' : 'Play'}
+                        style={{
+                          width: '3.25rem',
+                          height: '3.25rem',
+                          borderRadius: '50%',
+                          background: 'var(--surface)',
+                          boxShadow: isPlaying ? 'var(--neo-active)' : 'var(--neo-raised)',
+                          border: `0.0625rem solid ${isPlaying ? 'var(--cyan-border)' : 'var(--border-mid)'}`,
+                          color: isPlaying ? 'var(--cyan)' : 'var(--text)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                          transition: 'box-shadow 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out',
+                        }}
+                      >
+                        {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                      </button>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontFamily: 'var(--font-display)',
+                          fontSize: '1.375rem',
+                          fontWeight: '700',
+                          color: 'var(--text)',
+                          letterSpacing: '-0.025em',
+                          marginBottom: '0.25rem',
+                        }}>
+                          {hasAnalysis ? 'Insights ready.' : 'Ready for analysis.'}
+                        </div>
+                        <div style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.625rem',
+                          color: 'var(--text-muted)',
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                        }}>
+                          {hasAnalysis
+                            ? `${projectState.analysis.genre || 'Track'} · ${projectState.analysis.mood || ''}`
+                            : 'Track uploaded · awaiting analysis'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{
+                        position: 'relative',
+                        height: '0.25rem',
+                        borderRadius: '62.4375rem',
+                        background: 'var(--bg-deep)',
+                        boxShadow: 'var(--neo-inset)',
+                        overflow: 'hidden',
+                        marginBottom: '0.625rem',
+                      }}>
+                        <div style={{
+                          position: 'absolute',
+                          left: 0,
+                          top: 0,
+                          height: '100%',
+                          width: `${progressPct}%`,
+                          background: 'var(--cyan)',
+                          borderRadius: '62.4375rem',
+                          transition: 'width 100ms linear',
+                        }} />
+                        <input
+                          type="range"
+                          min="0"
+                          max={duration || 0}
+                          value={currentTime}
+                          onChange={handleSeek}
+                          aria-label="Audio timeline"
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            width: '100%',
+                            opacity: 0,
+                            cursor: 'pointer',
+                            margin: 0,
+                          }}
+                        />
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.625rem',
+                        color: 'var(--text-muted)',
+                        letterSpacing: '0.06em',
+                      }}>
+                        <span>{formatTime(currentTime)}</span>
+                        <span>−{formatTime(Math.max(0, (duration || 0) - currentTime))}</span>
+                      </div>
+                    </div>
+
+                    {hasAnalysis && (
+                      <div style={{
+                        background: 'var(--bg-deep)',
+                        boxShadow: 'var(--neo-inset)',
+                        border: '0.0625rem solid var(--border)',
+                        borderRadius: 'var(--radius)',
+                        padding: '1rem',
+                      }}>
+                        <div style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.625rem',
+                          fontWeight: '700',
+                          letterSpacing: '0.14em',
+                          textTransform: 'uppercase',
+                          color: 'var(--text-muted)',
+                          marginBottom: '0.5rem',
+                        }}>
+                          ▪ Song Insights
+                        </div>
+                        <p style={{
+                          fontFamily: 'var(--font-body)',
+                          fontSize: '0.8125rem',
+                          color: 'var(--text-soft)',
+                          lineHeight: 1.65,
+                        }}>
+                          {projectState.analysis.summary || `This ${projectState.analysis.genre || ''} track has a ${projectState.analysis.mood || ''} mood.`}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <p style={{
-                    fontFamily: 'var(--font-body)',
-                    fontSize: '13px',
-                    color: 'var(--text-soft)',
-                    lineHeight: 1.65,
-                  }}>
-                    {projectState.analysis.summary || `This ${projectState.analysis.genre || ''} track has a ${projectState.analysis.mood || ''} mood.`}
-                  </p>
-                </div>
-              )}
-
-              {/* CTA */}
-              <div style={{ marginTop: 'auto' }}>
-                {!hasAnalysis ? (
-                  <button
-                    type="button"
-                    className="btn-orange"
-                    onClick={handleAnalyze}
-                    disabled={isAnalyzing}
-                    style={{ width: '100%', padding: '14px', justifyContent: 'center' }}
+                ) : (
+                  <div
+                    onClick={() => !isUploading && fileInputRef.current?.click()}
+                    onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !isUploading) { e.preventDefault(); fileInputRef.current?.click(); } }}
+                    onDragOver={(e) => { e.preventDefault(); if (!isUploading) setIsDragging(true); }}
+                    onDragEnter={(e) => { e.preventDefault(); if (!isUploading) setIsDragging(true); }}
+                    onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false); }}
+                    onDrop={handleDrop}
+                    role="button"
+                    tabIndex={0}
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '1.25rem',
+                      padding: '3rem',
+                      background: isDragging ? 'rgba(var(--cyan-rgb), 0.04)' : 'var(--bg-deep)',
+                      boxShadow: 'var(--neo-inset)',
+                      borderRadius: 'var(--radius-xl)',
+                      margin: '1rem',
+                      cursor: isUploading ? 'wait' : 'pointer',
+                      border: isDragging ? '0.0938rem dashed var(--cyan-border)' : '0.0938rem dashed var(--border-mid)',
+                      transition: 'border-color 160ms ease-out, background 160ms ease-out',
+                      textAlign: 'center',
+                    }}
+                    onMouseEnter={e => { if (!isUploading && !isDragging) e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
+                    onMouseLeave={e => { if (!isDragging) e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
                   >
+                    <div style={{
+                      width: '4rem',
+                      height: '4rem',
+                      borderRadius: '1.125rem',
+                      background: 'var(--surface)',
+                      boxShadow: 'var(--neo-raised)',
+                      border: '0.0625rem solid var(--border-mid)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--cyan)',
+                    }}>
+                      {isUploading
+                        ? <Loader2 size={26} className="spin" />
+                        : <UploadCloud size={26} />}
+                    </div>
+                    <div>
+                      <div style={{
+                        fontFamily: 'var(--font-display)',
+                        fontSize: '1.375rem',
+                        fontWeight: '700',
+                        color: 'var(--text)',
+                        letterSpacing: '-0.025em',
+                        marginBottom: '0.375rem',
+                      }}>
+                        {isUploading ? 'Uploading…' : 'Drop a track in.'}
+                      </div>
+                      <div style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.625rem',
+                        color: 'var(--text-muted)',
+                        letterSpacing: '0.14em',
+                        textTransform: 'uppercase',
+                      }}>
+                        {isUploading ? 'Please wait' : 'MP3 · WAV · FLAC · ≤ 200 MB'}
+                      </div>
+                    </div>
+                    {!isUploading && (
+                      <div style={{
+                        padding: '0.5625rem 1.25rem',
+                        background: 'var(--surface)',
+                        boxShadow: 'var(--neo-raised)',
+                        border: '0.0625rem solid var(--cyan-border)',
+                        borderRadius: 'var(--radius)',
+                        color: 'var(--cyan)',
+                        fontFamily: 'var(--font-body)',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        pointerEvents: 'none',
+                      }}>
+                        Choose audio file
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            </div>
+          </div>
+        )}
+        right={(
+          <aside style={{
+            height: '100%',
+            padding: '1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+          }}>
+            <div className="panel-flat">
+              <div className="panel-meta-label">▪ Actions</div>
+              <div className="flex-col gap-8">
+                {existingAudioUrl && (
+                  <button type="button" className="btn-outline" onClick={() => !isAnalyzing && fileInputRef.current?.click()} disabled={isAnalyzing || isUploading} style={{ width: '100%', justifyContent: 'center' }}>
+                    <RefreshCw size={13} />
+                    Replace Track
+                  </button>
+                )}
+                {!hasAnalysis ? (
+                  <button type="button" className="btn-orange" onClick={handleAnalyze} disabled={isAnalyzing || !existingAudioUrl} style={{ width: '100%', justifyContent: 'center' }}>
                     {isAnalyzing ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
                     {isAnalyzing ? 'Analyzing…' : 'Analyze Track'}
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    className="btn-teal"
-                    onClick={() => onNavigate(3)}
-                    style={{ width: '100%', padding: '14px', justifyContent: 'center' }}
-                  >
-                    Continue to Story
-                    <ArrowRight size={15} />
-                  </button>
+                  <div className="panel-inset" style={{ flex: 'none', whiteSpace: 'normal', padding: '0.875rem' }}>
+                    <p className="body-sm">
+                      Analysis is ready. Use the left step bar to open <strong>Story</strong>.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
-          ) : (
-            /* Dropzone state */
-            <div
-              onClick={() => !isUploading && fileInputRef.current?.click()}
-              onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !isUploading) { e.preventDefault(); fileInputRef.current?.click(); } }}
-              onDragOver={(e) => { e.preventDefault(); if (!isUploading) setIsDragging(true); }}
-              onDragEnter={(e) => { e.preventDefault(); if (!isUploading) setIsDragging(true); }}
-              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false); }}
-              onDrop={handleDrop}
-              role="button"
-              tabIndex={0}
-              style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '20px',
-                padding: '48px',
-                background: isDragging ? 'rgba(var(--cyan-rgb), 0.04)' : 'var(--bg-deep)',
-                boxShadow: 'var(--neo-inset)',
-                borderRadius: 'var(--radius-xl)',
-                margin: '16px',
-                cursor: isUploading ? 'wait' : 'pointer',
-                border: isDragging ? '1.5px dashed var(--cyan-border)' : '1.5px dashed var(--border-mid)',
-                transition: 'border-color 160ms ease-out, background 160ms ease-out',
-                textAlign: 'center',
-              }}
-              onMouseEnter={e => { if (!isUploading && !isDragging) e.currentTarget.style.borderColor = 'var(--cyan-border)'; }}
-              onMouseLeave={e => { if (!isDragging) e.currentTarget.style.borderColor = 'var(--border-mid)'; }}
-            >
-              <div style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '18px',
-                background: 'var(--surface)',
-                boxShadow: 'var(--neo-raised)',
-                border: '1px solid var(--border-mid)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--cyan)',
-              }}>
-                {isUploading
-                  ? <Loader2 size={26} className="spin" />
-                  : <UploadCloud size={26} />}
+
+            <div className="panel-flat">
+              <div className="panel-meta-label">▪ Production Readiness</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+                {[
+                  { label: 'Duration', value: formatTime(duration || projectState?.audio_duration_seconds || 0) },
+                  { label: 'BPM', value: projectState?.analysis?.bpm || '—' },
+                  { label: 'Lyrics', value: projectState?.analysis?.lyrics?.length || 0 },
+                  { label: 'Insights', value: hasAnalysis ? 'Ready' : 'Pending', highlight: hasAnalysis },
+                ].map(({ label, value, highlight }) => (
+                  <div key={label} style={{
+                    background: 'var(--bg-deep)',
+                    boxShadow: 'var(--neo-inset)',
+                    border: '0.0625rem solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    padding: '0.75rem 0.875rem',
+                  }}>
+                    <div style={{
+                      fontFamily: 'var(--font-display)',
+                      fontSize: '1.125rem',
+                      fontWeight: '700',
+                      color: highlight ? 'var(--cyan)' : 'var(--text)',
+                      letterSpacing: '-0.02em',
+                      marginBottom: '0.25rem',
+                    }}>
+                      {value}
+                    </div>
+                    <div style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.5625rem',
+                      color: 'var(--text-muted)',
+                      letterSpacing: '0.14em',
+                      textTransform: 'uppercase',
+                    }}>
+                      {label}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <div style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '22px',
-                  fontWeight: '700',
-                  color: 'var(--text)',
-                  letterSpacing: '-0.025em',
-                  marginBottom: '6px',
-                }}>
-                  {isUploading ? 'Uploading…' : 'Drop a track in.'}
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '10px',
-                  color: 'var(--text-muted)',
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                }}>
-                  {isUploading ? 'Please wait' : 'MP3 · WAV · FLAC · ≤ 200 MB'}
-                </div>
-              </div>
-              {!isUploading && (
-                <div style={{
-                  padding: '9px 20px',
-                  background: 'var(--surface)',
-                  boxShadow: 'var(--neo-raised)',
-                  border: '1px solid var(--cyan-border)',
-                  borderRadius: 'var(--radius)',
-                  color: 'var(--cyan)',
-                  fontFamily: 'var(--font-body)',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  pointerEvents: 'none',
-                }}>
-                  Choose audio file
-                </div>
-              )}
             </div>
-          )}
-        </section>
 
-        {/* ── Sidebar ── */}
-        <aside style={{
-          background: 'var(--surface-2)',
-          boxShadow: 'var(--neo-flat)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-xl)',
-          padding: '24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-        }}>
-          <div style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '10px',
-            fontWeight: '700',
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--text-muted)',
-          }}>
-            ▪ Production Readiness
-          </div>
-
-          {/* Stats 2x2 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            {[
-              { label: 'Duration', value: formatTime(duration || projectState?.audio_duration_seconds || 0) },
-              { label: 'BPM',      value: projectState?.analysis?.bpm || '—' },
-              { label: 'Lyrics',   value: projectState?.analysis?.lyrics?.length || 0 },
-              { label: 'Insights', value: hasAnalysis ? 'Ready' : 'Pending', highlight: hasAnalysis },
-            ].map(({ label, value, highlight }) => (
-              <div key={label} style={{
-                background: 'var(--bg-deep)',
-                boxShadow: 'var(--neo-inset)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                padding: '12px 14px',
-              }}>
-                <div style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '18px',
-                  fontWeight: '700',
-                  color: highlight ? 'var(--cyan)' : 'var(--text)',
-                  letterSpacing: '-0.02em',
-                  marginBottom: '4px',
-                }}>
-                  {value}
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '9px',
+            <div className="panel-flat" style={{ marginTop: 'auto' }}>
+              <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
+                <Music2 size={14} color="var(--cyan)" style={{ marginTop: '0.125rem', flexShrink: 0 }} />
+                <p style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: '0.75rem',
                   color: 'var(--text-muted)',
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
+                  lineHeight: 1.6,
                 }}>
-                  {label}
-                </div>
+                  The next screens use these insights to keep story beats, shot timing, and clip durations anchored to the song.
+                </p>
               </div>
-            ))}
-          </div>
+            </div>
 
-          {/* Info */}
-          <div style={{
-            background: 'var(--bg-deep)',
-            boxShadow: 'var(--neo-inset)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            padding: '14px',
-            display: 'flex',
-            gap: '10px',
-            alignItems: 'flex-start',
-            marginTop: 'auto',
-          }}>
-            <Music2 size={14} color="var(--cyan)" style={{ marginTop: '2px', flexShrink: 0 }} />
-            <p style={{
-              fontFamily: 'var(--font-body)',
-              fontSize: '12px',
-              color: 'var(--text-muted)',
-              lineHeight: 1.6,
-            }}>
-              The next screens use these insights to keep story beats, shot timing, and clip durations anchored to the song.
-            </p>
-          </div>
-
-          {isAnalyzing && <ProgressBar steps={AUDIO_STEPS} currentStep={progressStep} />}
-        </aside>
-      </div>
+            {isAnalyzing && <ProgressBar steps={AUDIO_STEPS} currentStep={progressStep} />}
+          </aside>
+        )}
+      />
     </div>
   );
 }
