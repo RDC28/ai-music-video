@@ -388,3 +388,30 @@ Rules:
 17. Keep the tone grounded, natural, and serious unless the user explicitly requested a different tone.
 `;
 }
+
+function stripPromptSection(prompt, header, nextHeader) {
+  const start = prompt.indexOf(header);
+  if (start < 0) return prompt;
+  const end = nextHeader ? prompt.indexOf(nextHeader, start) : -1;
+  if (end < 0) return `${prompt.slice(0, start).trimEnd()}\n`;
+  return `${prompt.slice(0, start).trimEnd()}\n\n${prompt.slice(end).trimStart()}`;
+}
+
+export function buildAudioSafePrompt(prompt) {
+  if (!prompt) return "";
+  let safePrompt = String(prompt);
+
+  safePrompt = stripPromptSection(safePrompt, "TIMING AND VOCAL CUE:", "PROJECT STORY CONTEXT:");
+  safePrompt = stripPromptSection(safePrompt, "VOCAL TRANSCRIPT CONTEXT:", "SHOT NON-NEGOTIABLES:");
+
+  safePrompt = safePrompt
+    .replace(/lyrics?:/gi, "timing cue:")
+    .replace(/\bvocal\b/gi, "performance")
+    .replace(/\bsinging\b/gi, "expressive performance")
+    .replace(/\bvoice\b/gi, "expression")
+    .replace(/\baudio\b/gi, "soundtrack")
+    .replace(/\bmusic\b/gi, "backing track")
+    .replace(/\blip[-\s]?sync\b/gi, "mouth movement matching");
+
+  return `${safePrompt.trim()}\n\nAUDIO FILTER FALLBACK MODE:\nTreat this as visual-only generation. Avoid any dependence on lyrics, vocals, dialogue, or spoken-word cues.\n`;
+}

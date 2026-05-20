@@ -28,7 +28,7 @@ import {
   ASPECT_RATIO_TOLERANCE,
   compact,
 } from "./shotVideoConstants.js";
-import { buildPrompt, selectVideoPrompt } from "./promptBuilder.js";
+import { buildAudioSafePrompt, buildPrompt, selectVideoPrompt } from "./promptBuilder.js";
 import { runSeedanceVideoGeneration } from "./seedanceProvider.js";
 
 export const runtime = "nodejs";
@@ -73,6 +73,14 @@ function isRetryableError(error) {
   );
 }
 
+function isAudioFilteredVideoError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    message.includes("video was filtered") &&
+    (message.includes("audio") || message.includes("safety filter") || message.includes("processing issues"))
+  );
+}
+
 function serializeError(error) {
   return {
     message: error?.message || "Unknown video generation error",
@@ -84,6 +92,7 @@ function serializeError(error) {
 function shouldFallbackVideoModel(error) {
   const message = String(error?.message || "").toLowerCase();
   if (message.includes("still processing")) return false;
+  if (isAudioFilteredVideoError(error)) return false;
   return isRetryableError(error);
 }
 
@@ -437,7 +446,7 @@ export async function POST(req) {
       selectedModel.value
     );
 
-    const prompt = buildPrompt({
+    const basePrompt = buildPrompt({
       shot: normalizedShot,
       projectState,
       promptOverride,
@@ -451,46 +460,59 @@ export async function POST(req) {
       resolution: normalizeResolution(resolution, requestedDuration),
     };
 
-    const videoGeneration = selectedModel.provider === VIDEO_MODEL_PROVIDER_SEEDANCE
-      ? await runSeedanceVideoGeneration({
-          modelName: selectedModel.value,
-          prompt,
-          imageUrl: sourceImageWasUsed ? normalizedShot.image_url : null,
-          durationSeconds: requestedDuration,
-        })
-      : await runWithModelFallback({
-          label: `Shot ${shotIndex + 1} video generation`,
-          models: getFallbackModels(selectedModel.value, VIDEO_MODEL_FALLBACKS),
-          shouldFallback: shouldFallbackVideoModel,
-          operation: async (modelName) => {
-            const request = {
-              model: modelName,
-              prompt,
-              config: requestConfig,
-            };
-            if (sourceImage) {
-              request.image = {
-                imageBytes: sourceImage.imageBytes,
-                mimeType: sourceImage.mimeType,
-              };
-            }
+    let usedAudioSafePrompt = false;
+    const runGoogleGeneration = async (promptText) => runWithModelFallback({
+      label: `Shot ${shotIndex + 1} video generation`,
+      models: getFallbackModels(selectedModel.value, VIDEO_MODEL_FALLBACKS),
+      shouldFallback: shouldFallbackVideoModel,
+      operation: async (modelName) => {
+        const request = {
+          model: modelName,
+          prompt: promptText,
+          config: requestConfig,
+        };
+        if (sourceImage) {
+          request.image = {
+            imageBytes: sourceImage.imageBytes,
+            mimeType: sourceImage.mimeType,
+          };
+        }
 
-            const submittedOperation = await withRetry(
-              () => withTimeout(
-                () => ai.models.generateVideos(request),
-                VIDEO_SUBMIT_TIMEOUT_MS,
-                `Video model submission (${modelName})`
-              ),
-              {
-                label: `Shot ${shotIndex + 1} video submission (${modelName})`,
-                attempts: MAX_SUBMIT_RETRIES,
-                baseDelayMs: 1800,
-              }
-            );
+        const submittedOperation = await withRetry(
+          () => withTimeout(
+            () => ai.models.generateVideos(request),
+            VIDEO_SUBMIT_TIMEOUT_MS,
+            `Video model submission (${modelName})`
+          ),
+          {
+            label: `Shot ${shotIndex + 1} video submission (${modelName})`,
+            attempts: MAX_SUBMIT_RETRIES,
+            baseDelayMs: 1800,
+          }
+        );
 
-            return pollVideoOperation(submittedOperation);
-          },
-        });
+        return pollVideoOperation(submittedOperation);
+      },
+    });
+
+    let videoGeneration;
+    if (selectedModel.provider === VIDEO_MODEL_PROVIDER_SEEDANCE) {
+      videoGeneration = await runSeedanceVideoGeneration({
+        modelName: selectedModel.value,
+        prompt: basePrompt,
+        imageUrl: sourceImageWasUsed ? normalizedShot.image_url : null,
+        durationSeconds: requestedDuration,
+      });
+    } else {
+      try {
+        videoGeneration = await runGoogleGeneration(basePrompt);
+      } catch (error) {
+        if (!isAudioFilteredVideoError(error)) throw error;
+        console.warn(`Shot ${shotIndex + 1} hit audio/safety filter. Retrying once with audio-safe prompt sanitization.`);
+        usedAudioSafePrompt = true;
+        videoGeneration = await runGoogleGeneration(buildAudioSafePrompt(basePrompt));
+      }
+    }
     sourceImage = null;
 
     const completedOperation = videoGeneration.result;
@@ -558,6 +580,7 @@ export async function POST(req) {
         video_url: publicUrl,
         video_path: storagePath,
         video_prompt: compact(selectedVideoPrompt, 6400),
+        video_prompt_audio_safe_retry: usedAudioSafePrompt,
         video_model: videoGeneration.model,
         veo_duration_seconds: requestConfig.durationSeconds,
         video_duration_seconds: requestConfig.durationSeconds,

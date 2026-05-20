@@ -157,15 +157,6 @@ export default function LandingScreen({ onNavigate, userName }) {
               <div className="panel-meta-label">Active Format</div>
               <div className="landing-quick-title">{primaryAction.title}</div>
               <p className="body-sm">{primaryAction.copy}</p>
-              <button
-                type="button"
-                className="btn-orange"
-                style={{ width: '100%', marginTop: '0.75rem', justifyContent: 'center' }}
-                onClick={() => onNavigate(primaryAction.step)}
-              >
-                Continue to Audio
-                <ArrowRight size={14} />
-              </button>
             </div>
 
             <div className="panel-flat">

@@ -61,6 +61,7 @@ Rebuild after: characters added/updated, locations added/updated, wardrobe assig
 - Completed 2026-05-19: full codebase refactor — globals.css, components.css, and all screen/component JS files converted.
 
 ## Change Log
+- 2026-05-20: Hardened `generate-shot-video` Veo failure recovery for filtered/audio-triggered responses: added explicit non-fallback classification for safety-filter errors, one-time prompt sanitization retry mode (`buildAudioSafePrompt`) after audio-filter failures, and aligned retryability classification in `googleModelFallbacks` so provider "try again" wording no longer mislabels non-retryable filtered failures.
 - 2026-05-19: Polished screen 1 (Home) into the shared app shell pattern (StageRail + center workspace + right quick-start panel), keeping format selection behavior unchanged while aligning spacing/interaction patterns with migrated workflow screens.
 - 2026-05-19: Migrated screen 4 (Cast/Characters) and screen 6 (Wardrobe) to the shared `WorkflowThreePaneShell` with `showLeftPanel=false`, keeping StageRail as the only left app rail and moving screen-specific controls into the shell right panel.
 - 2026-05-19: Updated screen 5 (Sets/Locations) to the same 3-column app composition (StageRail + center content + right controls panel), moved controls to the right side, and removed duplicate in-screen navigation CTA.

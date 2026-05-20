@@ -284,7 +284,7 @@ export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, p
               <div className="panel-meta-label">▪ Actions</div>
               <div className="flex-col gap-8">
                 <button
-                  className="btn-orange"
+                  className="btn-action-generate"
                   onClick={() => handleBrainDump()}
                   disabled={isAnalyzing || !idea.trim()}
                   style={{ width: '100%', justifyContent: 'center' }}

@@ -17,6 +17,7 @@ import {
   IMAGE_GENERATION_TIMEOUT_MS,
   STORAGE_UPLOAD_TIMEOUT_MS,
   QUALITY_CANDIDATE_COUNT,
+  STRICT_IDENTITY_LOCK,
   compact,
 } from "./shotImageConstants.js";
 import {
@@ -44,6 +45,53 @@ export const dynamic = "force-dynamic";
 const genAI = process.env.GOOGLE_AI_API_KEY
   ? new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY })
   : null;
+
+function getResponseCandidates(result) {
+  if (Array.isArray(result?.candidates)) return result.candidates;
+  if (Array.isArray(result?.response?.candidates)) return result.response.candidates;
+  return [];
+}
+
+function getPromptFeedback(result) {
+  return result?.promptFeedback || result?.response?.promptFeedback || null;
+}
+
+function extractImagePart(result) {
+  const candidates = getResponseCandidates(result);
+  for (const candidate of candidates) {
+    const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+    for (const part of parts) {
+      const inlineData = part?.inlineData || part?.inline_data;
+      const generatedBase64 = inlineData?.data || inlineData?.bytesBase64Encoded || inlineData?.b64Data;
+      if (generatedBase64) {
+        return {
+          imageBase64: generatedBase64,
+          mimeType: inlineData?.mimeType || inlineData?.mime_type || "image/png",
+        };
+      }
+
+      const text = typeof part?.text === "string" ? part.text : "";
+      const dataUrlMatch = text.match(/data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)/);
+      if (dataUrlMatch) {
+        return {
+          imageBase64: dataUrlMatch[2],
+          mimeType: dataUrlMatch[1] || "image/png",
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function inferNoImageReason(result) {
+  const candidates = getResponseCandidates(result);
+  const finishReason = candidates
+    .map(candidate => candidate?.finishReason || candidate?.finish_reason)
+    .find(Boolean);
+  const promptFeedback = getPromptFeedback(result);
+  const promptBlockReason = promptFeedback?.blockReason || promptFeedback?.block_reason;
+  return finishReason || promptBlockReason || null;
+}
 
 async function generateGoogleImage({ prompt, modelName, shotIndex, referenceImages = [] }) {
   if (!genAI) {
@@ -80,24 +128,30 @@ async function generateGoogleImage({ prompt, modelName, shotIndex, referenceImag
         `Image model request (${activeModelName})`
       );
 
-      const imagePart = result.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
-      const generatedBase64 = imagePart?.inlineData?.data;
+      const extractedImage = extractImagePart(result);
 
-      if (!generatedBase64) {
-        const reason = result.candidates?.[0]?.finishReason;
+      if (!extractedImage?.imageBase64) {
+        const reason = inferNoImageReason(result);
         const err = new Error(reason ? `Image model returned no image data (${reason})` : "Image model returned no image data");
-        err.retryable = reason !== "SAFETY";
+        err.retryable = reason !== "SAFETY" && reason !== "PROHIBITED_CONTENT";
+        const candidates = getResponseCandidates(result);
+        console.warn(`Shot ${shotIndex + 1} image response had no decodable image payload`, {
+          model: activeModelName,
+          candidateCount: candidates.length,
+          finishReasons: candidates.map(candidate => candidate?.finishReason || candidate?.finish_reason).filter(Boolean),
+          promptFeedback: getPromptFeedback(result) || null,
+        });
         throw err;
       }
 
       assertNativeWidescreenImage(
-        Buffer.from(generatedBase64, "base64"),
+        Buffer.from(extractedImage.imageBase64, "base64"),
         `Shot ${shotIndex + 1} source frame`
       );
 
       return {
-        imageBase64: generatedBase64,
-        mimeType: imagePart.inlineData.mimeType || "image/png",
+        imageBase64: extractedImage.imageBase64,
+        mimeType: extractedImage.mimeType || "image/png",
       };
     }, {
       label: `Shot ${shotIndex + 1} image generation (${activeModelName})`,
@@ -109,6 +163,7 @@ async function generateGoogleImage({ prompt, modelName, shotIndex, referenceImag
 
 async function generateBestCandidate({ prompt, modelName, shotIndex, referenceImages = [] }) {
   const charWardrobeRefs = referenceImages.filter(r => r.kind === "character" || r.kind === "wardrobe");
+  const enforceIdentityLock = STRICT_IDENTITY_LOCK && charWardrobeRefs.length > 0;
 
   if (!charWardrobeRefs.length || QUALITY_CANDIDATE_COUNT <= 1) {
     return generateGoogleImage({ prompt, modelName, shotIndex, referenceImages });
@@ -117,6 +172,7 @@ async function generateBestCandidate({ prompt, modelName, shotIndex, referenceIm
   return new Promise((resolve, reject) => {
     let settled = 0;
     let bestGeneration = null;
+    let bestQuality = null;
     let bestScore = -1;
     let resolved = false;
     const total = QUALITY_CANDIDATE_COUNT;
@@ -126,10 +182,17 @@ async function generateBestCandidate({ prompt, modelName, shotIndex, referenceIm
       settled++;
       if (settled === total && !resolved) {
         resolved = true;
-        if (bestGeneration) {
+        if (bestGeneration && !enforceIdentityLock) {
           resolve(bestGeneration);
         } else {
-          generateGoogleImage({ prompt, modelName, shotIndex, referenceImages }).then(resolve).catch(reject);
+          const identityError = new Error(
+            bestQuality
+              ? `Strict identity lock failed (face=${bestQuality.faceScore}, outfit=${bestQuality.outfitScore})`
+              : "Strict identity lock failed (no passing identity candidate)"
+          );
+          identityError.status = 422;
+          identityError.retryable = false;
+          reject(identityError);
         }
       }
     };
@@ -146,6 +209,7 @@ async function generateBestCandidate({ prompt, modelName, shotIndex, referenceIm
           if (score > bestScore) {
             bestScore = score;
             bestGeneration = generation;
+            bestQuality = qc;
           }
           settled++;
           if (!resolved && qc.pass) {
@@ -155,7 +219,18 @@ async function generateBestCandidate({ prompt, modelName, shotIndex, referenceIm
           }
           if (settled === total && !resolved) {
             resolved = true;
-            resolve(bestGeneration);
+            if (bestGeneration && !enforceIdentityLock) {
+              resolve(bestGeneration);
+            } else {
+              const identityError = new Error(
+                bestQuality
+                  ? `Strict identity lock failed (face=${bestQuality.faceScore}, outfit=${bestQuality.outfitScore})`
+                  : "Strict identity lock failed (no passing identity candidate)"
+              );
+              identityError.status = 422;
+              identityError.retryable = false;
+              reject(identityError);
+            }
           }
         })
         .catch((err) => onFail(candidateIndex, err));
@@ -297,10 +372,23 @@ Do not change anything except what is needed to fix character identity.`;
               if (repairQcResult.pass) {
                 imageGeneration = repairGeneration;
                 generatedImage = repairGeneration.result;
+              } else if (STRICT_IDENTITY_LOCK) {
+                throw createProviderError(
+                  `Strict identity lock failed after repair (face=${repairQcResult.faceScore}, outfit=${repairQcResult.outfitScore})`,
+                  { status: 422, retryable: false }
+                );
               }
             } catch (repairError) {
+              if (STRICT_IDENTITY_LOCK) {
+                throw repairError;
+              }
               console.warn(`Shot ${shotIndex + 1} repair pass failed:`, serializeError(repairError));
             }
+          } else if (STRICT_IDENTITY_LOCK) {
+            throw createProviderError(
+              `Strict identity lock failed (face=${qcResult.faceScore}, outfit=${qcResult.outfitScore})`,
+              { status: 422, retryable: false }
+            );
           }
         }
       }
@@ -357,13 +445,14 @@ Do not change anything except what is needed to fix character identity.`;
   } catch (error) {
     const serialized = serializeError(error);
     console.error("Shot Image Generation API Error:", serialized);
+    const responseStatus = Number(serialized.status) || (serialized.retryable ? 503 : 500);
     return NextResponse.json(
       {
         error: serialized.message,
         retryable: serialized.retryable,
         status: serialized.status,
       },
-      { status: serialized.retryable ? 503 : 500 }
+      { status: responseStatus }
     );
   }
 }

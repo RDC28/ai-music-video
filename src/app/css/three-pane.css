@@ -41,6 +41,7 @@
   border-left: 0.0625rem solid var(--border);
   background: linear-gradient(180deg, rgba(var(--ink-900-rgb), 0.98), rgba(var(--ink-950-rgb), 0.95));
   container-type: inline-size;
+  min-width: 17.5rem;
 }
 
 .three-pane-panel-header {
@@ -86,6 +87,7 @@
   min-height: 0;
   overflow: auto;
   min-width: 0;
+  overflow-x: hidden;
 }
 
 .three-pane-panel--left.is-collapsed .three-pane-panel-body {
@@ -132,6 +134,7 @@
   padding: 1rem;
   overflow-y: auto;
   overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .three-pane-panel--right .edit-side-panel > * {
@@ -142,10 +145,12 @@
   display: grid;
   gap: 0.625rem;
   min-width: 0;
+  width: 100%;
 }
 
 .three-pane-panel--right .panel-form-grid > * {
   min-width: 0;
+  max-width: 100%;
 }
 
 .three-pane-panel--right .panel-form-grid--triple {
@@ -170,6 +175,7 @@
 .three-pane-panel--right .textarea-inset {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
 }
 
 @container (max-width: 33rem) {

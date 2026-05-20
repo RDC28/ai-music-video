@@ -15,10 +15,15 @@ export const MAX_REFERENCE_IMAGES = 12;
 export const MAX_REFERENCE_IMAGES_PER_CHARACTER = 3;
 export const MAX_REFERENCE_IMAGES_PER_LOCATION = 3;
 export const QUALITY_CANDIDATE_COUNT = Number(process.env.IMAGE_QUALITY_CANDIDATES || 2);
-export const FACE_SCORE_THRESHOLD = Number(process.env.FACE_SCORE_THRESHOLD || 6);
-export const OUTFIT_SCORE_THRESHOLD = Number(process.env.OUTFIT_SCORE_THRESHOLD || 5);
+export const FACE_SCORE_THRESHOLD = Number(process.env.FACE_SCORE_THRESHOLD || 9);
+export const OUTFIT_SCORE_THRESHOLD = Number(process.env.OUTFIT_SCORE_THRESHOLD || 9);
+export const STRICT_IDENTITY_LOCK = String(process.env.STRICT_IDENTITY_LOCK || "true").toLowerCase() !== "false";
 export const QUALITY_CHECK_TIMEOUT_MS = 25000;
-export const QUALITY_CHECK_MODEL = process.env.GOOGLE_QUALITY_CHECK_MODEL || "gemini-2.0-flash";
+export const QUALITY_CHECK_MODEL = process.env.GOOGLE_QUALITY_CHECK_MODEL || "gemini-2.5-flash";
+export const QUALITY_CHECK_MODEL_FALLBACKS = String(process.env.GOOGLE_QUALITY_CHECK_MODELS || "")
+  .split(",")
+  .map(model => model.trim())
+  .filter(Boolean);
 
 export const CHARACTER_REFERENCE_PRIORITY = [
   "face close-up front",

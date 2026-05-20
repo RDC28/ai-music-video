@@ -3,8 +3,22 @@ import {
   OUTFIT_SCORE_THRESHOLD,
   QUALITY_CHECK_TIMEOUT_MS,
   QUALITY_CHECK_MODEL,
+  QUALITY_CHECK_MODEL_FALLBACKS,
 } from "./shotImageConstants.js";
 import { withTimeout } from "./referenceImages.js";
+
+function qcModels() {
+  const models = [...QUALITY_CHECK_MODEL_FALLBACKS];
+  if (!models.includes(QUALITY_CHECK_MODEL)) models.unshift(QUALITY_CHECK_MODEL);
+  return models.length ? models : ["gemini-2.5-flash"];
+}
+
+function parseQcResponse(result) {
+  const text = result.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || "";
+  const jsonMatch = text.match(/\{[\s\S]*?\}/);
+  if (!jsonMatch) throw new Error("Could not parse quality check JSON");
+  return JSON.parse(jsonMatch[0]);
+}
 
 export async function qualityCheckImage(genAI, generatedBase64, generatedMimeType, characterAndWardrobeRefs) {
   if (!genAI || !characterAndWardrobeRefs.length) {
@@ -35,28 +49,53 @@ Respond with ONLY this JSON, no other text:
 {"face_score": <0-10>, "outfit_score": <0-10>, "pass": <true|false>, "issues": ["brief issue"]}`,
     };
 
-    const result = await withTimeout(
-      () => genAI.models.generateContent({
-        model: QUALITY_CHECK_MODEL,
-        contents: [{ role: "user", parts: [...refParts, candidatePart, textPart] }],
-      }),
-      QUALITY_CHECK_TIMEOUT_MS,
-      "Image quality check"
-    );
+    let parsed = null;
+    let lastError = null;
+    for (const model of qcModels()) {
+      try {
+        const result = await withTimeout(
+          () => genAI.models.generateContent({
+            model,
+            contents: [{ role: "user", parts: [...refParts, candidatePart, textPart] }],
+          }),
+          QUALITY_CHECK_TIMEOUT_MS,
+          `Image quality check (${model})`
+        );
+        parsed = parseQcResponse(result);
+        break;
+      } catch (error) {
+        lastError = error;
+        const message = String(error?.message || "");
+        const status = Number(error?.status || error?.code || error?.cause?.status || error?.cause?.code || 0);
+        const modelMissing = status === 404 ||
+          message.includes("no longer available") ||
+          message.includes("not found");
+        if (!modelMissing) break;
+      }
+    }
 
-    const text = result.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || "";
-    const jsonMatch = text.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) throw new Error("Could not parse quality check JSON");
-
-    const parsed = JSON.parse(jsonMatch[0]);
+    if (!parsed) throw lastError || new Error("Quality check model did not return a valid response");
+    const faceScore = Number(parsed.face_score ?? 0);
+    const outfitScore = Number(parsed.outfit_score ?? (hasWardrobeRef ? 0 : 10));
+    const thresholdPass = faceScore >= FACE_SCORE_THRESHOLD &&
+      (hasWardrobeRef ? outfitScore >= OUTFIT_SCORE_THRESHOLD : true);
     return {
-      faceScore: Number(parsed.face_score ?? 5),
-      outfitScore: Number(parsed.outfit_score ?? 10),
-      pass: Boolean(parsed.pass),
+      faceScore,
+      outfitScore,
+      // Pass is computed server-side from strict thresholds so model JSON cannot
+      // silently relax identity checks.
+      pass: thresholdPass,
       issues: Array.isArray(parsed.issues) ? parsed.issues : [],
     };
   } catch (error) {
-    console.warn(`Quality check failed, accepting candidate (${error.message})`);
-    return { faceScore: 10, outfitScore: 10, pass: true, issues: [] };
+    console.warn(`Quality check failed, rejecting candidate (${error.message})`);
+    // Fail closed when identity references exist: if we cannot verify face/outfit,
+    // we must not accept the frame as strict identity-safe.
+    return {
+      faceScore: 0,
+      outfitScore: 0,
+      pass: false,
+      issues: ['quality-check-unavailable'],
+    };
   }
 }

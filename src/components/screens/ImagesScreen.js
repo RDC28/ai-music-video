@@ -12,6 +12,7 @@ import { sidePanel } from '@/lib/motion';
 
 const MAX_CLIENT_RETRIES = 2;
 const CLIENT_REQUEST_TIMEOUT_MS = 130000;
+const IMAGE_BATCH_CONCURRENCY = 2;
 
 const DESCRIPTION_LIMIT = 120;
 
@@ -371,10 +372,9 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   const [queueSummary, setQueueSummary] = useState('');
 
   // ── Concurrent batch queue ──────────────────────────────────────────────────
-  // concurrency=1: the route already fires 2 Gemini candidates concurrently per shot
-  // (QUALITY_CANDIDATE_COUNT). Running 2 queue slots × 2 candidates = 4 simultaneous
-  // Gemini requests which consistently triggers rate limits.
-  const imageQueue = useGenerationQueue({ concurrency: 1 });
+  // Run small parallel batches to improve throughput while still keeping retry
+  // behavior and provider limits manageable.
+  const imageQueue = useGenerationQueue({ concurrency: IMAGE_BATCH_CONCURRENCY });
 
   // Always-current shots ref so concurrent jobs read the latest state.
   const shotsRef = useRef(shots);
@@ -384,6 +384,15 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   useEffect(() => {
     if (!imageQueue.isActive) setGeneratingIndex(null);
   }, [imageQueue.isActive]);
+
+  useEffect(() => {
+    if (imageQueue.isActive || imageQueue.stats.total === 0) return;
+    const failed = imageQueue.stats.failed;
+    const done = imageQueue.stats.done;
+    const total = imageQueue.stats.total;
+    setQueueSummary(`${done}/${total} frames complete${failed ? ` · ${failed} need retry` : ''}.`);
+    setGenerationError(failed ? `${failed} frame${failed === 1 ? '' : 's'} need another try.` : '');
+  }, [imageQueue.isActive, imageQueue.stats.done, imageQueue.stats.failed, imageQueue.stats.total]);
 
   // Coalescing save: at most one onDataUpdate in-flight; the last data always wins.
   const saveQRef = useRef({ pending: false, latest: null });
@@ -481,6 +490,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   // Enqueues shot image jobs — 2 run concurrently with automatic retry on quota errors.
   const runGenerationQueue = (indices, { promptOverrides = {} } = {}) => {
     if (!indices.length) return;
+    if (!imageQueue.isActive) imageQueue.clear();
     setGenerationError('');
     setQueueSummary(`Frame generation started for ${indices.length} shot${indices.length === 1 ? '' : 's'}.`);
     imageQueue.enqueue(
@@ -501,7 +511,6 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
             const failed = markShotFailure(shotsRef.current, index, err);
             setShots(prev => markShotFailure(prev, index, err));
             shotsRef.current = failed;
-            setGenerationError('Some frames failed. Open a shot and click Try Again.');
             try { await saveShotList(failed); } catch { /* best-effort */ }
             throw err; // re-throw so the queue can retry on quota/rate errors
           }
@@ -731,9 +740,9 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
               <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em', textAlign: 'center' }}>
                 No shots generated yet.
               </div>
-              <button className="btn-outline" onClick={() => onNavigate(8)} style={{ fontSize: '0.75rem' }}>
-                Back to Shots
-              </button>
+              <p className="body-sm" style={{ textAlign: 'center', maxWidth: '26rem' }}>
+                Use StageRail to open <strong>Shots</strong> and generate a sequence first.
+              </p>
             </div>
           )}
         </div>
@@ -847,7 +856,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                   {isRewritingPrompt ? <><Loader2 size={13} className="spin" /> Rewriting…</> : <><RotateCcw size={13} /> Regenerate Prompt</>}
                 </button>
                 <button
-                  className="btn-orange"
+                  className="btn-action-generate"
                   onClick={handleGenerateOne}
                   disabled={generatingIndex !== null || !promptDraft.trim()}
                   style={{ width: '100%', fontSize: '0.75rem', padding: '0.625rem', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4375rem' }}

@@ -16,7 +16,6 @@ import { getPlannedVideoDuration, getProjectAudioDuration, normalizeShotListForV
 import { createClient } from '@/utils/supabase';
 import WorkflowThreePaneShell from '../WorkflowThreePaneShell';
 import {
-  sleep,
   buildShotError,
   buildGenerationContext,
   compactShotForRequest,
@@ -27,6 +26,8 @@ import {
 } from './videos/videoConstants';
 import ClipGallery from './videos/ClipGallery';
 import ClipEditPanel from './videos/ClipEditPanel';
+
+const VIDEO_BATCH_CONCURRENCY = 2;
 
 export default function VideosScreen({ onNavigate, isActive, projectId, projectData, onDataUpdate }) {
   const canvasRefs = useRef([]);
@@ -52,7 +53,7 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   const [generationError, setGenerationError] = useState('');
   const [queueSummary, setQueueSummary] = useState('');
 
-  const videoQueue = useGenerationQueue({ concurrency: 1 });
+  const videoQueue = useGenerationQueue({ concurrency: VIDEO_BATCH_CONCURRENCY });
 
   const shotsRef = useRef(shots);
   useEffect(() => { shotsRef.current = shots; }, [shots]);
@@ -60,6 +61,15 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
   useEffect(() => {
     if (!videoQueue.isActive) setGeneratingIndex(null);
   }, [videoQueue.isActive]);
+
+  useEffect(() => {
+    if (videoQueue.isActive || videoQueue.stats.total === 0) return;
+    const failed = videoQueue.stats.failed;
+    const done = videoQueue.stats.done;
+    const total = videoQueue.stats.total;
+    setQueueSummary(`${done}/${total} clips complete${failed ? ` · ${failed} need retry` : ''}.`);
+    setGenerationError(failed ? `${failed} clip${failed === 1 ? '' : 's'} need another try.` : '');
+  }, [videoQueue.isActive, videoQueue.stats.done, videoQueue.stats.failed, videoQueue.stats.total]);
 
   const saveQRef = useRef({ pending: false, latest: null });
   const saveShotList = useCallback(async (data) => {
@@ -215,14 +225,14 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
 
   const runGenerationQueue = (indices, { promptOverrides = {}, durationOverrides = {} } = {}) => {
     if (!indices.length) return;
-    let clipsStarted = 0;
+    if (!videoQueue.isActive) videoQueue.clear();
+    setGenerationError('');
+    setQueueSummary(`Clip generation started for ${indices.length} shot${indices.length === 1 ? '' : 's'}.`);
     videoQueue.enqueue(
       indices.map(index => ({
         id: `vid-${index}-${Date.now()}`,
         label: `Shot ${index + 1}`,
         run: async () => {
-          if (clipsStarted > 0) await sleep(35000);
-          clipsStarted++;
           rememberUndoForShot(shotsRef.current, index);
           const source = shotsRef.current;
           try {
@@ -431,15 +441,14 @@ export default function VideosScreen({ onNavigate, isActive, projectId, projectD
             <ClipGallery
               shots={shots}
               editModalIndex={editModalIndex}
-              generatingIndex={generatingIndex}
-              undoClip={undoClip}
-              canvasRefs={canvasRefs}
-              onOpen={openEditor}
-              onNavigate={onNavigate}
-              onUndoReplace={handleUndoReplace}
-            />
-          </div>
-        )}
+            generatingIndex={generatingIndex}
+            undoClip={undoClip}
+            canvasRefs={canvasRefs}
+            onOpen={openEditor}
+            onUndoReplace={handleUndoReplace}
+          />
+        </div>
+      )}
         right={(
           <ClipEditPanel
             editModalIndex={editModalIndex}

@@ -29,6 +29,17 @@ export const VIDEO_MODEL_FALLBACKS = [
   "veo-3.0-fast-generate-001",
 ];
 
+function isFilteredSafetyOrPolicyError(message) {
+  const text = String(message || "").toLowerCase();
+  return (
+    text.includes("video was filtered") ||
+    text.includes("safety filter") ||
+    text.includes("policy violation") ||
+    text.includes("content policy") ||
+    text.includes("rai")
+  );
+}
+
 export function getErrorStatus(error) {
   return error?.status || error?.code || error?.cause?.status || error?.cause?.code;
 }
@@ -36,6 +47,9 @@ export function getErrorStatus(error) {
 export function isModelFallbackError(error) {
   const status = Number(getErrorStatus(error));
   const message = String(error?.message || "").toLowerCase();
+
+  if (error?.retryable === false) return false;
+  if (isFilteredSafetyOrPolicyError(message)) return false;
 
   return (
     error?.retryable === true ||

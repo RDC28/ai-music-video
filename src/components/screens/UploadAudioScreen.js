@@ -420,7 +420,7 @@ export default function UploadAudioScreen({ projectId, existingAudioUrl, onUploa
                   </button>
                 )}
                 {!hasAnalysis ? (
-                  <button type="button" className="btn-orange" onClick={handleAnalyze} disabled={isAnalyzing || !existingAudioUrl} style={{ width: '100%', justifyContent: 'center' }}>
+                  <button type="button" className="btn-action-generate" onClick={handleAnalyze} disabled={isAnalyzing || !existingAudioUrl} style={{ width: '100%', justifyContent: 'center' }}>
                     {isAnalyzing ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
                     {isAnalyzing ? 'Analyzing…' : 'Analyze Track'}
                   </button>

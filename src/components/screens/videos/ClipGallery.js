@@ -10,7 +10,6 @@ export default function ClipGallery({
   undoClip,
   canvasRefs,
   onOpen,
-  onNavigate,
   onUndoReplace,
 }) {
   return (
@@ -35,9 +34,11 @@ export default function ClipGallery({
             <Video size={22} />
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: 'var(--text)', textAlign: 'center' }}>
-            Your clips will live here. Head to Shots to plan your sequence first.
+            Your clips will appear here after shot visuals are ready.
           </div>
-          <button className="btn-outline" onClick={() => onNavigate(8)}>Go to Shots →</button>
+          <p className="body-sm" style={{ textAlign: 'center', maxWidth: '26rem' }}>
+            Use the StageRail on the left to open <strong>Shots</strong>, then come back here to generate clips.
+          </p>
         </div>
       )}
 
