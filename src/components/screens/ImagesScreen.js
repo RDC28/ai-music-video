@@ -367,6 +367,8 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   const [modelDraft, setModelDraft] = useState(DEFAULT_IMAGE_MODEL);
   const [isApproving, setIsApproving] = useState(false);
   const [generatingIndex, setGeneratingIndex] = useState(null);
+  const [generationError, setGenerationError] = useState('');
+  const [queueSummary, setQueueSummary] = useState('');
 
   // ── Concurrent batch queue ──────────────────────────────────────────────────
   // concurrency=1: the route already fires 2 Gemini candidates concurrently per shot
@@ -419,9 +421,13 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
     }
   }, [editModalIndex, shots]);
 
+  const resolveShotPrompt = useCallback((shot) => {
+    return String(shot?.image_prompt || shot?.p || shot?.prompt || '').trim();
+  }, []);
+
   const openEditor = (index) => {
     setEditModalIndex(index);
-    setPromptDraft(shots[index]?.image_prompt || shots[index]?.p || shots[index]?.prompt || '');
+    setPromptDraft(resolveShotPrompt(shots[index]));
     setModelDraft(resolveImageModelOption(shots[index]?.image_model || modelDraft || DEFAULT_IMAGE_MODEL).value);
     setGenerationError('');
     setQueueSummary('');
@@ -434,6 +440,8 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
 
     setGeneratingIndex(index);
 
+    const resolvedPrompt = String(promptOverride ?? resolveShotPrompt(shot)).trim();
+
     const result = await fetchJsonWithRetry('/api/generate-shot-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -442,7 +450,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
         shot: compactShotForRequest(shot),
         shotIndex: index,
         projectState: buildGenerationContext(projectData, sourceShots),
-        promptOverride: promptOverride || undefined,
+        promptOverride: resolvedPrompt || undefined,
         model: modelDraft || DEFAULT_IMAGE_MODEL,
         previousShotImageUrl: sourceShots[index - 1]?.image_url || null,
       }),
@@ -452,7 +460,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
       ...shot,
       image_url: result.image_url,
       image_path: result.image_path,
-      image_prompt: promptOverride || shot.image_prompt || shot.p,
+      image_prompt: resolvedPrompt || shot.image_prompt || shot.p,
       image_model: result.image_model || modelDraft || DEFAULT_IMAGE_MODEL,
       image_generated_at: new Date().toISOString(),
       image_error: null,
@@ -473,6 +481,8 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
   // Enqueues shot image jobs — 2 run concurrently with automatic retry on quota errors.
   const runGenerationQueue = (indices, { promptOverrides = {} } = {}) => {
     if (!indices.length) return;
+    setGenerationError('');
+    setQueueSummary(`Frame generation started for ${indices.length} shot${indices.length === 1 ? '' : 's'}.`);
     imageQueue.enqueue(
       indices.map(index => ({
         id: `img-${index}-${Date.now()}`,
@@ -491,6 +501,7 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
             const failed = markShotFailure(shotsRef.current, index, err);
             setShots(prev => markShotFailure(prev, index, err));
             shotsRef.current = failed;
+            setGenerationError('Some frames failed. Open a shot and click Try Again.');
             try { await saveShotList(failed); } catch { /* best-effort */ }
             throw err; // re-throw so the queue can retry on quota/rate errors
           }
@@ -530,7 +541,12 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
 
   const handleGenerateAll = () => {
     if (!shots.length || imageQueue.isActive) return;
-    runGenerationQueue(shots.map((_, index) => index));
+    const indices = shots.map((_, index) => index);
+    const promptOverrides = indices.reduce((acc, index) => {
+      acc[index] = resolveShotPrompt(shots[index]);
+      return acc;
+    }, {});
+    runGenerationQueue(indices, { promptOverrides });
   };
 
   const handleGenerateRemaining = () => {
@@ -539,7 +555,11 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
       .map((shot, index) => ({ shot, index }))
       .filter(({ shot }) => !shot.image_url)
       .map(({ index }) => index);
-    runGenerationQueue(remainingIndices);
+    const promptOverrides = remainingIndices.reduce((acc, index) => {
+      acc[index] = resolveShotPrompt(shots[index]);
+      return acc;
+    }, {});
+    runGenerationQueue(remainingIndices, { promptOverrides });
   };
 
   const handleApproveAll = async () => {
@@ -607,6 +627,21 @@ export default function ImagesScreen({ onNavigate, isActive, projectId, projectD
                 {isApproving ? 'Saving...' : <><Check size={14} /> Approve All</>}
               </button>
             </div>
+            {(generationError || queueSummary) && (
+              <div className="flex-col gap-4" style={{ marginTop: '0.625rem', alignItems: 'flex-end' }}>
+                {queueSummary && (
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                    {queueSummary}
+                  </div>
+                )}
+                {generationError && (
+                  <div className="flex-row gap-4" style={{ alignItems: 'center', color: 'var(--error)', fontSize: '0.6875rem' }}>
+                    <AlertTriangle size={12} />
+                    <span>{generationError}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

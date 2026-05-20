@@ -1,0 +1,41 @@
+/* ===== NEOMORPHISM UTILITY CLASSES ===== */
+
+.neo-raised {
+  box-shadow: var(--neo-raised);
+  background: var(--surface-raised);
+  border: 0.0625rem solid rgba(var(--cyan-300-rgb), 0.11);
+  border-radius: var(--radius-lg);
+}
+
+.neo-inset {
+  box-shadow: var(--neo-inset);
+  background: var(--surface-inset);
+  border: 0.0625rem solid rgba(var(--cyan-300-rgb), 0.09);
+  border-radius: var(--radius);
+}
+
+.neo-flat {
+  box-shadow: var(--neo-flat);
+  background: var(--surface-flat);
+  border: 0.0625rem solid rgba(var(--cyan-300-rgb), 0.1);
+  border-radius: var(--radius-lg);
+}
+
+.neo-active {
+  box-shadow: var(--neo-active);
+  background: var(--surface-raised);
+  border: 0.0625rem solid rgba(var(--cyan-rgb), 0.38);
+  border-radius: var(--radius-lg);
+}
+
+/* ===== MASONRY UTILITY ===== */
+
+.masonry-grid {
+  columns: 2;
+  column-gap: 1rem;
+}
+
+.masonry-item {
+  break-inside: avoid;
+  margin-bottom: 1rem;
+}

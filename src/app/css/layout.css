@@ -1,0 +1,137 @@
+/* ===== LAYOUT GRIDS ===== */
+
+/* 58/42 two-column asymmetric grid (BrainDump review, etc.) */
+.grid-58-42 {
+  display: grid;
+  grid-template-columns: 58fr 42fr;
+  gap: 1.25rem;
+  padding: 0 1.5rem 1.5rem;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 60/40 two-column asymmetric grid (BrainDump input, etc.) */
+.grid-60-40 {
+  display: grid;
+  grid-template-columns: 60fr 40fr;
+  gap: 1.25rem;
+  padding: 0 1.5rem 1.5rem;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Two-column with a fixed sidebar on the left */
+.layout-sidebar-main {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.layout-sidebar {
+  width: 18.25rem;
+  flex-shrink: 0;
+  background: var(--bg-deep);
+  box-shadow: 0.25rem 0 1rem rgba(var(--ink-950-rgb), 0.4);
+  border-right: 0.0625rem solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.layout-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Asymmetric sidebar offset — starts 2.5rem lower */
+.sidebar-offset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding-top: 2.5rem;
+}
+
+/* Screen that uses flex row (split panel + sidebar) */
+.screen-row {
+  flex-direction: row;
+  align-items: flex-start;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* Full-height, no-overflow screen used by wardrobe/images/videos */
+.screen-fill {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* Full-screen centered empty state wrapper */
+.screen-empty {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.75rem;
+}
+
+/* ===== FLEX HELPERS ===== */
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.flex-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.gap-6  { gap: 0.375rem; }
+.gap-8  { gap: 0.5rem; }
+.gap-10 { gap: 0.625rem; }
+.gap-12 { gap: 0.75rem; }
+.gap-14 { gap: 0.875rem; }
+.gap-16 { gap: 1rem; }
+.gap-20 { gap: 1.25rem; }
+
+/* ===== SCROLLABLE REGION ===== */
+
+.scroll-y {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.min-h-0 { min-height: 0; }
+
+/* ===== AUTO-FIT GRID ===== */
+
+.grid-auto-fit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}

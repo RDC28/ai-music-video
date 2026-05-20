@@ -4,6 +4,19 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
+## File size limit
+
+**Hard rule: no source file may exceed 600 lines of code.**
+
+When a file approaches or exceeds 600 LOC:
+- Extract constants and config objects into a co-located `constants.js`
+- Extract sub-components into their own files in a sibling directory (e.g. `screens/characters/CharacterModal.js`)
+- Extract custom hooks into `hooks/` or a co-located `useXxx.js`
+- Extract pure utility functions into `utils/` or a co-located `xxxUtils.js`
+- The main file becomes an orchestration shell — state, data wiring, and layout composition only
+
+This applies to `.js`, `.jsx`, `.ts`, `.tsx` files. CSS files follow the same rule and should be split by concern (tokens, base, layout, buttons, animations, screens, etc.), with a single aggregator file that only contains `@import` statements.
+
 ## obsidian-memory
 
 This project uses Obsidian as the architecture and knowledge memory source at `obsidian/`.

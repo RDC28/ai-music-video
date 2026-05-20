@@ -1,0 +1,105 @@
+/* ===== KEYFRAMES ===== */
+
+@keyframes screenEnter {
+  from {
+    opacity: 0;
+    transform: translateX(1.5rem) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes panelRise {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.375rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes softScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes shimmerSweep {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+@keyframes skeletonSweep {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+@keyframes bufferTrack {
+  from { transform: translateX(-110%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes bufferBars {
+  0%, 100% { transform: scaleY(0.42); opacity: 0.55; }
+  45%       { transform: scaleY(1);    opacity: 1; }
+}
+
+@keyframes railStepComplete {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.2); background: var(--cyan); }
+  100% { transform: scale(1); }
+}
+
+@keyframes gentlePulse {
+  0%, 100% {
+    box-shadow: 0.62rem 0.62rem 1.3rem var(--neo-shadow-dark), -0.42rem -0.42rem 1rem var(--neo-shadow-light), 0 0 0 0.0625rem rgba(var(--cyan-rgb), 0.2), 0 0 0.95rem rgba(var(--cyan-rgb), 0.16);
+  }
+  50% {
+    box-shadow: 0.62rem 0.62rem 1.3rem var(--neo-shadow-dark), -0.42rem -0.42rem 1rem var(--neo-shadow-light), 0 0 0 0.0625rem rgba(var(--cyan-rgb), 0.42), 0 0 1.95rem rgba(var(--cyan-rgb), 0.32);
+  }
+}
+
+@keyframes tickerScroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(1.25rem); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes editPanelContentIn {
+  from { opacity: 0; transform: translateX(1rem); }
+  to   { opacity: 1; transform: translateX(0); }
+}

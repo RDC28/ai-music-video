@@ -1,0 +1,130 @@
+/* ===== DESIGN TOKENS ===== */
+:root {
+  /* ── Palette (3 colors / 8 shades) ── */
+  --ink-950: #090C13;
+  --ink-900: #111723;
+  --ink-800: #1A2231;
+  --cyan-500: #3DD6F5;
+  --cyan-400: #74E6FF;
+  --cyan-300: #B6F3FF;
+  --violet-500: #8071FF;
+  --violet-400: #A99FFF;
+  --ink-950-rgb: 9, 12, 19;
+  --ink-900-rgb: 17, 23, 35;
+  --ink-800-rgb: 26, 34, 49;
+  --cyan-500-rgb: 61, 214, 245;
+  --cyan-400-rgb: 116, 230, 255;
+  --cyan-300-rgb: 182, 243, 255;
+  --violet-500-rgb: 128, 113, 255;
+  --violet-400-rgb: 169, 159, 255;
+  --cyan-rgb: 61, 214, 245;
+  --violet-rgb: 128, 113, 255;
+
+  /* ── Backgrounds ── */
+  --bg:           var(--ink-900);
+  --bg-deep:      var(--ink-950);
+  --surface:      var(--ink-900);
+  --surface-2:    var(--ink-800);
+  --surface-3:    rgba(var(--ink-800-rgb), 0.94);
+  --surface-raised: linear-gradient(148deg, rgba(var(--ink-800-rgb), 0.99) 0%, rgba(var(--ink-900-rgb), 0.96) 52%, rgba(var(--ink-950-rgb), 0.92) 100%);
+  --surface-flat:   linear-gradient(148deg, rgba(var(--ink-800-rgb), 0.96) 0%, rgba(var(--ink-900-rgb), 0.94) 58%, rgba(var(--ink-950-rgb), 0.9) 100%);
+  --surface-inset:  linear-gradient(148deg, rgba(var(--ink-950-rgb), 0.99) 0%, rgba(var(--ink-900-rgb), 0.94) 55%, rgba(var(--ink-800-rgb), 0.9) 100%);
+
+  /* ── Neomorphism shadow bases ── */
+  --neo-shadow-dark:  rgba(var(--ink-950-rgb), 0.88);
+  --neo-shadow-light: rgba(var(--cyan-300-rgb), 0.12);
+  --neo-edge-light: rgba(var(--cyan-300-rgb), 0.14);
+  --neo-edge-dark: rgba(var(--ink-950-rgb), 0.62);
+
+  /* ── Primary accent — Cyan ── */
+  --cyan:         var(--cyan-500);
+  --cyan-dim:     rgba(var(--cyan-rgb), 0.12);
+  --cyan-glow:    rgba(var(--cyan-rgb), 0.24);
+  --cyan-border:  rgba(var(--cyan-rgb), 0.30);
+
+  /* ── Backward-compat aliases — keep so screens 5-11 still get colors ── */
+  --violet:       var(--violet-500);
+  --orange:       var(--violet-400);
+  --teal:         var(--cyan-500);
+  --rose:         var(--violet-400);
+  --amber:        var(--warning);
+  --dark:         var(--cyan-300);
+  --cream:        var(--ink-900);
+  --card:         var(--ink-800);
+
+  /* ── Text ── */
+  --text:         var(--cyan-300);
+  --text-soft:    rgba(var(--cyan-300-rgb), 0.78);
+  --text-muted:   rgba(var(--cyan-300-rgb), 0.65);
+  --text-subtle:  rgba(var(--cyan-300-rgb), 0.60);
+
+  /* ── Borders ── */
+  --border:        rgba(var(--cyan-300-rgb), 0.09);
+  --border-mid:    rgba(var(--cyan-300-rgb), 0.11);
+  --border-violet: rgba(var(--violet-rgb), 0.30);
+  --border-rose:   rgba(var(--violet-rgb), 0.22);
+
+  /* ── Typography ── */
+  --font-display: var(--font-grotesk), 'Space Grotesk', sans-serif;
+  --font-serif:   var(--font-display);
+  --font-body:    var(--font-sans), 'DM Sans', sans-serif;
+  --font-mono:    var(--font-space-mono), 'Space Mono', monospace;
+
+  /* ── Radius ── */
+  --radius-sm:  0.5rem;
+  --radius:     0.75rem;
+  --radius-lg:  1rem;
+  --radius-xl:  1.25rem;
+  --radius-2xl: 1.75rem;
+  --radius-pill: 62.5rem;
+
+  /* ── Neomorphism shadows ── */
+  --neo-raised: 0.85rem 0.85rem 1.9rem var(--neo-shadow-dark), -0.62rem -0.62rem 1.45rem var(--neo-shadow-light), inset 0 0.0625rem 0 var(--neo-edge-light), inset -0.0625rem -0.0625rem 0 rgba(var(--ink-950-rgb), 0.22);
+  --neo-raised-sm: 0.35rem 0.35rem 0.95rem var(--neo-shadow-dark), -0.25rem -0.25rem 0.75rem var(--neo-shadow-light), inset 0 0.0625rem 0 var(--neo-edge-light), inset -0.0625rem -0.0625rem 0 rgba(var(--ink-950-rgb), 0.2);
+  --neo-inset:  inset 0.48rem 0.48rem 1.15rem rgba(var(--ink-950-rgb), 0.76), inset -0.34rem -0.34rem 1rem rgba(var(--cyan-300-rgb), 0.09), inset 0 0.0625rem 0 rgba(var(--cyan-300-rgb), 0.06), inset 0 0 0 0.0625rem rgba(var(--ink-950-rgb), 0.25);
+  --neo-flat:   0.58rem 0.58rem 1.2rem rgba(var(--ink-950-rgb), 0.72), -0.4rem -0.4rem 0.95rem rgba(var(--cyan-300-rgb), 0.09), inset 0 0.0625rem 0 rgba(var(--cyan-300-rgb), 0.06), inset -0.0625rem -0.0625rem 0 rgba(var(--ink-950-rgb), 0.18);
+  --neo-active: 0.95rem 0.95rem 2.1rem rgba(var(--ink-950-rgb), 0.9), -0.64rem -0.64rem 1.55rem rgba(var(--cyan-300-rgb), 0.14), inset 0 0.0625rem 0 rgba(var(--cyan-300-rgb), 0.18), 0 0 0 0.0625rem rgba(var(--cyan-rgb), 0.36), 0 0 1.85rem rgba(var(--cyan-rgb), 0.34);
+
+  /* ── Backward-compat shadow aliases ── */
+  --glow-violet:    var(--neo-active);
+  --glow-rose:      var(--neo-active);
+  --glow-soft:      var(--neo-raised);
+  --glow-cyan:      var(--neo-active);
+  --shadow-card:    var(--neo-raised);
+  --shadow-modal:   0 0 0 0.0625rem rgba(var(--cyan-300-rgb), 0.07), 0 2.25rem 6rem rgba(var(--ink-950-rgb), 0.78), inset 0 0.0625rem 0 rgba(var(--cyan-300-rgb), 0.06);
+  --shadow-premium: var(--neo-raised);
+  --shadow-float:   var(--neo-raised);
+
+  /* ── Layout ── */
+  --stage-rail-width:  3.75rem;
+  --stage-rail-current-width: 3.75rem;
+  --topstrip-height:   2.75rem;
+  --topbar-height:     2.75rem;
+
+  /* ── Motion ── */
+  --ease-premium: cubic-bezier(0.2, 0, 0, 1);
+  --ease-smooth:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+  --motion-fast:  160ms;
+  --motion-med:   260ms;
+  --motion-slow:  500ms;
+
+  /* ── Type scale ── */
+  --type-xs:    0.6875rem;
+  --type-sm:    0.8125rem;
+  --type-md:    0.9375rem;
+  --type-lg:    1.125rem;
+  --type-xl:    1.5rem;
+  --type-2xl:   2.125rem;
+  --type-tight: 1.25;
+  --type-body:  1.6;
+
+  /* ── Status ── */
+  --success-rgb: 52, 211, 153;
+  --warning-rgb: 251, 191, 36;
+  --error-rgb: 248, 113, 113;
+  --success: rgb(var(--success-rgb));
+  --warning: rgb(var(--warning-rgb));
+  --error: rgb(var(--error-rgb));
+  --disabled-opacity: 0.45;
+}

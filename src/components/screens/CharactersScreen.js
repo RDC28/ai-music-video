@@ -1,360 +1,23 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { FileText, Loader2, RefreshCw, Upload } from 'lucide-react';
+import { FileText, Loader2, Upload } from 'lucide-react';
 import { useGenerationQueue } from '@/hooks/useGenerationQueue';
 import QueueStatusBar from '../QueueStatusBar';
 import { createClient } from '@/utils/supabase';
-import ProgressBar from '../ProgressBar';
 import WorkflowThreePaneShell from '../WorkflowThreePaneShell';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const MODAL_BTN = {
-  background: 'rgba(var(--cyan-300-rgb), 0.06)',
-  border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.08)',
-  color: 'var(--text-soft)',
-  padding: '0.4375rem 0.75rem',
-  borderRadius: '0.375rem',
-  fontSize: '0.6875rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-  letterSpacing: '0.03em',
-};
-
-const CHARACTER_STEPS = [
-  'Designing full character sheet',
-  'Saving to library',
-];
-
-const CHARACTER_SHEET_LAYOUT_SPEC = {
-  canvas: 'single 21:9 horizontal sheet',
-  background: 'plain warm beige or soft neutral studio backdrop',
-  panel_count: 9,
-  panel_structure: [
-    'large mid portrait panel on far left',
-    'full-body front standing',
-    'full-body left profile standing',
-    'full-body right profile standing',
-    'full-body back standing',
-    'top-right close-up front portrait',
-    'top-right close-up back head portrait',
-    'bottom-right close-up left three-quarter/profile portrait',
-    'bottom-right close-up right three-quarter/profile portrait',
-  ],
-  spacing: 'clean white/beige dividers or visible spacing between panels',
-  framing_rules: 'Do not crop face or costume details. Full-body panels must show full figure head-to-toe. Close-up panels must include head and upper chest/shoulder area.',
-};
-
-const PINBOARD_WIDTH = 2016;
-const PINBOARD_HEIGHT = 700;
-const PINBOARD_PADDING = 28;
-const PINBOARD_GAP = 14;
-const DEFAULT_COLLAGE_RATIO = 1;
-const CHARACTER_DESCRIPTION_DISPLAY_LIMIT = 360;
-
-const buildSheetPrompt = (desc, hasRef) => {
-  const charClause = hasRef
-    ? 'of the character shown in the reference image'
-    : `of this character: ${desc}`;
-  return `Professional character design reference sheet.
-
-"layout_spec": ${JSON.stringify(CHARACTER_SHEET_LAYOUT_SPEC, null, 2)}
-
-Character ${charClause}.
-
-Output exactly one complete 21:9 horizontal image containing the whole sheet. Maintain perfectly consistent character appearance across all 9 panels: same face, body proportions, hair, skin tone, wardrobe, accessories, and age. No text labels, watermarks, extra people, or cropped panels. Studio lighting throughout. Professional concept art quality.`;
-};
-
-function compactScriptText(value, maxLength = 700) {
-  if (!value) return '';
-  const text = String(value).replace(/\s+/g, ' ').trim();
-  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
-}
-
-function truncateCharacterDescription(value, maxLength = CHARACTER_DESCRIPTION_DISPLAY_LIMIT) {
-  if (!value) return '';
-  const text = String(value).replace(/\s+/g, ' ').trim();
-  return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
-}
-
-function normalizeCharacterName(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
-function buildScriptCharacterDescription(character = {}, projectState = {}) {
-  const script = projectState?.script || {};
-  const analysis = projectState?.analysis || {};
-  const sourceDescription = (
-    character.visual_prompt ||
-    character.prompt ||
-    character.description ||
-    character.role ||
-    ''
-  );
-
-  return [
-    sourceDescription,
-    character.role ? `Narrative role: ${compactScriptText(character.role, 220)}` : '',
-    script.title ? `Music video title: ${script.title}` : '',
-    script.storyline ? `Story context: ${compactScriptText(script.storyline, 520)}` : '',
-    script.mood || analysis.mood ? `Mood and performance tone: ${compactScriptText(script.mood || analysis.mood, 240)}` : '',
-    analysis.genre || analysis.theme ? `Genre/theme: ${compactScriptText(analysis.genre || analysis.theme, 180)}` : '',
-    'Create a production-ready character reference set for this music video. Identity must remain stable across every view: same face, body proportions, hair, skin tone, wardrobe, accessories, and age.',
-  ].filter(Boolean).join('\n');
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function getImageRatio(ratio) {
-  if (!Number.isFinite(ratio) || ratio <= 0) return DEFAULT_COLLAGE_RATIO;
-  return Math.max(0.2, Math.min(5, ratio));
-}
-
-function getStoredImageRatio(imageData) {
-  if (!imageData || typeof imageData !== 'object') return null;
-
-  if (Number.isFinite(imageData.width) && Number.isFinite(imageData.height) && imageData.height > 0) {
-    return imageData.width / imageData.height;
-  }
-
-  if (Array.isArray(imageData.box_2d) && imageData.box_2d.length === 4) {
-    const [ymin, xmin, ymax, xmax] = imageData.box_2d;
-    const width = xmax - xmin;
-    const height = ymax - ymin;
-    if (width > 0 && height > 0) return width / height;
-  }
-
-  return null;
-}
-
-function parseCharacterImage(img, index) {
-  const text = typeof img === 'string' ? img.trim() : '';
-  let parsed = null;
-
-  if (text.charAt(0) === '{') {
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = null;
-    }
-  }
-
-  const imageData = parsed || (img && typeof img === 'object' ? img : null);
-  const src = imageData ? (imageData.url || null) : (text.charAt(0) === '{' ? null : text || null);
-  const label = imageData?.label || `POSE ${index + 1}`;
-
-  return { imageData, src, label };
-}
-
-function getPinboardImageSize(ratio, count, index, scale = 1) {
-  const safeRatio = getImageRatio(ratio);
-  const boardArea = PINBOARD_WIDTH * PINBOARD_HEIGHT;
-  const fill = count === 1 ? 0.25 : Math.min(0.13, Math.max(0.065, 0.56 / Math.max(1, count)));
-  const emphasis = index === 0 ? 1.12 : index % 3 === 0 ? 1.04 : 1;
-  const area = boardArea * fill * emphasis * scale * scale;
-  let width = Math.sqrt(area * safeRatio);
-  let height = width / safeRatio;
-  const usableWidth = PINBOARD_WIDTH - PINBOARD_PADDING * 2;
-  const usableHeight = PINBOARD_HEIGHT - PINBOARD_PADDING * 2;
-  const maxWidth = Math.min(usableWidth, count === 1 ? 820 : index === 0 ? 620 : 560);
-  const maxHeight = Math.min(usableHeight, count === 1 ? 620 : index === 0 ? 560 : 520);
-  const maxScale = Math.min(1, maxWidth / width, maxHeight / height);
-  width *= maxScale;
-  height *= maxScale;
-  const minShortSide = count <= 1 ? 150 : count <= 4 ? 118 : count <= 8 ? 92 : 74;
-  const shortSide = Math.min(width, height);
-  if (shortSide < minShortSide) {
-    const growScale = minShortSide / shortSide;
-    width *= growScale;
-    height *= growScale;
-  }
-
-  return { width, height };
-}
-
-function getPinboardCandidates() {
-  const cx = PINBOARD_WIDTH / 2;
-  const cy = PINBOARD_HEIGHT / 2;
-  const candidates = [{ x: cx, y: cy }];
-  const directions = [
-    0, Math.PI, -Math.PI / 2, Math.PI / 2,
-    -Math.PI / 4, -3 * Math.PI / 4, Math.PI / 4, 3 * Math.PI / 4,
-    -Math.PI / 8, Math.PI / 8, -7 * Math.PI / 8, 7 * Math.PI / 8,
-  ];
-
-  for (let radius = 210; radius <= 980; radius += 115) {
-    directions.forEach(angle => {
-      candidates.push({
-        x: cx + Math.cos(angle) * radius,
-        y: cy + Math.sin(angle) * radius * 0.62,
-      });
-    });
-  }
-
-  return candidates;
-}
-
-function boxesOverlap(a, b, gap = PINBOARD_GAP) {
-  return !(
-    a.x + a.width + gap <= b.x ||
-    b.x + b.width + gap <= a.x ||
-    a.y + a.height + gap <= b.y ||
-    b.y + b.height + gap <= a.y
-  );
-}
-
-function getOverlapArea(a, b) {
-  const x = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
-  const y = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
-  return x * y;
-}
-
-function fitsPinboard(box) {
-  return (
-    box.x >= PINBOARD_PADDING &&
-    box.y >= PINBOARD_PADDING &&
-    box.x + box.width <= PINBOARD_WIDTH - PINBOARD_PADDING &&
-    box.y + box.height <= PINBOARD_HEIGHT - PINBOARD_PADDING
-  );
-}
-
-function tryBuildPinboard(items, sizeScale) {
-  const candidates = getPinboardCandidates();
-  const placed = [];
-
-  for (const item of items) {
-    const size = getPinboardImageSize(item.ratio, items.length, item.index, sizeScale);
-    let best = null;
-
-    candidates.forEach(candidate => {
-      const box = {
-        ...item,
-        x: candidate.x - size.width / 2,
-        y: candidate.y - size.height / 2,
-        width: size.width,
-        height: size.height,
-      };
-      if (!fitsPinboard(box)) return;
-
-      const overlap = placed.reduce((sum, placedBox) => sum + getOverlapArea(box, placedBox), 0);
-      const hasOverlap = placed.some(placedBox => boxesOverlap(box, placedBox));
-      const centerDistance = Math.hypot(candidate.x - PINBOARD_WIDTH / 2, candidate.y - PINBOARD_HEIGHT / 2);
-      const score = overlap * 40 + (hasOverlap ? 100000 : 0) + centerDistance;
-
-      if (!best || score < best.score) best = { ...box, score, hasOverlap };
-    });
-
-    if (!best) return null;
-    placed.push(best);
-  }
-
-  if (placed.length <= 1) return placed;
-
-  const bounds = placed.reduce((acc, box) => ({
-    minX: Math.min(acc.minX, box.x),
-    minY: Math.min(acc.minY, box.y),
-    maxX: Math.max(acc.maxX, box.x + box.width),
-    maxY: Math.max(acc.maxY, box.y + box.height),
-  }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
-
-  const groupWidth = bounds.maxX - bounds.minX;
-  const groupHeight = bounds.maxY - bounds.minY;
-  const targetX = (PINBOARD_WIDTH - groupWidth) / 2;
-  const targetY = (PINBOARD_HEIGHT - groupHeight) / 2;
-  let dx = targetX - bounds.minX;
-  let dy = targetY - bounds.minY;
-
-  dx = Math.max(PINBOARD_PADDING - bounds.minX, Math.min(dx, PINBOARD_WIDTH - PINBOARD_PADDING - bounds.maxX));
-  dy = Math.max(PINBOARD_PADDING - bounds.minY, Math.min(dy, PINBOARD_HEIGHT - PINBOARD_PADDING - bounds.maxY));
-
-  return placed.map(box => ({ ...box, x: box.x + dx, y: box.y + dy }));
-}
-
-function buildPinboardLayout(items) {
-  if (!items.length) return [];
-
-  for (let scale = 1; scale >= 0.58; scale -= 0.06) {
-    const placed = tryBuildPinboard(items, scale);
-    if (placed && placed.every((box, index) => !placed.slice(0, index).some(other => boxesOverlap(box, other)))) {
-      return placed;
-    }
-  }
-
-  return tryBuildPinboard(items, 0.58) || [];
-}
-
-// ─── ImagePreviewModal ───────────────────────────────────────────────────────
-
-function ImagePreviewModal({ imageUrl, label, onClose, onDelete }) {
-  const containerRef = useRef(null);
-  const imgRef = useRef(null);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [drag, setDrag] = useState(null);
-
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, []);
-
-  const onWheel = (e) => {
-    e.preventDefault();
-    const f = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    setZoom(z => Math.max(0.5, Math.min(10, z * f)));
-  };
-
-  const onMouseDown = (e) => {
-    e.preventDefault();
-    setDrag({ startX: e.clientX - pan.x, startY: e.clientY - pan.y });
-  };
-
-  const onMouseMove = (e) => {
-    if (!drag) return;
-    setPan({ x: e.clientX - drag.startX, y: e.clientY - drag.startY });
-  };
-
-  const onMouseUp = () => setDrag(null);
-
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(var(--ink-950-rgb), 0.97)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.875rem' }}
-      onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
-    >
-      {/* Toolbar */}
-      <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <span style={{ color: 'var(--ink-800)', fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.12em', marginRight: '0.25rem' }}>{label?.toUpperCase()}</span>
-        <span style={{ color: 'var(--ink-800)', fontSize: '0.6875rem', marginRight: '0.25rem' }}>Scroll to zoom · Drag to pan</span>
-        <div style={{ width: '0.0625rem', height: '1.125rem', background: 'var(--ink-800)' }} />
-        {onDelete && (
-          <button onClick={onDelete} className="btn-action-danger" style={{ ...MODAL_BTN }}>
-            Delete Image
-          </button>
-        )}
-        <button onClick={onClose} style={{ ...MODAL_BTN, color: 'var(--text-soft)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.1)' }}>Close</button>
-      </div>
-
-      {/* Viewport */}
-      <div
-        ref={containerRef}
-        style={{ width: '86vw', height: '78vh', overflow: 'hidden', position: 'relative', background: 'var(--ink-950)', borderRadius: '0.75rem', border: '0.0625rem solid var(--ink-800)', cursor: drag ? 'grabbing' : 'grab' }}
-        onMouseDown={onMouseDown}
-        onWheel={onWheel}
-      >
-        <img
-          ref={imgRef} src={imageUrl} alt={label} draggable={false}
-          style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, transformOrigin: 'center center', userSelect: 'none', pointerEvents: 'none', display: 'block' }}
-        />
-        <div style={{ position: 'absolute', bottom: '0.875rem', left: '50%', transform: 'translateX(-50%)', color: 'var(--ink-800)', fontSize: '0.6875rem', pointerEvents: 'none', whiteSpace: 'nowrap', textAlign: 'center' }}>
-          Scroll to zoom · Drag to pan
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
+import {
+  CHARACTER_STEPS,
+  normalizeCharacterName,
+  buildScriptCharacterDescription,
+  buildSheetPrompt,
+  parseCharacterImage,
+  getStoredImageRatio,
+} from './characters/characterConstants';
+import CharacterImageModal from './characters/CharacterImageModal';
+import CharacterSidebar from './characters/CharacterSidebar';
+import CharacterFormPanel from './characters/CharacterFormPanel';
 
 export default function CharactersScreen({ projectData = [], projectState = {}, onDataUpdate, projectId }) {
   const [activeTab, setActiveTab] = useState(0);
@@ -375,22 +38,21 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
   const [activeCategory, setActiveCategory] = useState('project');
   const [renamingPanel, setRenamingPanel] = useState(null);
 
-  const [scriptPromptPreview, setScriptPromptPreview] = useState(null); // { name, description, replaceIndex }
+  const [scriptPromptPreview, setScriptPromptPreview] = useState(null);
   const [sheetReplaceTarget, setSheetReplaceTarget] = useState(null);
   const [sheetProcessStatus, setSheetProcessStatus] = useState('');
   const [charProgressStep, setCharProgressStep] = useState(-1);
   const [imgRatios, setImgRatios] = useState({});
   const [anchorStatus, setAnchorStatus] = useState({});
 
-  // ── Comparison board state ────────────────────────────────────────────────
-  const [boardCards, setBoardCards] = useState([]);   // { id, charIndex, x, y }
-  const [cardZOrder, setCardZOrder] = useState([]);   // card IDs bottom→top
+  const [boardCards, setBoardCards] = useState([]);
+  const [cardZOrder, setCardZOrder] = useState([]);
   const [isDragOverBoard, setIsDragOverBoard] = useState(false);
-  const dragState = useRef(null);   // { cardId, startX, startY, startCardX, startCardY }
-  const resizeState = useRef(null); // { cardId, startX, startWidth }
+  const dragState = useRef(null);
+  const resizeState = useRef(null);
   const boardRef = useRef(null);
 
-  const CARD_DEFAULT_W = 220; // px
+  const CARD_DEFAULT_W = 220;
   const CARD_MIN_W     = 140;
   const CARD_MAX_W     = 700;
 
@@ -402,7 +64,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
   const latestCharactersRef = useRef(projectCharacters);
   const anchorQueue = useGenerationQueue({ concurrency: 2 });
 
-  // Coalescing save — prevents last-write-wins race when 2 anchors complete simultaneously.
   const anchorSaveQRef = useRef({ pending: false, latest: null });
   const saveCharList = useCallback(async (characters) => {
     anchorSaveQRef.current.latest = { characters };
@@ -415,7 +76,7 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
     }
     anchorSaveQRef.current.pending = false;
   }, [onDataUpdate]);
-  const [collageSize, setCollageSize] = useState({ width: PINBOARD_WIDTH, height: PINBOARD_HEIGHT });
+
   const supabase = useMemo(() => createClient(), []);
   const generatingReplaceIndex = Number.isInteger(generatingChar?.replaceIndex)
     ? generatingChar.replaceIndex
@@ -457,27 +118,15 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
   useEffect(() => {
     const node = collageRef.current;
     if (!node) return;
-
     let frame = null;
     const measure = () => {
       if (frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const rect = node.getBoundingClientRect();
-        const nextSize = {
-          width: Math.round(rect.width) || PINBOARD_WIDTH,
-          height: Math.round(rect.height) || PINBOARD_HEIGHT,
-        };
-        setCollageSize(prev => (
-          prev.width === nextSize.width && prev.height === nextSize.height ? prev : nextSize
-        ));
-      });
+      frame = requestAnimationFrame(() => {});
     };
-
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(node);
     window.addEventListener('resize', measure);
     measure();
-
     return () => {
       if (frame) cancelAnimationFrame(frame);
       observer?.disconnect();
@@ -487,17 +136,13 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
 
   useEffect(() => {
     if (!activeChar?.images?.length) return undefined;
-
     const sources = activeChar.images
       .map((img, index) => parseCharacterImage(img, index))
       .filter(item => item.src);
-
     if (!sources.length) return undefined;
-
     let cancelled = false;
     sources.forEach(({ src, imageData }) => {
       if (imgRatios[src] || getStoredImageRatio(imageData)) return;
-
       const img = new Image();
       img.onload = () => {
         if (cancelled || !img.naturalWidth || !img.naturalHeight) return;
@@ -506,7 +151,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
       };
       img.src = src;
     });
-
     return () => { cancelled = true; };
   }, [activeChar?.images, imgRatios]);
 
@@ -522,10 +166,8 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
       setAnchorStatus(prev => (prev[character.name] === 'done' ? prev : { ...prev, [character.name]: 'done' }));
       return;
     }
-
     anchorInFlightRef.current.add(normalizedName);
     setAnchorStatus(prev => ({ ...prev, [character.name]: 'generating' }));
-
     try {
       const res = await fetch('/api/generate-character-anchor', {
         method: 'POST',
@@ -533,7 +175,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
         body: JSON.stringify({ projectId, character, projectState: projectStateSnapshot }),
       });
       const data = await res.json();
-
       if (res.ok && data?.success && data?.anchor_image_url) {
         setAnchorStatus(prev => ({ ...prev, [character.name]: 'done' }));
         const anchorGeneratedAt = new Date().toISOString();
@@ -542,11 +183,7 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
         const updatedChars = baseCharacters.map(existingChar => {
           if (normalizeCharacterName(existingChar?.name) !== normalizedName) return existingChar;
           matched = true;
-          return {
-            ...existingChar,
-            anchor_image_url: data.anchor_image_url,
-            anchor_generated_at: anchorGeneratedAt,
-          };
+          return { ...existingChar, anchor_image_url: data.anchor_image_url, anchor_generated_at: anchorGeneratedAt };
         });
         if (!matched) return;
         await onDataUpdate({ characters: updatedChars });
@@ -561,19 +198,14 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
     }
   }, [onDataUpdate, projectId, projectState]);
 
-  // Force-refresh: strips the existing anchor URL then delegates to the same
-  // function used on page load — guarantees identical code path, no duplicate logic.
   const forceRefreshAnchor = useCallback(async (character) => {
     if (!character?.name) return;
     const normalizedName = normalizeCharacterName(character.name);
-    // Clear any stuck in-flight entry so a previously failed attempt doesn't block retries.
     anchorInFlightRef.current.delete(normalizedName);
-    // Strip anchor URL so generateAnchorForCharacter doesn't skip.
     const stripped = { ...character, anchor_image_url: null, anchor_generated_at: null };
     await generateAnchorForCharacter(stripped, projectState);
   }, [generateAnchorForCharacter, projectState]);
 
-  // Queue-aware anchor job — throws on failure so the queue can retry on rate limits.
   const runAnchorJobForQueue = useCallback(async (char) => {
     const normalizedName = normalizeCharacterName(char.name);
     anchorInFlightRef.current.delete(normalizedName);
@@ -593,7 +225,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
         throw err;
       }
       setAnchorStatus(prev => ({ ...prev, [char.name]: 'done' }));
-      // Update ref immediately so concurrent jobs see the latest characters array.
       const updatedChars = (Array.isArray(latestCharactersRef.current) ? latestCharactersRef.current : []).map(c =>
         normalizeCharacterName(c?.name) === normalizedName
           ? { ...c, anchor_image_url: data.anchor_image_url, anchor_generated_at: new Date().toISOString() }
@@ -604,13 +235,12 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
       return data.anchor_image_url;
     } catch (err) {
       setAnchorStatus(prev => ({ ...prev, [char.name]: 'failed' }));
-      throw err; // queue handles retry
+      throw err;
     } finally {
       anchorInFlightRef.current.delete(normalizedName);
     }
   }, [projectId, projectState, saveCharList]);
 
-  // Batch-refresh all anchors via the concurrent queue (2 at a time).
   const refreshAllAnchors = useCallback(() => {
     const chars = projectCharacters.filter(c => c?.name);
     if (!chars.length) return;
@@ -646,7 +276,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
     try {
       const { data: { user }, error: userErr } = await supabase.auth.getUser();
       if (userErr || !user) throw new Error(userErr?.message || 'No user found');
-
       const { error: insErr } = await supabase.from('characters_library').insert({
         user_id: user.id,
         name: charObj.name,
@@ -655,7 +284,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
         source: source,
         sheet_url: charObj.sheetUrl || null
       });
-
       if (insErr) throw insErr;
       await refreshGlobalLibrary();
     } catch (err) {
@@ -675,7 +303,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
       ))));
       return;
     }
-
     const newChar = {
       ...activeChar,
       id: `character-${activeChar.id || Date.now()}-${Date.now()}`,
@@ -689,10 +316,7 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
     const updatedChars = [...projectCharacters, newChar];
     await onDataUpdate({ characters: updatedChars });
     if (newChar.images?.length && !newChar.anchor_image_url) {
-      void generateAnchorForCharacter(
-        newChar,
-        { ...projectState, characters: updatedChars }
-      );
+      void generateAnchorForCharacter(newChar, { ...projectState, characters: updatedChars });
     }
     setActiveCategory('project');
     setActiveTab(updatedChars.length - 1);
@@ -740,7 +364,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
     if (!file) return;
     setIsProcessingSheet(true);
     setSheetProcessStatus('Uploading full sheet...');
-
     try {
       const sheetPath = `${projectId}/sheets/${Date.now()}-${file.name}`;
       const { error: upErr } = await supabase.storage.from('assets').upload(sheetPath, file);
@@ -757,7 +380,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
         ? (sheetReplaceTarget?.description ?? existingChar.description ?? 'Uploaded from character sheet')
         : 'Uploaded from character sheet';
       const sheetImage = { url: sheetUrl, label: 'CHARACTER SHEET' };
-
       setGeneratingChar({
         ...(existingChar || {}),
         id: existingChar?.id || 'generating',
@@ -770,7 +392,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
       setActiveTab(replaceIndex !== null ? replaceIndex : projectCharacters.length);
       setActiveCategory('project');
       setSheetProcessStatus('Saving character sheet...');
-
       const newChar = {
         ...(existingChar || {}),
         id: existingChar?.id || Date.now(),
@@ -788,10 +409,7 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
       }
       await onDataUpdate({ characters: updatedChars });
       if (newChar.images?.length && !newChar.anchor_image_url) {
-        void generateAnchorForCharacter(
-          newChar,
-          { ...projectState, characters: updatedChars }
-        );
+        void generateAnchorForCharacter(newChar, { ...projectState, characters: updatedChars });
       }
       setActiveTab(replaceIndex !== null ? replaceIndex : updatedChars.length - 1);
       if (replaceIndex === null) saveToGlobalLibrary(newChar, 'upload');
@@ -815,7 +433,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
     setCreateRefImage(null);
     setIsGenerating(true);
     setCharProgressStep(0);
-
     try {
       const tempId = Date.now();
       const isReplacing = Number.isInteger(replaceIndex) && replaceIndex >= 0 && replaceIndex < projectCharacters.length;
@@ -831,22 +448,18 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
       });
       setActiveTab(isReplacing ? replaceIndex : projectCharacters.length);
       setActiveCategory('project');
-
       const payload = {
         characterDescription: desc,
         sheetPrompt: buildSheetPrompt(desc, Boolean(refImage?.base64)),
         label: 'CHARACTER SHEET',
       };
-
       if (refImage?.base64) {
         payload.base64 = refImage.base64;
         payload.mimeType = refImage.mimeType || 'image/png';
       }
-
       const { imageBase64, error } = await callCharacterGenerator(payload);
       if (error) throw new Error(error);
       if (!imageBase64) throw new Error('Character sheet generation returned no image.');
-
       const blob = base64ToBlob(imageBase64, 'image/png');
       const url = await uploadBlob(blob, 'image/png', `${projectId}/generated/${Date.now()}-character-sheet.png`);
       const sheetImage = { url, label: 'CHARACTER SHEET' };
@@ -870,10 +483,7 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
       }
       await onDataUpdate({ characters: updatedChars });
       if (newChar.images?.length && !newChar.anchor_image_url) {
-        void generateAnchorForCharacter(
-          newChar,
-          { ...projectState, characters: updatedChars }
-        );
+        void generateAnchorForCharacter(newChar, { ...projectState, characters: updatedChars });
       }
       setActiveTab(isReplacing ? replaceIndex : updatedChars.length - 1);
       if (!isReplacing) saveToGlobalLibrary(newChar, 'ai');
@@ -890,11 +500,7 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
   const handleGenerateAngles = async () => {
     if (!createName.trim()) return alert('Enter a character name');
     if (!createDesc.trim()) return alert('Describe the character');
-    await generateCharacterReferences({
-      name: createName,
-      description: createDesc,
-      refImage: createRefImage,
-    });
+    await generateCharacterReferences({ name: createName, description: createDesc, refImage: createRefImage });
   };
 
   const handleGenerateFromScript = () => {
@@ -905,19 +511,16 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
     const sourceCharacter = targetIndex >= 0
       ? projectCharacters[targetIndex]
       : scriptCharacters.find(character => character?.name || character?.visual_prompt || character?.description);
-
     if (!sourceCharacter) {
       alert('Generate or approve the script first so I can pull a character brief from it.');
       return;
     }
-
     const name = sourceCharacter.name || 'SCRIPT CHARACTER';
     const description = buildScriptCharacterDescription(sourceCharacter, projectState);
     if (!description.trim()) {
       alert('The script does not include enough character detail yet.');
       return;
     }
-
     setScriptPromptPreview({ name, description, replaceIndex: targetIndex >= 0 ? targetIndex : null });
   };
 
@@ -988,8 +591,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
     await onDataUpdate({ characters: updatedChars });
   };
 
-  // ── Comparison board helpers ──────────────────────────────────────────────
-
   const bringToFront = useCallback((id) => {
     setCardZOrder(prev => [...prev.filter(z => z !== id), id]);
   }, []);
@@ -1022,7 +623,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
     resizeState.current = { cardId: card.id, startX: e.clientX, startWidth: card.width ?? CARD_DEFAULT_W };
   }, []);
 
-  // Global mouse handlers — shared by both drag-move and resize
   useEffect(() => {
     const onMove = (e) => {
       if (dragState.current) {
@@ -1052,7 +652,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
     addCardToBoard(charIndex, e.clientX - rect.left, e.clientY - rect.top);
   }, [addCardToBoard]);
 
-  // Helper: get best preview image for a character
   const getCharPreviewImage = useCallback((char) => {
     if (!char) return null;
     if (char.anchor_image_url) return { src: char.anchor_image_url, isAnchor: true };
@@ -1100,120 +699,22 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
         defaultRightWidth={384}
         main={(
           <div className="main-content" style={{ background: 'var(--bg)' }}>
-            {/* Header */}
-            <div className="main-header" style={{ padding: '1.125rem 2rem' }}>
-              {/* Character tabs — draggable onto the comparison board */}
-              <div style={{ display: 'flex', gap: '0.375rem', overflowX: 'auto', paddingBottom: '0.875rem', alignItems: 'center' }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', flexShrink: 0, marginRight: '0.25rem' }}>drag to board →</span>
-                {displayedCharacters.map((char, i) => (
-                  <div
-                    key={char.id || i}
-                    draggable={true}
-                    onDragStart={e => { e.dataTransfer.setData('char-index', String(i)); e.dataTransfer.effectAllowed = 'copy'; }}
-                    onClick={() => setActiveTab(i)}
-                    className={`tab-pill ${activeTab === i ? 'active' : ''}${boardCards.some(c => c.charIndex === i) ? ' on-board' : ''}`}
-                    style={{ whiteSpace: 'nowrap', cursor: 'grab' }}
-                  >
-                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '-0.01em' }}>
-                      {char.name}
-                    </span>
-                    {(char.isGeneratingReference || char.id === 'generating') && (
-                      <span style={{ marginLeft: '0.3125rem', opacity: 0.55, fontSize: '0.5625rem', fontFamily: 'var(--font-mono)' }}>
-                        {char.images.filter(x => x.url).length}/{char.images.length}
-                      </span>
-                    )}
-                    {!char.isGeneratingReference && anchorStatus[char.name] === 'generating' && (
-                      <span style={{ marginLeft: '0.375rem', opacity: 0.75, fontSize: '0.5625rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <Loader2 size={10} className="spin" />
-                        ANCHOR
-                      </span>
-                    )}
-                    {!char.isGeneratingReference && (anchorStatus[char.name] === 'done' || char?.anchor_image_url) && (
-                      <span style={{ marginLeft: '0.375rem', color: 'var(--cyan-400)', fontSize: '0.5625rem' }}>✓</span>
-                    )}
-                    {!char.isGeneratingReference && anchorStatus[char.name] === 'failed' && (
-                      <span style={{ marginLeft: '0.375rem', color: 'var(--violet-400)', fontSize: '0.5625rem' }}>!</span>
-                    )}
-                  </div>
-                ))}
-                {activeCategory === 'project' && !isGeneratingActive && (
-                  <div
-                    onClick={() => setShowCreateModal(true)}
-                    className="tab-pill"
-                    style={{
-                      fontSize: '0.875rem',
-                      color: 'var(--orange)',
-                      background: 'rgba(var(--violet-rgb), 0.06)',
-                      borderColor: 'rgba(var(--violet-rgb), 0.22)',
-                      cursor: 'pointer',
-                      padding: '0.3125rem 0.875rem',
-                    }}
-                  >
-                    +
-                  </div>
-                )}
-              </div>
+            <CharacterSidebar
+              displayedCharacters={displayedCharacters}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              activeChar={activeChar}
+              activeCategory={activeCategory}
+              isGeneratingActive={isGeneratingActive}
+              activeAnchorState={activeAnchorState}
+              anchorStatus={anchorStatus}
+              boardCards={boardCards}
+              setShowCreateModal={setShowCreateModal}
+              handleAddGlobalToProject={handleAddGlobalToProject}
+              handleDelete={handleDelete}
+            />
 
-              {/* Character info row */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                <div>
-                  <h1 className="editorial-title editorial-h2">
-                    {activeChar ? (
-                      <>
-                        {activeChar.name}
-                        <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>.</span>
-                      </>
-                    ) : (
-                      <>Cast <span className="text-grad">library.</span></>
-                    )}
-                  </h1>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                    <span
-                      style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: '0.5938rem',
-                        fontWeight: 500,
-                        padding: '0.25rem 0.625rem',
-                        borderRadius: '62.4375rem',
-                        background: activeCategory === 'global' ? 'rgba(var(--violet-rgb), 0.1)' : 'rgba(var(--violet-rgb), 0.1)',
-                        color: activeCategory === 'global' ? 'var(--orange)' : 'var(--teal)',
-                        border: `0.0625rem solid ${activeCategory === 'global' ? 'rgba(var(--violet-rgb), 0.22)' : 'rgba(var(--violet-rgb), 0.22)'}`,
-                        letterSpacing: '0.18em',
-                      }}
-                    >
-                      {activeCategory === 'global' ? '◆ GLOBAL' : '◇ PROJECT'}
-                    </span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', fontFamily: 'var(--font-display)', fontStyle: 'italic', letterSpacing: '-0.015em' }}>
-                      {truncateCharacterDescription(activeChar?.description) || 'No notes yet.'}
-                    </span>
-                    {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'generating' && (
-                      <span style={{ color: 'var(--cyan-400)', fontSize: '0.6875rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                        <Loader2 size={12} className="spin" />
-                        Building identity anchor…
-                      </span>
-                    )}
-                    {activeCategory === 'project' && activeChar?.name && activeAnchorState === 'failed' && (
-                      <span style={{ color: 'var(--violet-400)', fontSize: '0.6875rem' }}>
-                        Anchor failed — will use reference panels
-                      </span>
-                    )}
-                  </div>
-                </div>
-                {activeChar && !isGeneratingActive && activeCategory === 'global' && (
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <button onClick={handleAddGlobalToProject} className="btn-secondary" style={{ padding: '0.5rem 0.875rem', fontSize: '0.7188rem', whiteSpace: 'nowrap' }}>Add to project</button>
-                    <button onClick={handleDelete} className="btn-action-danger" style={{ padding: '0.5rem 0.875rem', fontSize: '0.7188rem' }}>Delete from history</button>
-                  </div>
-                )}
-                {activeChar && !isGeneratingActive && activeCategory === 'project' && (
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <button onClick={handleDelete} className="btn-action-danger" style={{ padding: '0.5rem 0.875rem', fontSize: '0.7188rem', fontWeight: 600 }}>Delete</button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Comparison board — drag character tabs from above onto this canvas */}
+            {/* Comparison board */}
             <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'hidden', padding: '0.5rem 1.5rem 1.125rem', boxSizing: 'border-box' }}>
               <div
                 ref={boardRef}
@@ -1233,7 +734,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
                   backgroundSize: '1.5rem 1.5rem',
                 }}
               >
-                {/* Empty state */}
                 {boardCards.length === 0 && (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                     <div style={{ width: '3.25rem', height: '3.25rem', borderRadius: '0.875rem', background: 'var(--surface-2)', boxShadow: 'var(--neo-raised)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', opacity: isDragOverBoard ? 1 : 0.6 }}>
@@ -1247,15 +747,11 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
                     </div>
                   </div>
                 )}
-
-                {/* Drop hint overlay when dragging over non-empty board */}
                 {boardCards.length > 0 && isDragOverBoard && (
                   <div style={{ position: 'absolute', inset: 0, background: 'rgba(var(--cyan-rgb), 0.04)', border: '0.125rem dashed var(--cyan-border)', borderRadius: 'var(--radius-lg)', pointerEvents: 'none', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.875rem', fontWeight: 700, color: 'var(--cyan)' }}>Drop to add character</span>
                   </div>
                 )}
-
-                {/* Character cards */}
                 {boardCards.map(card => {
                   const char = displayedCharacters[card.charIndex];
                   if (!char) return null;
@@ -1263,90 +759,37 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
                   const zIndex = cardZOrder.indexOf(card.id) + 1;
                   const isSelected = activeTab === card.charIndex;
                   const isGeneratingThis = (char.isGeneratingReference || char.id === 'generating');
-
                   return (
                     <div
                       key={card.id}
                       onMouseDown={e => handleCardMouseDown(e, card)}
                       onClick={e => { e.stopPropagation(); setActiveTab(card.charIndex); bringToFront(card.id); }}
-                      style={{
-                        position: 'absolute',
-                        left: card.x,
-                        top: card.y,
-                        width: card.width ?? CARD_DEFAULT_W,
-                        background: 'var(--surface-2)',
-                        border: `0.0625rem solid ${isSelected ? 'var(--cyan-border)' : 'rgba(var(--cyan-300-rgb), 0.1)'}`,
-                        borderRadius: 'var(--radius-lg)',
-                        boxShadow: isSelected ? 'var(--neo-active)' : 'var(--neo-raised)',
-                        overflow: 'visible',
-                        cursor: dragState.current?.cardId === card.id ? 'grabbing' : 'grab',
-                        userSelect: 'none',
-                        zIndex,
-                        transition: 'border-color 120ms ease, box-shadow 120ms ease',
-                      }}
+                      style={{ position: 'absolute', left: card.x, top: card.y, width: card.width ?? CARD_DEFAULT_W, background: 'var(--surface-2)', border: `0.0625rem solid ${isSelected ? 'var(--cyan-border)' : 'rgba(var(--cyan-300-rgb), 0.1)'}`, borderRadius: 'var(--radius-lg)', boxShadow: isSelected ? 'var(--neo-active)' : 'var(--neo-raised)', overflow: 'visible', cursor: dragState.current?.cardId === card.id ? 'grabbing' : 'grab', userSelect: 'none', zIndex, transition: 'border-color 120ms ease, box-shadow 120ms ease' }}
                     >
-                      {/* Clip inner content (image + name) to the card boundary) */}
                       <div style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-                      {/* Image area */}
-                      <div style={{ position: 'relative', width: '100%', background: 'var(--bg-deep)', aspectRatio: preview?.isAnchor ? '4/5' : '21/9', overflow: 'hidden' }}>
-                        {preview ? (
-                          <img
-                            src={preview.src}
-                            alt={char.name}
-                            draggable={false}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
-                          />
-                        ) : isGeneratingThis ? (
-                          <div className="skeleton-shimmer" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Loader2 size={20} className="spin" style={{ color: 'var(--cyan)', opacity: 0.6 }} />
-                          </div>
-                        ) : (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(var(--cyan-300-rgb), 0.25)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
-                          </div>
-                        )}
-                        {/* Remove button */}
-                        <button
-                          onMouseDown={e => e.stopPropagation()}
-                          onClick={e => { e.stopPropagation(); removeCardFromBoard(card.id); }}
-                          style={{ position: 'absolute', top: '0.375rem', right: '0.375rem', width: '1.375rem', height: '1.375rem', borderRadius: '50%', background: 'rgba(var(--ink-950-rgb), 0.75)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.15)', color: 'var(--text-soft)', fontSize: '0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, backdropFilter: 'blur(0.25rem)' }}
-                        >×</button>
-                      </div>
-                      {/* Name strip */}
-                      <div style={{ padding: '0.5rem 0.625rem 0.4375rem', borderTop: `0.0625rem solid rgba(var(--cyan-300-rgb), 0.06)` }}>
-                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.75rem', fontWeight: 700, color: isSelected ? 'var(--cyan)' : 'var(--text)', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', transition: 'color 120ms ease' }}>
-                          {char.name}
+                        <div style={{ position: 'relative', width: '100%', background: 'var(--bg-deep)', aspectRatio: preview?.isAnchor ? '4/5' : '21/9', overflow: 'hidden' }}>
+                          {preview ? (
+                            <img src={preview.src} alt={char.name} draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+                          ) : isGeneratingThis ? (
+                            <div className="skeleton-shimmer" style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Loader2 size={20} className="spin" style={{ color: 'var(--cyan)', opacity: 0.6 }} />
+                            </div>
+                          ) : (
+                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(var(--cyan-300-rgb), 0.25)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg>
+                            </div>
+                          )}
+                          <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); removeCardFromBoard(card.id); }} style={{ position: 'absolute', top: '0.375rem', right: '0.375rem', width: '1.375rem', height: '1.375rem', borderRadius: '50%', background: 'rgba(var(--ink-950-rgb), 0.75)', border: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.15)', color: 'var(--text-soft)', fontSize: '0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, backdropFilter: 'blur(0.25rem)' }}>×</button>
                         </div>
-                        {char.description && (
-                          <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '0.125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>
-                            {char.description.slice(0, 55)}
-                          </div>
-                        )}
+                        <div style={{ padding: '0.5rem 0.625rem 0.4375rem', borderTop: '0.0625rem solid rgba(var(--cyan-300-rgb), 0.06)' }}>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.75rem', fontWeight: 700, color: isSelected ? 'var(--cyan)' : 'var(--text)', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', transition: 'color 120ms ease' }}>{char.name}</div>
+                          {char.description && (
+                            <div style={{ fontFamily: 'var(--font-body)', fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '0.125rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>{char.description.slice(0, 55)}</div>
+                          )}
+                        </div>
                       </div>
-                      </div>{/* end inner clip wrapper */}
-
-                      {/* Resize handle — bottom-right corner */}
-                      <div
-                        onMouseDown={e => handleResizeMouseDown(e, card)}
-                        title="Drag to resize"
-                        style={{
-                          position: 'absolute',
-                          bottom: -1,
-                          right: -1,
-                          width: '1.125rem',
-                          height: '1.125rem',
-                          cursor: 'nwse-resize',
-                          display: 'flex',
-                          alignItems: 'flex-end',
-                          justifyContent: 'flex-end',
-                          padding: '0.1875rem',
-                          borderBottomRightRadius: 'var(--radius-lg)',
-                          zIndex: 2,
-                        }}
-                      >
-                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                          <path d="M7 1L1 7M7 4L4 7M7 7L7 7" stroke="rgba(var(--cyan-300-rgb),0.45)" strokeWidth="1.25" strokeLinecap="round"/>
-                        </svg>
+                      <div onMouseDown={e => handleResizeMouseDown(e, card)} title="Drag to resize" style={{ position: 'absolute', bottom: -1, right: -1, width: '1.125rem', height: '1.125rem', cursor: 'nwse-resize', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', padding: '0.1875rem', borderBottomRightRadius: 'var(--radius-lg)', zIndex: 2 }}>
+                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M7 1L1 7M7 4L4 7M7 7L7 7" stroke="rgba(var(--cyan-300-rgb),0.45)" strokeWidth="1.25" strokeLinecap="round"/></svg>
                       </div>
                     </div>
                   );
@@ -1356,163 +799,44 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
           </div>
         )}
         right={(
-          <div className="layout-sidebar scroll-y" style={{ width: '100%', minWidth: 0, padding: '1rem', height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <input type="file" ref={fileInputRef} onChange={handleSheetUpload} style={{ display: 'none' }} accept="image/*" />
-
-            {isPanelEditing && activeChar ? (
-              /* ── Edit form ── */
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-                  <div>
-                    <div className="kicker" style={{ marginBottom: '0.25rem' }}>Edit Character</div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '13rem' }}>{activeChar.name}</div>
-                  </div>
-                  <button onClick={() => setIsPanelEditing(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.375rem', cursor: 'pointer', padding: '0.125rem 0.375rem', lineHeight: 1, borderRadius: '0.375rem' }}>×</button>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', flex: '1 1 auto' }}>
-                  <div>
-                    <label className="panel-meta-label" style={{ display: 'block', marginBottom: '0.375rem' }}>NAME</label>
-                    <input className="input-inset" value={editName} onChange={e => setEditName(e.target.value)} style={{ padding: '0.5625rem 0.75rem', fontSize: '0.8125rem', borderRadius: '0.5rem', width: '100%', boxSizing: 'border-box' }} />
-                  </div>
-
-                  <div>
-                    <label className="panel-meta-label" style={{ display: 'block', marginBottom: '0.375rem' }}>DESCRIPTION</label>
-                    <textarea className="textarea-inset" value={editDesc} onChange={e => setEditDesc(e.target.value)} style={{ padding: '0.5625rem 0.75rem', fontSize: '0.8125rem', borderRadius: '0.5rem', height: '6rem', resize: 'vertical', width: '100%', boxSizing: 'border-box' }} />
-                  </div>
-
-                  {activeCategory === 'project' && (
-                    <div>
-                      <div className="panel-meta-label" style={{ marginBottom: '0.5rem' }}>REPLACE SHEET</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4375rem' }}>
-                        <button className="btn-outline" style={{ padding: '0.5625rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', fontSize: '0.75rem', width: '100%' }}
-                          onClick={() => {
-                            setSheetReplaceTarget({ index: activeTab, name: (editName || activeChar?.name || '').trim().toUpperCase(), description: editDesc.trim() });
-                            setIsPanelEditing(false);
-                            fileInputRef.current?.click();
-                          }}
-                        >
-                          <Upload size={13} /> Upload New Sheet
-                        </button>
-                        <button className="btn-action-generate" style={{ padding: '0.5625rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', fontSize: '0.75rem', width: '100%' }}
-                          disabled={busy}
-                          onClick={() => { setIsPanelEditing(false); handleGenerateFromScript(); }}
-                        >
-                          <FileText size={13} /> Regenerate from Script
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '1rem', marginTop: 'auto' }}>
-                  <button className="btn-orange" style={{ flex: 1, padding: '0.75rem', fontWeight: 700, fontSize: '0.8125rem' }} onClick={handleEditSave}>
-                    {activeCategory === 'global' ? 'Rename' : 'Save Changes'}
-                  </button>
-                  <button className="btn-outline" style={{ flex: 1, padding: '0.75rem', fontSize: '0.8125rem' }} onClick={() => setIsPanelEditing(false)}>
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* ── Normal view ── */
-              <>
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <div className="kicker" style={{ marginBottom: '0.5rem' }}>Character · Studio</div>
-                  <h2 className="editorial-title editorial-h2" style={{ marginBottom: '0.375rem' }}>
-                    Build your <span className="text-grad">cast.</span>
-                  </h2>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.7188rem', lineHeight: 1.5 }}>
-                    {busy && generatingChar
-                      ? `Saving ${generatingChar.images.filter(x => x.url).length}/${generatingChar.images.length} sheet…`
-                      : busy ? 'Processing sheet…' : 'Upload a full sheet or create one.'}
-                  </p>
-                </div>
-
-                {/* Active character image preview */}
-                {(() => {
-                  const preview = getCharPreviewImage(activeChar);
-                  if (!preview) return null;
-                  return (
-                    <div style={{ marginBottom: '0.5rem', borderRadius: 'var(--radius)', overflow: 'hidden', border: '0.0625rem solid var(--border-mid)', background: 'var(--bg-deep)', cursor: 'pointer' }}
-                      onClick={() => setPreviewTarget({ charIdx: activeCategory === 'project' ? activeTab : -1, imgIdx: 0, url: preview.src, label: activeChar.name })}
-                      title="Click to enlarge"
-                    >
-                      <img src={preview.src} alt={activeChar?.name} style={{ width: '100%', display: 'block', aspectRatio: preview.isAnchor ? '16/9' : '21/9', objectFit: 'cover' }} />
-                      <div style={{ padding: '0.375rem 0.625rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                          {anchorStatus[activeChar?.name] === 'generating'
-                            ? <><Loader2 size={9} className="spin" /> Refreshing anchor…</>
-                            : preview.isAnchor ? '✓ Identity anchor' : 'Character sheet'}
-                        </span>
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); forceRefreshAnchor(activeChar); }} disabled={anchorStatus[activeChar?.name] === 'generating'} title="Regenerate identity anchor" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'flex', alignItems: 'center' }}>
-                            <RefreshCw size={9} />
-                          </button>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.5rem', color: 'var(--cyan)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>view ↗</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Edit button — shown when a character is selected */}
-                {activeChar && !isGeneratingActive && (
-                  <button onClick={openPanelEdit} className="btn-outline" style={{ width: '100%', padding: '0.5rem', fontSize: '0.6875rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem' }}>
-                    {activeCategory === 'global' ? 'Rename Character' : 'Edit Character'}
-                  </button>
-                )}
-
-                {/* Category toggle */}
-                <div className="neo-inset" style={{ display: 'flex', padding: '0.25rem', marginBottom: '1.375rem' }}>
-                  {['project', 'global'].map(cat => (
-                    <button key={cat} onClick={() => { setActiveCategory(cat); setActiveTab(0); }} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.4375rem', border: activeCategory === cat ? '0.0625rem solid var(--cyan-border)' : '0.0625rem solid transparent', background: activeCategory === cat ? 'var(--surface-2)' : 'transparent', boxShadow: activeCategory === cat ? 'var(--neo-flat)' : 'none', color: activeCategory === cat ? 'var(--cyan)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.6875rem', cursor: 'pointer', fontFamily: 'var(--font-body)', transition: 'background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out' }}>
-                      {cat === 'project' ? 'Project' : 'History'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <button onClick={() => setShowCreateModal(true)} disabled={busy} className="btn-orange" style={{ width: '100%', padding: '0.75rem', justifyContent: 'center' }}>
-                    Create new
-                  </button>
-                  {isGenerating && <ProgressBar steps={CHARACTER_STEPS} currentStep={charProgressStep} />}
-                </div>
-
-                <div style={{ marginTop: 'auto', paddingTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {activeCategory === 'project' && projectCharacters.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                      <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Identity Anchors</div>
-                      <div style={{ display: 'flex', gap: '0.375rem' }}>
-                        {activeChar && !activeChar.isGeneratingReference && (
-                          <button className="btn-outline" style={{ flex: 1, padding: '0.5rem', fontSize: '0.6875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3125rem' }} onClick={() => forceRefreshAnchor(activeChar)} disabled={anchorStatus[activeChar?.name] === 'generating' || anyAnchorsGenerating}>
-                            {anchorStatus[activeChar?.name] === 'generating' ? <><Loader2 size={11} className="spin" /> Refreshing…</> : <><RefreshCw size={11} /> Refresh anchor</>}
-                          </button>
-                        )}
-                        <button className="btn-outline" style={{ flex: 1, padding: '0.5rem', fontSize: '0.6875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3125rem' }} onClick={refreshAllAnchors} disabled={anyAnchorsGenerating}>
-                          {anyAnchorsGenerating ? <><Loader2 size={11} className="spin" /> Running…</> : <><RefreshCw size={11} /> Refresh all</>}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {anyAnchorsGenerating && (
-                    <div style={{ color: 'var(--violet-400)', fontSize: '0.6875rem', lineHeight: 1.5 }}>
-                      Identity anchors processing — wait before generating shots for best consistency.
-                    </div>
-                  )}
-                  <div className="panel-flat">
-                    <div className="panel-meta-label">What is an identity anchor?</div>
-                    <p className="body-sm">An anchor is a single locked portrait generated from the character sheet. Every shot and clip generation uses it to keep the character's face, body, and outfit consistent across the entire video. Refresh it after uploading a new sheet or changing the character description.</p>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+          <CharacterFormPanel
+            activeChar={activeChar}
+            isGeneratingActive={isGeneratingActive}
+            activeCategory={activeCategory}
+            setActiveCategory={setActiveCategory}
+            setActiveTab={setActiveTab}
+            activeAnchorState={activeAnchorState}
+            anyAnchorsGenerating={anyAnchorsGenerating}
+            anchorStatus={anchorStatus}
+            busy={busy}
+            isGenerating={isGenerating}
+            isProcessingSheet={isProcessingSheet}
+            isPanelEditing={isPanelEditing}
+            setIsPanelEditing={setIsPanelEditing}
+            generatingChar={generatingChar}
+            charProgressStep={charProgressStep}
+            editName={editName}
+            setEditName={setEditName}
+            editDesc={editDesc}
+            setEditDesc={setEditDesc}
+            fileInputRef={fileInputRef}
+            setShowCreateModal={setShowCreateModal}
+            setSheetReplaceTarget={setSheetReplaceTarget}
+            activeTab={activeTab}
+            projectCharacters={projectCharacters}
+            getCharPreviewImage={getCharPreviewImage}
+            setPreviewTarget={setPreviewTarget}
+            forceRefreshAnchor={forceRefreshAnchor}
+            refreshAllAnchors={refreshAllAnchors}
+            handleGenerateFromScript={handleGenerateFromScript}
+            handleEditSave={handleEditSave}
+            handleSheetUpload={handleSheetUpload}
+            openPanelEdit={openPanelEdit}
+          />
         )}
       />
 
-      {/* ── Create Modal ── */}
+      {/* Create Modal */}
       {showCreateModal && (
         <div className="auth-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="auth-modal" style={{ maxWidth: '28.75rem' }} onClick={e => e.stopPropagation()}>
@@ -1521,8 +845,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
             <div className="editorial-title editorial-h2" style={{ marginBottom: '1.25rem' }}>
               Sketch the <span className="text-grad">cast.</span>
             </div>
-
-            {/* ── Option 1: Upload Full Sheet ── */}
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', marginBottom: '0.5rem' }}>Upload existing sheet</div>
               <button
@@ -1539,8 +861,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
                 {isDraggingSheet ? 'Drop to upload' : isProcessingSheet ? 'Reading sheet…' : 'Upload Full Sheet'}
               </button>
             </div>
-
-            {/* ── Option 2: Generate from Script ── */}
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', marginBottom: '0.5rem' }}>Generate from script</div>
               <button
@@ -1553,15 +873,11 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
                 Generate from Script
               </button>
             </div>
-
-            {/* ── Divider ── */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '1rem 0' }}>
               <div style={{ flex: 1, height: '0.0625rem', background: 'rgba(var(--cyan-300-rgb), 0.07)' }} />
               <span style={{ fontSize: '0.5625rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.14em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>or describe from scratch</span>
               <div style={{ flex: 1, height: '0.0625rem', background: 'rgba(var(--cyan-300-rgb), 0.07)' }} />
             </div>
-
-            {/* ── Option 3: Generate from description ── */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
               <div>
                 <label style={{ fontSize: '0.6562rem', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>CHARACTER NAME</label>
@@ -1569,11 +885,8 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
               </div>
               <div>
                 <label style={{ fontSize: '0.6562rem', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>DESCRIPTION</label>
-                <textarea placeholder="Ancient Indian warrior, 40s, grey beard, dark red dhoti, gold jewellery..." value={createDesc} onChange={e => setCreateDesc(e.target.value)}
-                  className="textarea-inset" style={{ padding: '0.625rem 0.8125rem', background: 'var(--ink-900)', fontSize: '0.8125rem', borderRadius: '0.5rem', minHeight: '4.5rem' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
+                <textarea placeholder="Ancient Indian warrior, 40s, grey beard, dark red dhoti, gold jewellery..." value={createDesc} onChange={e => setCreateDesc(e.target.value)} className="textarea-inset" style={{ padding: '0.625rem 0.8125rem', background: 'var(--ink-900)', fontSize: '0.8125rem', borderRadius: '0.5rem', minHeight: '4.5rem' }} onFocus={e => e.target.style.borderColor = 'rgba(var(--violet-rgb), 0.5)'} onBlur={e => e.target.style.borderColor = 'var(--border-mid)'} />
               </div>
-
-              {/* Reference image */}
               <div>
                 <label style={{ fontSize: '0.6562rem', fontWeight: 500, color: 'var(--teal)', letterSpacing: '0.16em', display: 'block', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>
                   REFERENCE IMAGE <span style={{ color: 'var(--text-subtle)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
@@ -1600,7 +913,6 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
                   </button>
                 )}
               </div>
-
               <button className="btn-action-generate" style={{ width: '100%', padding: '0.8125rem', fontSize: '0.75rem' }} onClick={handleGenerateAngles}>
                 Generate Character Sheet
               </button>
@@ -1609,9 +921,9 @@ export default function CharactersScreen({ projectData = [], projectState = {}, 
         </div>
       )}
 
-      {/* ── Image Preview Modal ── */}
+      {/* Image Preview Modal */}
       {previewTarget && (
-        <ImagePreviewModal
+        <CharacterImageModal
           imageUrl={previewTarget.url}
           label={previewTarget.label}
           onClose={() => setPreviewTarget(null)}

@@ -1,0 +1,275 @@
+/* ===== PANELS ===== */
+
+/* Primary raised panel — used as main content areas */
+.panel-raised {
+  background: var(--surface-raised);
+  box-shadow: var(--neo-raised);
+  border: 0.0625rem solid rgba(var(--cyan-300-rgb), 0.09);
+  border-radius: var(--radius-xl);
+  padding: 1.625rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+}
+
+/* Flat secondary card — used in sidebars */
+.panel-flat {
+  background: var(--surface-flat);
+  box-shadow: var(--neo-flat);
+  border: 0.0625rem solid rgba(var(--cyan-300-rgb), 0.08);
+  border-radius: var(--radius-lg);
+  padding: 1.125rem;
+}
+
+/* Flat card with larger padding for sidebar info blocks */
+.panel-flat-lg {
+  background: var(--surface-flat);
+  box-shadow: var(--neo-flat);
+  border: 0.0625rem solid rgba(var(--cyan-300-rgb), 0.08);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+}
+
+/* Inset panel — for nested content areas / scrollable text */
+.panel-inset {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--surface-inset);
+  box-shadow: var(--neo-inset);
+  border: 0.0625rem solid rgba(var(--cyan-300-rgb), 0.07);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.375rem;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  color: var(--text);
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Empty / centered state panel */
+.panel-empty-state {
+  max-width: 30rem;
+  text-align: center;
+  background: var(--surface-raised);
+  box-shadow: var(--neo-raised);
+  border: 0.0625rem solid rgba(var(--cyan-300-rgb), 0.08);
+  border-radius: var(--radius-xl);
+  padding: 2.5rem;
+}
+
+/* ===== PANEL HEADER INSIDE PANEL ===== */
+
+.panel-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+
+.panel-meta-label {
+  font-family: var(--font-mono);
+  font-size: 0.7188rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  margin-bottom: 0.625rem;
+}
+
+.panel-meta-label--cyan {
+  color: var(--cyan);
+}
+
+/* ===== SECTION HEADERS INSIDE SCREENS ===== */
+
+/* Screen panel header row */
+.panel-header {
+  padding: 1.25rem 1.75rem;
+  border-bottom: 0.0625rem solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 1rem;
+  background: linear-gradient(180deg, rgba(var(--ink-900-rgb), 0.97), rgba(var(--ink-900-rgb), 0.9));
+  box-shadow: inset 0 0.0625rem 0 rgba(var(--cyan-300-rgb), 0.05);
+}
+
+.panel-header-left {
+  /* child block holding kicker + title + subtitle */
+}
+
+.panel-header-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+/* Shots list header: structured info + controls + status */
+.panel-header.shot-header {
+  padding: 1.125rem 1.5rem 0.875rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0.75rem;
+}
+
+.shot-header-top {
+  display: block;
+}
+
+.shot-header-copy {
+  min-width: 0;
+}
+
+.shot-screen-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.375rem, 3.1vw, 3rem);
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.shot-screen-subtitle {
+  margin: 0.5rem 0 0;
+  max-width: 47.5rem;
+}
+
+.shot-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-content: flex-start;
+  margin-top: 0.625rem;
+}
+
+.shot-header-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 0.875rem;
+  flex-wrap: wrap;
+}
+
+.shot-screen-progress {
+  margin: 0;
+}
+
+.shot-screen-feedback {
+  margin: 0;
+}
+
+.shot-coverage-notes {
+  padding: 0.5rem 1.5rem 0.625rem;
+  border-bottom: 0.0625rem solid var(--border);
+  flex-shrink: 0;
+}
+
+.shot-coverage-notes p {
+  margin: 0;
+  padding: 0.625rem 0.75rem;
+  max-height: 5.375rem;
+  overflow-y: auto;
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+/* Clips screen header */
+.panel-header.clips-header {
+  padding: 1.125rem 1.5rem 0.875rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0.75rem;
+}
+
+.clips-header-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 1rem;
+}
+
+.clips-header-copy {
+  min-width: 0;
+}
+
+.clips-screen-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.125rem, 3.1vw, 2.875rem);
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--text);
+  margin: 0 0 0.375rem;
+  line-height: 1.08;
+}
+
+.clips-mode-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.clips-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-content: flex-start;
+}
+
+.clips-header-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  flex-wrap: wrap;
+  min-height: 1rem;
+}
+
+.clips-header-status .queue-msg {
+  margin: 0;
+}
+
+/* ===== PANEL FORM GRID ===== */
+
+.panel-form-grid {
+  display: grid;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.panel-form-grid > * {
+  min-width: 0;
+}
+
+.panel-form-grid--triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.panel-form-grid--double {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel-form-grid--split {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+}
+
+.panel-form-grid--narrow {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 6rem);
+}

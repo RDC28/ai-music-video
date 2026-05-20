@@ -1,0 +1,152 @@
+/* ===== RESET & BASE ===== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--cyan-rgb), 0.42) rgba(var(--cyan-300-rgb), 0.04);
+}
+
+*::-webkit-scrollbar {
+  display: block;
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(var(--cyan-300-rgb), 0.03);
+  border-radius: var(--radius-pill);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(var(--cyan-rgb), 0.35);
+  border-radius: var(--radius-pill);
+  border: 0.125rem solid rgba(var(--ink-950-rgb), 0.7);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--cyan-rgb), 0.58);
+  background-clip: padding-box;
+  border: 0.125rem solid rgba(var(--ink-950-rgb), 0.7);
+}
+
+/* ===== GLOBAL DEFAULTS ===== */
+html {
+  height: 100%;
+  background: var(--bg-deep);
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+body {
+  position: relative;
+  background:
+    radial-gradient(140% 120% at 14% 0%, rgba(var(--cyan-rgb), 0.12), transparent 42%),
+    radial-gradient(120% 120% at 100% 100%, rgba(var(--violet-rgb), 0.09), transparent 48%),
+    linear-gradient(180deg, rgba(var(--ink-900-rgb), 0.99), rgba(var(--ink-950-rgb), 0.99));
+  font-family: var(--font-body);
+  font-synthesis: none;
+  font-feature-settings: 'ss01', 'ss02';
+  min-height: 100vh;
+  overflow-x: hidden;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+  letter-spacing: -0.005em;
+  line-height: var(--type-body);
+}
+
+/* Subtle dot grid background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(circle, rgba(var(--cyan-300-rgb), 0.035) 0.0625rem, transparent 0.0625rem);
+  background-size: 1.75rem 1.75rem;
+}
+
+/* No body::after — no grain overlay */
+
+/* ===== FOCUS & SELECTION ===== */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 0.125rem solid var(--cyan);
+  outline-offset: 0.125rem;
+  border-radius: 0.25rem;
+}
+
+::selection {
+  background: rgba(var(--cyan-rgb), 0.24);
+  color: var(--text);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+/* ===== VISIBLE SCROLLBAR ===== */
+
+.visible-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--cyan-rgb), 0.42) rgba(var(--cyan-300-rgb), 0.04);
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
+.visible-scrollbar::-webkit-scrollbar {
+  display: block;
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+.visible-scrollbar::-webkit-scrollbar-track {
+  background: rgba(var(--cyan-300-rgb), 0.03);
+  border-radius: var(--radius-pill);
+}
+
+.visible-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(var(--cyan-rgb), 0.42);
+  border-radius: var(--radius-pill);
+}
+
+.visible-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--cyan-rgb), 0.68);
+}
+
+/* ===== PROGRESS / LOADING ===== */
+
+.generating-pulse {
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+/* ===== REDUCED MOTION ===== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,532 @@
+/* ===== WORKFLOW LAYOUT ===== */
+
+.workflow-app {
+  display: grid;
+  grid-template-columns: var(--stage-rail-current-width, var(--stage-rail-width)) 1fr;
+  grid-template-rows: var(--topstrip-height) 1fr;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(var(--ink-900-rgb), 0.99), rgba(var(--ink-950-rgb), 0.99));
+  transition: grid-template-columns 220ms ease-in-out;
+}
+
+.workflow-topstrip {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  background: linear-gradient(180deg, rgba(var(--ink-800-rgb), 0.94), rgba(var(--ink-900-rgb), 0.96));
+  border-bottom: 0.0625rem solid var(--border);
+  box-shadow: 0 0.45rem 1rem rgba(var(--ink-950-rgb), 0.52), inset 0 0.0625rem 0 rgba(var(--cyan-300-rgb), 0.1), inset 0 -0.0625rem 0 rgba(var(--ink-950-rgb), 0.46);
+  height: var(--topstrip-height);
+  flex-shrink: 0;
+  z-index: 100;
+  position: relative;
+}
+
+.topstrip-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.topstrip-right {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.topstrip-project {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  max-width: 25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topstrip-step {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-soft);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.workflow-shell {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.workflow-loading,
+.workflow-buffer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(var(--ink-950-rgb), 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+/* Initial loading state (before StageRail mounts) */
+.workflow-app-loading {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.workflow-app-loading .workflow-shell {
+  grid-column: unset;
+  grid-row: unset;
+  flex: 1;
+  height: auto;
+}
+
+.workflow-scroll {
+  min-height: 0;
+  overflow: auto;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.workflow-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 12;
+  background: linear-gradient(180deg, transparent 0%, rgba(var(--ink-900-rgb), 0.96) 30%);
+  padding-top: 0.875rem;
+}
+
+/* Buffer internals — kept for backward compat */
+.workflow-buffer-overlay {
+  position: absolute;
+  inset: 0.875rem;
+  z-index: 80;
+  min-height: auto;
+  border-radius: var(--radius-lg);
+  background: rgba(var(--ink-950-rgb), 0.85);
+  pointer-events: none;
+}
+
+.workflow-buffer-core {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1.125rem;
+  max-width: 30rem;
+}
+
+.workflow-buffer-mark {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: var(--radius-lg);
+  border: 0.0625rem solid var(--cyan-border);
+  background: var(--surface-2);
+  box-shadow: var(--neo-raised);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.workflow-buffer-mark span {
+  width: 0.3125rem;
+  height: 1.375rem;
+  border-radius: var(--radius-pill);
+  background: var(--cyan);
+  animation: bufferBars 800ms var(--ease-smooth) infinite;
+  transform-origin: 50% 100%;
+}
+
+.workflow-buffer-mark span:nth-child(2) { animation-delay: 130ms; }
+.workflow-buffer-mark span:nth-child(3) { animation-delay: 260ms; }
+
+.workflow-buffer-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  margin-bottom: 0.25rem;
+}
+
+.workflow-buffer-message {
+  font-family: var(--font-body);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.workflow-buffer-track {
+  position: absolute;
+  left: 1.75rem;
+  right: 1.75rem;
+  bottom: 1.75rem;
+  z-index: 2;
+  height: 0.1875rem;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: rgba(var(--cyan-300-rgb), 0.06);
+}
+
+.workflow-buffer-track span {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  animation: bufferTrack 1.4s var(--ease-smooth) infinite;
+}
+
+.workflow-buffer-grid {
+  position: absolute;
+  inset: 1.375rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.875rem;
+  opacity: 0.10;
+  pointer-events: none;
+}
+
+.workflow-buffer-grid span {
+  border-radius: var(--radius);
+  border: 0.0625rem solid var(--border-mid);
+  background: var(--surface-2);
+  box-shadow: var(--neo-flat);
+}
+
+/* ===== STAGE RAIL ===== */
+
+.stage-rail {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+  background: linear-gradient(180deg, rgba(var(--ink-800-rgb), 0.94), rgba(var(--ink-950-rgb), 0.99));
+  border-right: 0.0625rem solid var(--border);
+  width: var(--stage-rail-current-width, var(--stage-rail-width));
+  overflow: hidden;
+  z-index: 200;
+  position: relative;
+  transition: width 220ms ease-in-out, box-shadow 220ms ease-in-out, background 180ms ease-in-out;
+}
+
+.stage-rail.is-expanded {
+  width: 12.5rem;
+  box-shadow: 0.45rem 0 1.7rem rgba(var(--ink-950-rgb), 0.52), inset 0.0625rem 0 0 rgba(var(--cyan-300-rgb), 0.08);
+}
+
+.stage-rail-logo {
+  height: var(--topstrip-height);
+  display: flex;
+  align-items: center;
+  padding: 0 0.75rem;
+  border-bottom: 0.0625rem solid var(--border);
+  flex-shrink: 0;
+  gap: 0.5rem;
+  overflow: hidden;
+  width: 100%;
+  margin-bottom: 0;
+  background: linear-gradient(180deg, rgba(var(--ink-800-rgb), 0.94), rgba(var(--ink-900-rgb), 0.96));
+  box-shadow: inset 0 -0.0625rem 0 rgba(var(--ink-950-rgb), 0.46);
+}
+
+.stage-rail:not(.is-expanded) .stage-rail-logo {
+  justify-content: center;
+  padding: 0;
+}
+
+.stage-rail:not(.is-expanded) .stage-rail-logo-mark,
+.stage-rail:not(.is-expanded) .stage-rail-project {
+  display: none;
+}
+
+.stage-rail-toggle {
+  width: 1.9375rem;
+  height: 1.9375rem;
+  border-radius: var(--radius);
+  border: 0.0625rem solid var(--border-mid);
+  background: var(--surface-flat);
+  box-shadow: var(--neo-flat), inset 0 0.0625rem 0 rgba(var(--cyan-300-rgb), 0.07);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: box-shadow 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out, transform 100ms ease-out;
+}
+
+.stage-rail-toggle:hover {
+  border-color: var(--cyan-border);
+  color: var(--cyan-400);
+  box-shadow: var(--neo-active);
+  transform: translateY(-0.0625rem);
+}
+
+.stage-rail-logo-mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--neo-raised);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.8125rem;
+  color: var(--cyan);
+  flex-shrink: 0;
+  border: 0.0625rem solid var(--cyan-border);
+}
+
+.stage-rail-project {
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transform: translateX(-0.25rem);
+  transition: opacity 180ms ease-in-out, transform 220ms ease-in-out;
+}
+
+.stage-rail.is-expanded .stage-rail-project {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.stage-rail-steps {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0 0.25rem;
+  overflow: hidden;
+  width: 100%;
+}
+
+.stage-rail-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: calc(100% - 0.5rem);
+  height: 2.5rem;
+  border-radius: var(--radius);
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  cursor: pointer;
+  margin: 0.1875rem auto;
+  padding: 0 0.5rem;
+  transition:
+    width 220ms ease-in-out,
+    padding 220ms ease-in-out,
+    background 180ms ease-in-out,
+    box-shadow 180ms ease-in-out,
+    border-color 180ms ease-in-out,
+    color 180ms ease-in-out;
+  overflow: visible;
+}
+
+.stage-rail.is-expanded .stage-rail-step {
+  width: calc(100% - 1rem);
+  padding: 0 0.625rem;
+}
+
+.stage-rail-step-main {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.stage-rail-step:hover {
+  background: var(--surface-flat);
+  box-shadow: var(--neo-flat);
+  border-color: rgba(var(--cyan-300-rgb), 0.16);
+}
+
+.stage-rail-step.active {
+  background: var(--surface-raised);
+  box-shadow: var(--neo-active);
+  border-color: rgba(var(--cyan-rgb), 0.32);
+}
+
+/* Cyan left accent on active step */
+.stage-rail-step.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 25%;
+  bottom: 25%;
+  width: 0.125rem;
+  border-radius: var(--radius-pill);
+  background: var(--cyan);
+}
+
+/* Dot is hidden in collapsed rail — not enough room alongside num+icon.
+   Active state is communicated by the ::before bar + cyan tinting. */
+.stage-rail-step-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--border-mid);
+  position: absolute;
+  top: 50%;
+  right: 0.375rem;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 180ms ease-in-out, background 180ms ease-in-out, box-shadow 180ms ease-in-out;
+}
+
+.stage-rail.is-expanded .stage-rail-step-dot {
+  opacity: 1;
+}
+
+.stage-rail-step.active .stage-rail-step-dot {
+  background: var(--cyan);
+  box-shadow: 0 0 0.375rem rgba(var(--cyan-rgb), 0.5);
+}
+
+.stage-rail-step.completed .stage-rail-step-dot {
+  background: var(--amber);
+}
+
+.stage-rail-step-num {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  line-height: 1;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.stage-rail-step.active .stage-rail-step-num {
+  color: var(--cyan);
+}
+
+.stage-rail-step.completed .stage-rail-step-num {
+  color: var(--amber);
+}
+
+.stage-rail-step-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color var(--motion-fast) ease;
+}
+
+.stage-rail-step.active .stage-rail-step-icon {
+  color: var(--cyan);
+}
+
+.stage-rail-step.completed .stage-rail-step-icon {
+  color: var(--amber);
+}
+
+.stage-rail-step-name {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  white-space: nowrap;
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-0.25rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: max-width 220ms ease-in-out, opacity 180ms ease-in-out, transform 220ms ease-in-out;
+  letter-spacing: -0.005em;
+}
+
+.stage-rail.is-expanded .stage-rail-step-name {
+  max-width: 6.5rem;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.stage-rail-step.active .stage-rail-step-name {
+  color: var(--text);
+}
+
+.stage-rail-step.completed .stage-rail-step-name {
+  color: var(--text-soft);
+}
+
+/* Connector line between steps */
+.stage-rail-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 0.125rem);
+  transform: translateX(-50%);
+  width: 0.0625rem;
+  height: 0.375rem;
+  background: var(--border);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 180ms ease-in-out;
+}
+
+.stage-rail.is-expanded .stage-rail-step:not(:last-child)::after {
+  opacity: 0;
+}
+
+.stage-rail-footer {
+  padding: 0.625rem 0.5rem;
+  border-top: 0.0625rem solid var(--border);
+  flex-shrink: 0;
+  width: 100%;
+}
+
+/* ===== MEDIA QUERIES — WORKFLOW ===== */
+
+@media (max-width: 48em) {
+  .stage-rail {
+    display: none;
+  }
+
+  .workflow-app {
+    grid-template-columns: 1fr;
+    grid-template-rows: var(--topstrip-height) 1fr;
+  }
+
+  .workflow-topstrip {
+    grid-column: 1;
+  }
+
+  .workflow-shell {
+    grid-column: 1;
+    padding-bottom: 0;
+  }
+}
