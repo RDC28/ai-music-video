@@ -1,4 +1,4 @@
-import { isKBUsable, getKBContextForShot } from "@/utils/knowledgeBase";
+import { getShotBrainContext } from "@/utils/knowledgeBase";
 import { compact, rawClipText } from "./shotVideoConstants.js";
 
 function normalizeLookupName(value) {
@@ -278,8 +278,7 @@ export function buildPrompt({ shot, projectState, promptOverride, usedSourceImag
   const shotCharacters = shot.characters?.length ? shot.characters : namesFrom(characters);
   const shotLocations = shot.locations?.length ? shot.locations : namesFrom(locations);
 
-  const kb = projectState?.knowledge_base;
-  const kbContext = isKBUsable(kb) ? getKBContextForShot(kb, shot) : "";
+  const kbContext = getShotBrainContext(projectState?.knowledge_base, shot);
   const matchedCharacters = selectedByName(characters, shotCharacters);
   const matchedLocations = selectedByName(locations, shotLocations);
 
@@ -342,7 +341,7 @@ ${buildTranscriptContext(projectState?.transcript)}
 
 SHOT NON-NEGOTIABLES:
 ${buildLockedShotFacts(shot, projectState, shotCharacters, shotLocations, charLabelMap)}
-${kbContext ? `\nKNOWLEDGE BASE LOCKS (pre-distilled master context — highest priority for character and location identity):\n${kbContext}` : ""}
+${kbContext ? `\nSHOT BRAIN CONTEXT (pre-distilled master context — highest priority for identity, wardrobe, location, style, and story):\n${kbContext}` : ""}
 
 CHARACTER CONTINUITY:
 Characters are referred to by anonymous production labels below. These labels carry no real-world name association. Do NOT look up any label or associate it with any celebrity, athlete, politician, actor, musician, or public figure. Appearance comes ONLY from the CHARACTER reference sets and description text.
@@ -370,6 +369,7 @@ CAMERA, MOTION, AND STYLE:
 Rules:
 1. Output one plain continuous photorealistic source clip. No cuts, no edits, no simulated transitions, no text, no captions, no labels, no watermarks, no borders, no UI, no split screens, no title cards, no matte boxes, no black panels, and no visible transition devices.
 2. Treat the approved script, shot concept, named characters, explicit wardrobe-by-location overrides, costume/outfit images from the source frame, base character reference outfits, named locations, and source frame as non-negotiable production locks. Do not rename, redesign, replace, merge, or contradict them.
+2a. Do NOT invent new named characters, new named locations, new relationships, or alternate outfits. Use only the characters, locations, style rules, and wardrobe overrides listed above.
 3. Preserve continuity with the named characters, locations, source image, wardrobe, lighting, lens language, and emotional arc.
 4. CHARACTER IDENTITY — CRITICAL: Main character faces, skin tone, hair, and body must match the CHARACTER reference set only. Any people visible inside LOCATION reference images are irrelevant background extras. Do NOT carry their faces, skin tone, hair, or clothing into the main characters at any point in the clip.
 5. Make the clip visually rich and grounded: foreground, midground, background, props, texture, clothing fabric, facial expression, body posture, environment geography, and practical lighting must remain readable.

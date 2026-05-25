@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  Home, Music2, BookOpen, Users, MapPin, Film,
+  Home, Music2, Brain, Users, MapPin, Film,
   Layers, Video, Scissors, Shirt,
   Check, ChevronLeft, ChevronRight, Menu,
 } from 'lucide-react';
@@ -11,7 +11,7 @@ import {
 const STEPS = [
   { id: 1,  name: 'Home',   icon: Home },
   { id: 2,  name: 'Audio',  icon: Music2 },
-  { id: 3,  name: 'Story',  icon: BookOpen },
+  { id: 3,  name: 'Brain',  icon: Brain },
   { id: 4,  name: 'Cast',   icon: Users },
   { id: 5,  name: 'Sets',   icon: MapPin },
   { id: 6,  name: 'Looks',  icon: Shirt },

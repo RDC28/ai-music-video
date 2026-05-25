@@ -6,7 +6,7 @@ import {
   TEXT_MODEL_FALLBACKS,
 } from "@/utils/googleModelFallbacks";
 import { CAMERA_STYLE_EXAMPLES } from "@/utils/cameraStyles";
-import { isKBUsable, getKBEntityLocksForShot, getStyleLock } from "@/utils/knowledgeBase";
+import { getShotBrainContext, isKBUsable, getKBEntityLocksForShot, getStyleLock } from "@/utils/knowledgeBase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,6 +91,7 @@ export async function POST(req) {
     const kb = projectState?.knowledge_base;
     const kbEntityLocks = isKBUsable(kb) ? getKBEntityLocksForShot(kb, shot) : "";
     const kbStyleLock = isKBUsable(kb) ? getStyleLock(kb) : "";
+    const kbBrainContext = getShotBrainContext(kb, shot);
 
     const systemPrompt = isImage
       ? `You are a cinematography prompt writer for a photorealistic AI image generator. Your job is to write the first-frame anchor image for a video clip.
@@ -132,6 +133,7 @@ Rules:
 - Output ONLY the rewritten prompt text. No preamble, no explanation, no markdown headers.`;
 
     const kbSection = [
+      kbBrainContext ? `SHOT BRAIN CONTEXT (highest priority - identity, wardrobe, location, style, story):\n${kbBrainContext}` : "",
       kbEntityLocks ? `KNOWLEDGE BASE — CHARACTER & LOCATION LOCKS (highest priority — use these exact descriptions):\n${kbEntityLocks}` : "",
       kbStyleLock   ? `KNOWLEDGE BASE — VISUAL STYLE LOCK:\n${kbStyleLock}` : "",
     ].filter(Boolean).join("\n\n");

@@ -27,7 +27,7 @@ const KB_CLIENT_COOLDOWN_MS = 30 * 60 * 1000;
 const SCREEN_META = {
   1: { name: 'Home', title: 'Opening home' },
   2: { name: 'Audio', title: 'Preparing audio' },
-  3: { name: 'Story', title: 'Preparing story' },
+  3: { name: 'Brain', title: 'Preparing brain dump' },
   4: { name: 'Cast', title: 'Preparing cast' },
   5: { name: 'Locations', title: 'Preparing locations' },
   6: { name: 'Wardrobe', title: 'Preparing wardrobe' },

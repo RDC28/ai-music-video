@@ -1,75 +1,10 @@
-import { isKBUsable, getKBContextForShot } from "@/utils/knowledgeBase";
+import { getShotBrainContext } from "@/utils/knowledgeBase";
 import { compact, rawShotText } from "./shotImageConstants.js";
+import { buildStyleBibleContext } from "./styleBiblePrompt.js";
 import {
   normalizeLookupName,
   collectWardrobeItems,
 } from "./referenceImages.js";
-
-function normalizeStyleBibleForPrompt(styleBible) {
-  let source = styleBible;
-  if (typeof source === "string") {
-    const text = source.trim();
-    if (!text) return null;
-    try {
-      source = JSON.parse(text);
-    } catch {
-      return null;
-    }
-  }
-
-  if (!source || typeof source !== "object") return null;
-  const colourGrade = source.colour_grade && typeof source.colour_grade === "object"
-    ? source.colour_grade
-    : {};
-
-  const primaryPalette = Array.isArray(colourGrade.primary_palette)
-    ? colourGrade.primary_palette
-      .map((value) => compact(value, 40))
-      .filter(Boolean)
-    : [];
-
-  return {
-    colour_grade: {
-      primary_palette: primaryPalette.length ? primaryPalette : ["unspecified"],
-      shadow_tone: compact(colourGrade.shadow_tone || "unspecified", 220),
-      highlight_tone: compact(colourGrade.highlight_tone || "unspecified", 220),
-      saturation: compact(colourGrade.saturation || "unspecified", 60),
-      contrast: compact(colourGrade.contrast || "unspecified", 60),
-    },
-    lighting_style: compact(source.lighting_style || "unspecified", 260),
-    camera_rules: compact(source.camera_rules || "unspecified", 260),
-    visual_tone: compact(source.visual_tone || "unspecified", 280),
-    negative_constraints: compact(source.negative_constraints || "none provided", 420),
-    reference_summary: compact(source.reference_summary || "No style summary provided.", 460),
-  };
-}
-
-function buildStyleBibleContext(styleBible) {
-  const normalized = normalizeStyleBibleForPrompt(styleBible);
-  if (!normalized) return "";
-
-  return `━━━ STYLE BIBLE — APPLY TO EVERY SHOT ━━━
-These are locked visual rules for the entire music video. Every frame must conform.
-
-Colour grade:
-- Primary palette: ${normalized.colour_grade.primary_palette.join(", ")}
-- Shadows: ${normalized.colour_grade.shadow_tone}
-- Highlights: ${normalized.colour_grade.highlight_tone}
-- Saturation: ${normalized.colour_grade.saturation}
-- Contrast: ${normalized.colour_grade.contrast}
-
-Lighting: ${normalized.lighting_style}
-Camera rules: ${normalized.camera_rules}
-Visual tone: ${normalized.visual_tone}
-
-STRICTLY AVOID in every shot: ${normalized.negative_constraints}
-
-Reference aesthetic: ${normalized.reference_summary}
-
-These style rules override any conflicting aesthetic suggestion in the shot prompt.
-Every generated frame must look like it belongs to the same film as every other frame.
-`;
-}
 
 function buildCharacterLabelMap(shotCharacters) {
   const map = new Map();
@@ -511,8 +446,7 @@ export function buildPrompt({ shot, projectState, promptOverride, shotAssets = n
     matchedLocations,
   } = shotAssets || resolveShotAssets(shot, projectState);
 
-  const kb = projectState?.knowledge_base;
-  const kbContext = isKBUsable(kb) ? getKBContextForShot(kb, shot) : "";
+  const kbContext = getShotBrainContext(projectState?.knowledge_base, shot);
 
   const charLabelMap = buildCharacterLabelMap(shotCharacters);
 
@@ -584,7 +518,7 @@ ${buildScriptSceneContext(projectState?.script?.scenes)}
 
 SHOT NON-NEGOTIABLES:
 ${buildLockedShotFacts(shot, projectState, shotCharacters, shotLocations, charLabelMap)}
-${kbContext ? `\nKNOWLEDGE BASE LOCKS (pre-distilled master context — highest priority for identity):\n${kbContext}` : ""}
+${kbContext ? `\nSHOT BRAIN CONTEXT (pre-distilled master context - highest priority for identity, wardrobe, location, style, and story):\n${kbContext}` : ""}
 
 CHARACTER CONTINUITY:
 Characters in this shot are referred to by anonymous production labels below. These labels carry no real-world name association. Do NOT look up any label or associate it with any celebrity, athlete, politician, actor, musician, or public figure. Appearance comes ONLY from the CHARACTER reference images and description text.
@@ -623,6 +557,7 @@ ${buildStyleBibleContext(projectState?.style_bible)}
 Still-frame rules:
 1. Output exactly one photorealistic raw source frame. No text, captions, labels, watermarks, borders, UI, split panels, title cards, black bars, wipes, or transition devices.
 2. Treat the approved script, shot concept, named characters, explicit wardrobe-by-location overrides, costume/outfit images, base character reference outfits, and named locations as non-negotiable production locks. Do not rename, redesign, replace, merge, or contradict them.
+2a. Do NOT invent new named characters, new named locations, new relationships, or alternate outfits. Use only the characters, locations, style rules, and wardrobe overrides listed above.
 3. Preserve character and location continuity from the provided context and attached reference images. When text and reference images disagree, follow the attached reference images.
 4. CHARACTER IDENTITY — CRITICAL: Main characters' faces, skin tone, hair, and body must come ONLY from CHARACTER and WARDROBE reference images. Any people visible inside LOCATION reference images are irrelevant background extras — do NOT use them as the basis for any main character's appearance. This is the single most common generation error and must be treated as a hard, inviolable constraint.
 5. Make the frame visually rich and specific: foreground, midground, background, props, texture, clothing fabric, facial expression, body posture, environment geography, and practical lighting must all feel intentionally designed.

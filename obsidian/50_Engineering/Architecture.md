@@ -10,6 +10,7 @@
 - API: multiple `POST()` route handlers bridging generation steps and orchestration.
 - Data: Supabase-backed project and asset state, plus helper utilities for model and shot normalization.
 - Infra/Services: Python service integration (including Shotstack/editor flows), plus fallback model execution utilities.
+- Brain dump: screen 3 captures script/theme, PDF/TXT/Markdown script uploads, character vibe, location vibe, and reference uploads before Cast/Locations/Wardrobe; `/api/extract-script-file` reads uploaded PDFs into usable story text, and `/api/process-wardrobe-brain-dump` refines those inputs into structured character/location/style fields.
 
 ## Critical Paths
 - Generation orchestration:
@@ -40,9 +41,11 @@ Every project has a persistent knowledge base stored at `project_state.knowledge
 
 ### How agents consume it
 - `knowledgeBase.js` utility exposes: `getKBContextForShot(kb, shot)`, `getKBContextForShotList(kb)`, `getKBEntityLocksForShot(kb, shot)`, `getStyleLock(kb)`, `isKBUsable(kb)`
+- `knowledgeBase.js` also exposes `getShotBrainContext(kb, shot, scene)`, which composes project locks, character wardrobe identity, location locks, style, story beats, lyric/musical cues, and per-shot wardrobe overrides for generation prompts.
 - `geminiAgents.generateShotList` — prepends full KB context block before project JSON
-- `generate-shot-video buildPrompt` — injects shot-scoped character/location/style locks into the prompt
-- `rewrite-shot-prompt` — injects entity locks + style lock into the rewriter prompt
+- `generate-shot-image buildPrompt` and `generate-shot-video buildPrompt` — inject shot brain context plus hard no-invention rules into generation prompts
+- `rewrite-shot-prompt` — injects shot brain context, entity locks, and style lock into the rewriter prompt
+- `shotOrchestration.js` — server-side helper for canonical `ShotContext`, agent JSON validation, and a consistency referee before expensive generation paths.
 
 ### When to rebuild
 Rebuild after: characters added/updated, locations added/updated, wardrobe assigned, style bible generated. The `KnowledgeBaseStatus` component (rendered in the Shot Plan right panel) shows build age and triggers rebuild.
@@ -61,6 +64,7 @@ Rebuild after: characters added/updated, locations added/updated, wardrobe assig
 - Completed 2026-05-19: full codebase refactor — globals.css, components.css, and all screen/component JS files converted.
 
 ## Change Log
+- 2026-05-21: Implemented the Brain Dump workflow for screen 3 with script/theme, PDF/TXT/Markdown script upload extraction via `/api/extract-script-file`, character and location tabs, Supabase reference uploads, KB status/rebuild controls, and `/api/process-wardrobe-brain-dump` for multimodal wardrobe/location/style summarisation. Added `getShotBrainContext` and `shotOrchestration.js`, and wired shot image/video/rewrite prompts to the richer brain context with explicit no-new-entity and wardrobe-continuity rules.
 - 2026-05-20: Hardened `generate-shot-video` Veo failure recovery for filtered/audio-triggered responses: added explicit non-fallback classification for safety-filter errors, one-time prompt sanitization retry mode (`buildAudioSafePrompt`) after audio-filter failures, and aligned retryability classification in `googleModelFallbacks` so provider "try again" wording no longer mislabels non-retryable filtered failures.
 - 2026-05-19: Polished screen 1 (Home) into the shared app shell pattern (StageRail + center workspace + right quick-start panel), keeping format selection behavior unchanged while aligning spacing/interaction patterns with migrated workflow screens.
 - 2026-05-19: Migrated screen 4 (Cast/Characters) and screen 6 (Wardrobe) to the shared `WorkflowThreePaneShell` with `showLeftPanel=false`, keeping StageRail as the only left app rail and moving screen-specific controls into the shell right panel.

@@ -136,6 +136,115 @@ export function getLocationWardrobeContext(kb, name) {
   return parts.join("\n");
 }
 
+// ─── Shot brain context builder ─────────────────────────────────────────────
+
+function compactText(value, max = 800) {
+  if (!value) return "";
+  const text = String(value).replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function nameList(values = []) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map(value => {
+      if (typeof value === "string") return value;
+      return value?.name || value?.character_name || value?.location_name || "";
+    })
+    .map(value => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function shotCharacterNames(shot = {}, scene = {}) {
+  return nameList(shot.characters?.length ? shot.characters : scene.characters);
+}
+
+function shotLocationNames(shot = {}, scene = {}) {
+  if (Array.isArray(shot.locations) && shot.locations.length) return nameList(shot.locations);
+  if (shot.location?.name) return [shot.location.name];
+  if (shot.location_name) return [shot.location_name];
+  if (Array.isArray(scene.locations) && scene.locations.length) return nameList(scene.locations);
+  if (scene.location?.name) return [scene.location.name];
+  if (scene.location_name) return [scene.location_name];
+  return [];
+}
+
+function formatWardrobeOverrides(shot = {}) {
+  const overrides = shot.wardrobeOverrides || shot.wardrobe_overrides || null;
+  const lines = [];
+  if (overrides && typeof overrides === "object" && !Array.isArray(overrides)) {
+    for (const [name, value] of Object.entries(overrides)) {
+      if (value) lines.push(`${name}: ${compactText(value, 360)}`);
+    }
+  }
+
+  const direct = shot.costumes || shot.costume || shot.wardrobe || shot.wardrobe_notes;
+  if (direct) lines.push(compactText(direct, 600));
+  return lines.join("\n");
+}
+
+function formatShotStoryBeat(shot = {}, scene = {}) {
+  const lines = [
+    scene.scene_id || scene.id ? `Scene: ${scene.scene_id || scene.id}` : "",
+    scene.description || scene.visual ? `Scene beat: ${compactText(scene.description || scene.visual, 600)}` : "",
+    shot.source_scene ? `Source scene: ${compactText(shot.source_scene, 600)}` : "",
+    scene.emotional_focus ? `Scene emotional focus: ${compactText(scene.emotional_focus, 400)}` : "",
+    shot.n || shot.title ? `Shot: ${compactText(shot.n || shot.title, 240)}` : "",
+    shot.beat || shot.concept ? `Shot story beat: ${compactText(shot.beat || shot.concept, 700)}` : "",
+    shot.emotionalState || shot.emotional_state ? `Emotional state: ${compactText(shot.emotionalState || shot.emotional_state, 400)}` : "",
+    shot.relationshipBeats || shot.relationship_beats ? `Relationship beats: ${nameList(shot.relationshipBeats || shot.relationship_beats).join("; ")}` : "",
+    shot.lyrics ? `Lyric cue: ${compactText(shot.lyrics, 400)}` : "",
+    shot.beatType || shot.beat_type ? `Musical beat type: ${shot.beatType || shot.beat_type}` : "",
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+/**
+ * Build the full film-brain context for one shot.
+ *
+ * This is stricter than getKBContextForShot: it includes wardrobe identity,
+ * scene/story beats, musical cues, and per-shot wardrobe overrides so
+ * downstream agents receive a director/wardrobe/DoP packet instead of loose
+ * prompt fragments.
+ */
+export function getShotBrainContext(kb, shot = {}, scene = {}) {
+  const sections = [];
+
+  if (isKBUsable(kb)) {
+    const preamble = getProjectPreamble(kb);
+    if (preamble) sections.push(`[KB PROJECT CONTEXT]\n${preamble}`);
+
+    const characterLocks = shotCharacterNames(shot, scene)
+      .map(name => getCharacterLock(kb, name))
+      .filter(Boolean);
+    if (characterLocks.length) {
+      sections.push(`[KB CHARACTER LOCKS]\n${characterLocks.join("\n\n")}`);
+    }
+
+    const wardrobe = shotCharacterNames(shot, scene)
+      .map(name => getCharacterWardrobeContext(kb, name))
+      .filter(Boolean);
+    if (wardrobe.length) {
+      sections.push(`[CHARACTER WARDROBE CONTEXT]\n${wardrobe.join("\n\n")}`);
+    }
+
+    const locationName = shotLocationNames(shot, scene)[0];
+    const locationLock = locationName ? getLocationWardrobeContext(kb, locationName) : "";
+    if (locationLock) sections.push(`[KB LOCATION LOCK]\n${locationLock}`);
+
+    const styleLock = getStyleLock(kb);
+    if (styleLock) sections.push(`[KB VISUAL STYLE LOCK]\n${styleLock}`);
+  }
+
+  const storyBeat = formatShotStoryBeat(shot, scene);
+  if (storyBeat) sections.push(`[SHOT STORY BEAT]\n${storyBeat}`);
+
+  const wardrobeOverrides = formatWardrobeOverrides(shot);
+  if (wardrobeOverrides) sections.push(`[WARDROBE OVERRIDES]\n${wardrobeOverrides}`);
+
+  return sections.join("\n\n");
+}
+
 // ─── Shot-scoped context builder ─────────────────────────────────────────────
 
 /**

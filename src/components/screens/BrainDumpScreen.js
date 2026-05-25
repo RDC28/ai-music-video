@@ -1,339 +1,496 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Mic2, PenLine, Sparkles, Loader2, Users, MapPin, Film } from 'lucide-react';
-import ProgressBar from '../ProgressBar';
+import { Mic2 } from 'lucide-react';
+import { createClient } from '@/utils/supabase';
 import WorkflowThreePaneShell from '../WorkflowThreePaneShell';
+import BrainStatusPanel from './brain-dump/BrainStatusPanel';
+import EntityVibesTab from './brain-dump/EntityVibesTab';
+import ScriptThemeTab from './brain-dump/ScriptThemeTab';
+import { BRAIN_TABS } from './brain-dump/brainDumpConstants';
+import {
+  buildUploadPath,
+  cleanText,
+  deriveBrainDumpForm,
+  deriveMoodWords,
+  splitList,
+  safeFileName,
+  serializeCharacters,
+  serializeLocations,
+  uniqueList,
+} from './brain-dump/brainDumpUtils';
 
 export default function BrainDumpScreen({ onNavigate, onDataUpdate, projectId, projectState }) {
-  const [idea, setIdea]                   = useState('');
-  const [isAnalyzing, setIsAnalyzing]     = useState(false);
-  const [progressStep, setProgressStep]   = useState(-1);
+  const supabase = useMemo(() => createClient(), []);
+  const [activeTab, setActiveTab] = useState('script');
+  const [form, setForm] = useState(() => deriveBrainDumpForm(projectState));
+  const [savingTab, setSavingTab] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
+  const [progressStep, setProgressStep] = useState(-1);
   const [generatedPlan, setGeneratedPlan] = useState(null);
-  const [isEditingIdea, setIsEditingIdea] = useState(false);
   const [brainDumpError, setBrainDumpError] = useState('');
   const [analysisStartedAt, setAnalysisStartedAt] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  const SCRIPT_STEPS = [
-    'Reading your idea',
-    'Finding lyric and mood cues',
-    'Writing scenes',
-    'Drafting cast and locations',
-    'Building the shot plan',
-    'Saving creative plan',
-  ];
-
-  const savedPlan = useMemo(() => {
-    if (projectState?.script && projectState?.characters && projectState?.locations) {
-      return {
-        script: projectState.script,
-        characters: projectState.characters,
-        locations: projectState.locations,
-        shot_list: projectState.shot_list,
-      };
-    }
-    return null;
-  }, [projectState]);
-
-  const reviewPlan = generatedPlan || (!isEditingIdea ? savedPlan : null);
   const transcript = projectState?.analysis?.lyrics;
+  const transcriptLines = Array.isArray(transcript) ? transcript : [];
+  const savedPlan = useMemo(() => {
+    if (!projectState?.script) return null;
+    const hasPlan = projectState.script?.scenes?.length
+      || projectState?.characters?.length
+      || projectState?.locations?.length;
+    if (!hasPlan) return null;
+    return {
+      script: projectState.script,
+      characters: projectState.characters || [],
+      locations: projectState.locations || [],
+      shot_list: projectState.shot_list || [],
+    };
+  }, [projectState]);
+  const reviewPlan = generatedPlan || savedPlan;
 
   useEffect(() => {
-    if (!isAnalyzing) return;
+    if (!isAnalyzing) return undefined;
     const interval = setInterval(() => {
       setElapsedSeconds(Math.max(0, Math.floor((Date.now() - (analysisStartedAt || Date.now())) / 1000)));
     }, 1000);
     return () => clearInterval(interval);
   }, [analysisStartedAt, isAnalyzing]);
 
+  const uploadFile = async ({ file, folder, ownerName }) => {
+    const path = buildUploadPath(projectId, folder, ownerName, file.name);
+    const { error } = await supabase.storage.from('assets').upload(path, file, {
+      contentType: file.type || undefined,
+      upsert: false,
+    });
+    if (error) throw error;
+    const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(path);
+    return { publicUrl, path };
+  };
+
+  const extractScriptFile = async (file) => {
+    const fileName = String(file?.name || '').toLowerCase();
+    const fileType = String(file?.type || '').toLowerCase();
+    const canExtract = fileType === 'application/pdf'
+      || fileType.startsWith('text/')
+      || /\.(pdf|txt|md)$/i.test(fileName);
+    if (!canExtract) return null;
+
+    const body = new FormData();
+    body.append('file', file);
+    body.append('storyPrompt', form.storyPrompt || '');
+    body.append('moodWords', JSON.stringify(form.moodWords || []));
+
+    const response = await fetch('/api/extract-script-file', {
+      method: 'POST',
+      body,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.error) {
+      throw new Error(data.error || 'The script file could not be read.');
+    }
+    return data;
+  };
+
+  const buildScriptPatch = async (fileOverride = null) => {
+    const script = projectState?.script || {};
+    const analysis = projectState?.analysis || {};
+    const styleBible = projectState?.style_bible || {};
+    let moodWords = uniqueList([...(form.moodWords || []), form.moodDraft]).slice(0, 8);
+    let filePatch = {};
+    let rawText = form.scriptText;
+    let extractedScript = null;
+    let extractionError = '';
+
+    const scriptFile = fileOverride || form.scriptFile;
+    if (scriptFile) {
+      const uploaded = await uploadFile({
+        file: scriptFile,
+        folder: 'scripts',
+        ownerName: safeFileName(scriptFile.name),
+      });
+      filePatch = {
+        file_url: uploaded.publicUrl,
+        file_path: uploaded.path,
+        file_name: scriptFile.name,
+        file_type: scriptFile.type || '',
+        file_uploaded_at: new Date().toISOString(),
+      };
+
+      const scriptFileType = String(scriptFile.type || '').toLowerCase();
+      if (!cleanText(rawText) && (scriptFileType.startsWith('text/') || /\.(txt|md)$/i.test(scriptFile.name))) {
+        rawText = await scriptFile.text();
+      }
+
+      if (scriptFileType === 'application/pdf' || /\.pdf$/i.test(scriptFile.name)) {
+        try {
+          extractedScript = await extractScriptFile(scriptFile);
+          rawText = cleanText(rawText) || extractedScript.raw_text || extractedScript.summary || '';
+          moodWords = uniqueList([...moodWords, ...(extractedScript.mood_keywords || [])]).slice(0, 8);
+        } catch (error) {
+          extractionError = error.message || 'The PDF uploaded, but its contents could not be read.';
+        }
+      }
+
+      filePatch = {
+        ...filePatch,
+        file_extraction_status: extractedScript ? 'ready' : (extractionError ? 'failed' : 'stored'),
+        file_extraction_error: extractionError,
+        file_extracted_at: extractedScript ? new Date().toISOString() : script.file_extracted_at,
+        file_summary: extractedScript?.summary || script.file_summary || '',
+        file_visual_notes: extractedScript?.visual_notes || script.file_visual_notes || '',
+        file_detected_entities: extractedScript?.detected_entities || script.file_detected_entities || null,
+      };
+    }
+
+    const summary = form.storyPrompt || extractedScript?.summary || script.summary || script.storyline || analysis.summary || '';
+    const moodText = moodWords.join(', ');
+
+    return {
+      script: {
+        ...script,
+        ...filePatch,
+        raw_text: rawText,
+        summary,
+        mood: moodText || script.mood || analysis.mood || '',
+        mood_keywords: moodWords,
+      },
+      analysis: {
+        ...analysis,
+        summary,
+        mood: moodText || analysis.mood || script.mood || '',
+      },
+      style_bible: {
+        ...styleBible,
+        global_notes: form.globalStyleNotes || extractedScript?.visual_notes || styleBible.global_notes || '',
+      },
+    };
+  };
+
+  const mergeGeneratedScript = (planScript = {}, existingScript = {}, existingAnalysis = {}) => {
+    const moodWords = uniqueList([
+      ...splitList(existingScript.mood_keywords),
+      ...splitList(existingScript.mood),
+      ...splitList(existingAnalysis.mood),
+      ...splitList(planScript.mood),
+    ]).slice(0, 8);
+
+    const moodText = moodWords.join(', ');
+    const summary = cleanText(
+      planScript.summary
+      || planScript.storyline
+      || existingScript.summary
+      || existingScript.storyline
+      || existingAnalysis.summary
+      || form.storyPrompt
+    );
+
+    return {
+      ...existingScript,
+      ...planScript,
+      summary,
+      mood: moodText || cleanText(planScript.mood || existingScript.mood || existingAnalysis.mood),
+      mood_keywords: moodWords.length ? moodWords : deriveMoodWords(planScript, existingAnalysis),
+      raw_text: cleanText(existingScript.raw_text || existingScript.text || form.scriptText),
+    };
+  };
+
+  const buildEntityPatch = async (kind) => {
+    const rows = kind === 'characters' ? form.characters : form.locations;
+    const folder = kind === 'characters' ? 'characters' : 'locations';
+    const imageKind = kind === 'characters' ? 'wardrobe_brain_dump' : 'location_brain_dump';
+    const nextRows = [];
+
+    for (const row of rows) {
+      const uploads = [];
+      for (const [fileIndex, file] of (row.pendingFiles || []).entries()) {
+        const uploaded = await uploadFile({ file, folder, ownerName: row.name || folder });
+        uploads.push({
+          url: uploaded.publicUrl,
+          path: uploaded.path,
+          label: `BRAIN DUMP REF ${(row.images || []).length + fileIndex + 1}`,
+          kind: imageKind,
+          file_name: file.name,
+          uploaded_at: new Date().toISOString(),
+        });
+      }
+      nextRows.push({ ...row, images: [...(row.images || []), ...uploads], pendingFiles: [] });
+    }
+
+    setForm(prev => ({ ...prev, [kind]: nextRows }));
+    return kind === 'characters'
+      ? { characters: serializeCharacters(nextRows) }
+      : { locations: serializeLocations(nextRows) };
+  };
+
+  const saveBuiltPatch = async (buildPatch, tabName) => {
+    setSavingTab(tabName);
+    setBrainDumpError('');
+    try {
+      const patch = await buildPatch();
+      await onDataUpdate(patch);
+      if (tabName === 'script') {
+        setForm(prev => ({ ...prev, scriptFile: null, moodDraft: '' }));
+      }
+      return patch;
+    } catch (error) {
+      setBrainDumpError(error.message || 'Save failed. Please try again.');
+      return null;
+    } finally {
+      setSavingTab('');
+    }
+  };
+
+  const saveScriptData = async () => saveBuiltPatch(buildScriptPatch, 'script');
+  const saveCharacterData = async () => saveBuiltPatch(() => buildEntityPatch('characters'), 'characters');
+  const saveLocationData = async () => saveBuiltPatch(() => buildEntityPatch('locations'), 'locations');
+
   const handleBrainDump = async (customPrompt = null) => {
-    const finalPrompt = customPrompt || idea;
-    if (!finalPrompt.trim()) {
+    const finalPrompt = cleanText(customPrompt || form.storyPrompt || form.scriptText);
+    if (!finalPrompt) {
       setBrainDumpError('Please enter an idea first.');
       return;
     }
+
     setBrainDumpError('');
     setAnalysisStartedAt(Date.now());
     setElapsedSeconds(0);
     setIsAnalyzing(true);
     setProgressStep(0);
+    const lyricCueTimeout = setTimeout(() => setProgressStep(2), 600);
     try {
       setProgressStep(1);
-      setTimeout(() => setProgressStep(2), 600);
       const response = await fetch('/api/generate-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idea: finalPrompt, transcript }),
+        body: JSON.stringify({ idea: finalPrompt, transcript: transcriptLines }),
       });
-      const plan = await response.json();
-      if (plan.error) throw new Error(plan.error);
+      const plan = await response.json().catch(() => ({}));
+      if (!response.ok || plan.error) throw new Error(plan.error || 'Creative plan generation failed.');
+
       setProgressStep(3);
       setGeneratedPlan(plan);
-      setIsEditingIdea(false);
       setProgressStep(4);
-      await onDataUpdate({ script: plan.script, characters: plan.characters, locations: plan.locations, shot_list: plan.shot_list, current_step: 4 });
+      const mergedScript = mergeGeneratedScript(
+        plan.script,
+        projectState?.script || {},
+        projectState?.analysis || {}
+      );
+      const planPatch = {
+        script: mergedScript,
+        characters: plan.characters,
+        locations: plan.locations,
+        shot_list: plan.shot_list,
+        current_step: 4,
+      };
+      await onDataUpdate(planPatch);
+      setForm(prev => ({
+        ...deriveBrainDumpForm({ ...projectState, ...planPatch }),
+        storyPrompt: prev.storyPrompt || mergedScript.summary || '',
+        scriptText: prev.scriptText || mergedScript.raw_text || '',
+        moodDraft: prev.moodDraft || '',
+      }));
       setProgressStep(5);
     } catch (error) {
       console.error('Creative plan failed:', error);
-      setBrainDumpError('We could not create the plan. Please try again.');
+      setBrainDumpError(error.message || 'We could not create the plan. Please try again.');
     } finally {
+      clearTimeout(lyricCueTimeout);
       setIsAnalyzing(false);
       setProgressStep(-1);
       setAnalysisStartedAt(null);
     }
   };
 
+  const handleScriptFileSelected = async (file) => {
+    if (!file) return;
+    setSavingTab('script');
+    setBrainDumpError('');
+    setForm(prev => ({
+      ...prev,
+      scriptFile: file,
+      scriptFileMeta: {
+        file_name: file.name,
+        file_type: file.type || '',
+        pending: true,
+      },
+    }));
+
+    try {
+      const patch = await buildScriptPatch(file);
+      await onDataUpdate(patch);
+      setForm(prev => ({
+        ...prev,
+        scriptFile: null,
+        scriptFileMeta: {
+          file_url: patch.script.file_url,
+          file_name: patch.script.file_name,
+          file_uploaded_at: patch.script.file_uploaded_at,
+          file_type: patch.script.file_type,
+          file_extraction_status: patch.script.file_extraction_status,
+          file_extraction_error: patch.script.file_extraction_error,
+        },
+        scriptText: patch.script.raw_text || prev.scriptText,
+        storyPrompt: prev.storyPrompt || patch.script.summary || '',
+        moodWords: patch.script.mood_keywords || prev.moodWords,
+        globalStyleNotes: prev.globalStyleNotes || patch.style_bible.global_notes || '',
+      }));
+      if (patch.script.file_extraction_error) {
+        setBrainDumpError(`Uploaded ${file.name}, but could not read the PDF contents: ${patch.script.file_extraction_error}`);
+      }
+    } catch (error) {
+      console.error('Script file upload failed:', error);
+      setBrainDumpError(error.message || 'Script upload failed. Please try again.');
+      setForm(prev => ({ ...prev, scriptFile: null }));
+    } finally {
+      setSavingTab('');
+    }
+  };
+
   const handleUseTranscript = () => {
-    if (!transcript) {
+    if (!transcriptLines.length) {
       if (confirm('No lyrics found yet. Analyze the song first?')) onNavigate(2);
       return;
     }
-    handleBrainDump(`Based on these lyrics: "${transcript.map(l => l.text).join(' ')}". ${idea}`);
+    const lyricText = transcriptLines
+      .map(line => cleanText(line?.text || line?.lyrics || line?.line))
+      .filter(Boolean)
+      .join(' ');
+    handleBrainDump(`Based on these lyrics: "${lyricText}". ${form.storyPrompt || form.scriptText}`);
   };
 
-  /* ── Review mode ── */
-  if (reviewPlan) {
-    const scenes     = reviewPlan.script?.scenes || [];
-    const characters = reviewPlan.characters || [];
-    const locations  = reviewPlan.locations || [];
+  const handleRefineBrain = async () => {
+    setIsRefining(true);
+    setBrainDumpError('');
+    try {
+      const scriptPatch = await buildScriptPatch();
+      const characterPatch = await buildEntityPatch('characters');
+      const locationPatch = await buildEntityPatch('locations');
+      const mergedPatch = { ...scriptPatch, ...characterPatch, ...locationPatch };
+      await onDataUpdate(mergedPatch);
 
-    return (
-      <div className="screen active screen-fill" id="s3">
-        <WorkflowThreePaneShell
-          showLeftPanel={false}
-          sidebarTitle="Story"
-          rightTitle="Actions"
-          storageKey="workflow-three-pane:s3:review"
-          sidebar={null}
-          main={(
-            <div className="flex-col" style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
-              <div className="screen-header-modern">
-                <div>
-                  <div className="screen-kicker">Creative plan · ready</div>
-                  <h1 className="screen-title">The story has shape.</h1>
-                  <p className="screen-subtitle">
-                    Review the scenes, cast, and locations before moving into visual references.
-                  </p>
-                </div>
-              </div>
+      const response = await fetch('/api/process-wardrobe-brain-dump', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          projectState: { ...projectState, ...mergedPatch },
+          targets: ['characters', 'locations', 'style'],
+          rebuildKnowledgeBase: true,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || 'Brain refinement failed.');
 
-              <div style={{ flex: 1, minHeight: 0, padding: '0 1.5rem 1.5rem' }}>
-                <section className="panel-raised" style={{ height: '100%', minHeight: 0 }}>
-                  <div>
-                    <div className="panel-meta-label">▪ Master Script</div>
-                    <div className="script-title">
-                      {reviewPlan.script?.title || 'Untitled music video'}
-                    </div>
-                    <div className="script-mood">
-                      Mood · {reviewPlan.script?.mood || 'Not specified'}
-                    </div>
-                  </div>
+      const nextState = data.project_state || {};
+      setForm(deriveBrainDumpForm(nextState));
+      await onDataUpdate({
+        characters: nextState.characters || characterPatch.characters,
+        locations: nextState.locations || locationPatch.locations,
+        style_bible: nextState.style_bible || scriptPatch.style_bible,
+        ...(nextState.knowledge_base ? { knowledge_base: nextState.knowledge_base } : {}),
+      });
+      if (data.knowledge_base_error) {
+        setBrainDumpError(data.knowledge_base_error);
+      }
+    } catch (error) {
+      console.error('Brain refinement failed:', error);
+      setBrainDumpError(error.message || 'Brain refinement failed.');
+    } finally {
+      setIsRefining(false);
+    }
+  };
 
-                  <div className="panel-inset">
-                    {reviewPlan.script?.storyline && (
-                      <p className="script-storyline">
-                        {reviewPlan.script.storyline}
-                      </p>
-                    )}
-                    {scenes.map((scene, i) => (
-                      <div key={i} style={{ marginBottom: '1.25rem' }}>
-                        <div className="scene-number">
-                          Scene {String(i + 1).padStart(2, '0')}
-                        </div>
-                        <p style={{ marginBottom: scene.lyrics ? '0.5rem' : 0 }}>
-                          {scene.visual}
-                        </p>
-                        {scene.lyrics && (
-                          <p className="scene-lyrics">
-                            &ldquo;{scene.lyrics}&rdquo;
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            </div>
-          )}
-          right={(
-            <aside className="flex-col gap-10" style={{ height: '100%', padding: '1rem' }}>
-              <div className="panel-flat">
-                <div className="panel-meta-label">▪ Actions</div>
-                <div className="flex-col gap-8">
-                  <button
-                    className="btn-outline"
-                    onClick={() => { setGeneratedPlan(null); setIsEditingIdea(true); }}
-                    style={{ width: '100%', justifyContent: 'center' }}
-                  >
-                    <PenLine size={13} />
-                    Edit idea
-                  </button>
-                </div>
-              </div>
+  const setCharacters = (updater) => {
+    setForm(prev => ({ ...prev, characters: typeof updater === 'function' ? updater(prev.characters) : updater }));
+  };
 
-              <div className="panel-flat">
-                <div className="panel-section-header">
-                  <Users size={12} color="var(--cyan)" />
-                  <span className="panel-meta-label">
-                    Cast · {String(characters.length).padStart(2, '0')}
-                  </span>
-                </div>
-                <div className="item-row-list">
-                  {characters.map((char, i) => (
-                    <div key={i} className="item-row">
-                      {char.name}
-                    </div>
-                  ))}
-                </div>
-              </div>
+  const setLocations = (updater) => {
+    setForm(prev => ({ ...prev, locations: typeof updater === 'function' ? updater(prev.locations) : updater }));
+  };
 
-              <div className="panel-flat">
-                <div className="panel-section-header">
-                  <MapPin size={12} color="var(--cyan)" />
-                  <span className="panel-meta-label">
-                    Locations · {String(locations.length).padStart(2, '0')}
-                  </span>
-                </div>
-                <div className="item-row-list">
-                  {locations.map((loc, i) => (
-                    <div key={i} className="item-row">
-                      {loc.name}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="panel-flat" style={{ marginTop: 'auto' }}>
-                <div className="panel-section-header">
-                  <Film size={12} color="var(--cyan)" />
-                  <span className="panel-meta-label">Shot List</span>
-                </div>
-                <div className="metric-large">
-                  {reviewPlan.shot_list?.length || 0}
-                </div>
-                <p className="body-sm body-sm--mt">
-                  Review and edit these in the Shot List step. Use the left step bar to continue.
-                </p>
-              </div>
-            </aside>
-          )}
-        />
-      </div>
-    );
-  }
-
-  /* ── Input mode ── */
   return (
     <div className="screen active screen-fill" id="s3">
       <WorkflowThreePaneShell
         showLeftPanel={false}
-        sidebarTitle="Concept"
-        rightTitle="Actions"
-        storageKey="workflow-three-pane:s3:input"
+        sidebarTitle="Brain"
+        rightTitle="Brain Status"
+        storageKey="workflow-three-pane:s3:brain-dump"
         sidebar={null}
         main={(
-          <div className="flex-col" style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
-            <div className="screen-header-modern">
-              <div>
-                <div className="screen-kicker">Concept · Studio</div>
-                <h1 className="screen-title">Describe your vision.</h1>
-                <p className="screen-subtitle">
-                  Share the story, emotion, imagery, or references you want the song to carry.
-                </p>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, minHeight: 0, padding: '0 1.5rem 1.5rem' }}>
-              <section className="panel-raised" style={{ height: '100%', minHeight: 0 }}>
-                <div>
-                  <div className="panel-meta-label">▪ Your Concept</div>
-                  <p className="body-sm">
-                    Describe the mood, story, or visual style you&apos;re imagining. One paragraph is plenty.
-                  </p>
+          <div className="brain-dump-workspace">
+            <div className="brain-tabs" role="tablist" aria-label="Brain dump sections">
+              {BRAIN_TABS.map(tab => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    className={`brain-tab${activeTab === tab.id ? ' is-active' : ''}`}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    <Icon size={14} />
+                    {tab.label}
+                  </button>
+                );
+              })}
+              {transcriptLines.length > 0 && (
+                <div className="brain-tabs__meta">
+                  <Mic2 size={12} />
+                  {transcriptLines.length} lyric lines
                 </div>
-
-                <textarea
-                  className="textarea-concept"
-                  placeholder="e.g. A lonely night-drive performance that becomes a neon city chase, with reflections, rain, and a final dawn rooftop scene."
-                  value={idea}
-                  onChange={(e) => setIdea(e.target.value)}
-                  disabled={isAnalyzing}
-                />
-
-                {isAnalyzing && (
-                  <>
-                    <ProgressBar steps={SCRIPT_STEPS} currentStep={progressStep} />
-                    <div className="field-note" style={{ marginTop: '0.5rem' }}>
-                      Generating · {Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, '0')} · typically 3–6 min
-                    </div>
-                  </>
-                )}
-
-                {brainDumpError && !isAnalyzing && (
-                  <div className="queue-msg queue-msg--error" style={{ marginTop: '0.75rem' }}>
-                    <span>Alert:</span>
-                    {brainDumpError}
-                  </div>
-                )}
-              </section>
+              )}
             </div>
+
+            {activeTab === 'script' && (
+              <ScriptThemeTab
+                form={form}
+                setForm={setForm}
+                isSaving={savingTab === 'script'}
+                isAnalyzing={isAnalyzing}
+                progressStep={progressStep}
+                elapsedSeconds={elapsedSeconds}
+                error={brainDumpError}
+                reviewPlan={reviewPlan}
+                transcript={transcriptLines}
+                onSave={saveScriptData}
+                onScriptFileSelected={handleScriptFileSelected}
+                onGeneratePlan={() => handleBrainDump()}
+                onUseTranscript={handleUseTranscript}
+                onEditIdea={() => setGeneratedPlan(null)}
+              />
+            )}
+
+            {activeTab === 'characters' && (
+              <EntityVibesTab
+                kind="character"
+                rows={form.characters}
+                setRows={setCharacters}
+                isSaving={savingTab === 'characters'}
+                onSave={saveCharacterData}
+              />
+            )}
+
+            {activeTab === 'locations' && (
+              <EntityVibesTab
+                kind="location"
+                rows={form.locations}
+                setRows={setLocations}
+                isSaving={savingTab === 'locations'}
+                onSave={saveLocationData}
+              />
+            )}
           </div>
         )}
         right={(
-          <aside className="flex-col gap-10" style={{ height: '100%', padding: '1rem' }}>
-            <div className="panel-flat-lg">
-              <div className="panel-meta-label">▪ Actions</div>
-              <div className="flex-col gap-8">
-                <button
-                  className="btn-action-generate"
-                  onClick={() => handleBrainDump()}
-                  disabled={isAnalyzing || !idea.trim()}
-                  style={{ width: '100%', justifyContent: 'center' }}
-                >
-                  {isAnalyzing
-                    ? <Loader2 size={14} className="spin" />
-                    : <Sparkles size={14} />}
-                  {isAnalyzing ? 'Generating…' : 'Generate creative plan'}
-                </button>
-                {brainDumpError && !isAnalyzing && (
-                  <button
-                    type="button"
-                    className="btn-outline"
-                    onClick={() => handleBrainDump()}
-                    disabled={!idea.trim()}
-                    style={{ width: '100%', justifyContent: 'center' }}
-                  >
-                    Try Again
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="btn-outline"
-                  onClick={handleUseTranscript}
-                  disabled={isAnalyzing}
-                  style={{ width: '100%', justifyContent: 'center' }}
-                >
-                  <Mic2 size={13} />
-                  {transcript ? 'Use lyrics' : 'Add song insights first?'}
-                </button>
-              </div>
-            </div>
-
-            <div className="panel-flat-lg" style={{ marginTop: 'auto' }}>
-              <div className="panel-meta-label" style={{ color: transcript ? 'var(--cyan)' : undefined, marginBottom: '0.625rem' }}>
-                ▪ Lyrics & Timing
-              </div>
-              <div className={transcript ? 'metric-large' : 'metric-large metric-large--muted'}>
-                {transcript?.length || 0}
-                <span className="metric-small-label">lines</span>
-              </div>
-              <p className="body-sm" style={{ marginTop: '0.625rem' }}>
-                Song timing gives the story stronger beat and lyric awareness.
-              </p>
-              <p className="body-sm" style={{ marginTop: '0.625rem' }}>
-                Use the left step bar to jump to Cast or Shot Plan when ready.
-              </p>
-            </div>
-          </aside>
+          <BrainStatusPanel
+            projectId={projectId}
+            projectState={projectState}
+            onDataUpdate={onDataUpdate}
+            onRefineBrain={handleRefineBrain}
+            isRefining={isRefining}
+          />
         )}
       />
     </div>
