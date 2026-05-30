@@ -63,7 +63,37 @@ Rebuild after: characters added/updated, locations added/updated, wardrobe assig
 - Inline JSX styles: use rem strings (`'0.75rem'` not `'12px'`).
 - Completed 2026-05-19: full codebase refactor — globals.css, components.css, and all screen/component JS files converted.
 
+## New UI Prototype (`new-ui/`)
+
+A standalone static prototype separate from the Next.js app, used to build and validate the new design direction screen-by-screen before integrating.
+
+### Structure
+- `new-ui/index.html` — Starting Screen: full-viewport layout, two floating sidebar pills, centred orb video, fox mascot
+- `new-ui/styles.css` — All styles: design tokens, diagonal-dash background, pill shapes, starburst badge, orb glow/breathe animation
+- `new-ui/server.js` — Lightweight Node HTTP server (port 3002); routes `/public/*` → project-root `public/` so assets like `brain_loop_alpha.webm` and `bg-pattern.png` are served correctly
+- `new-ui/package.json` — `npm run dev` → `node server.js`
+
+### Design tokens (shared with main app)
+Same 8-shade palette (`--jaffa-*`, `--mine-*`) and typefaces (Raleway / Catamaran / Mukta Vaani) from `ui/palette.md`.
+
+### Sidebar pattern
+Two independent floating pill elements (`position: fixed`, left-anchored) — **not** a sidebar column:
+- **Profile pill** (top-left): circular avatar + 12-point orange starburst badge with hamburger ≡
+- **Tools pill** (bottom-left): undo, redo, fit-to-screen, layers/bubbles, zoom-in, zoom-out
+
+### Background
+`public/bg-pattern.png` tiled with `background-size: 25vw auto` (4 columns, infinite y) so the grain scales with browser zoom and tiles downward as content grows.
+
+### Mascot / companion
+Fox SVG fixed bottom-right. Planned: Phase 1 — CSS keyframe idle/hover/click animations on the SVG; Phase 2 — Rive state machine (idle → talking → thinking → celebrate) driven by chatbot events.
+
+### How to run
+```
+cd new-ui && npm run dev   # http://localhost:3002
+```
+
 ## Change Log
+- 2026-05-29: Started `new-ui/` standalone prototype (port 3002) for the new design direction. Starting Screen: full-viewport layout, two floating dark pills (profile top-left + tools bottom-left), `brain_loop_alpha.webm` orb centred with breathing glow, `bg-pattern.png` tiled 4-across infinite-y background, fox mascot placeholder bottom-right (Phase 2 will be a Rive animated companion).
 - 2026-05-21: Implemented the Brain Dump workflow for screen 3 with script/theme, PDF/TXT/Markdown script upload extraction via `/api/extract-script-file`, character and location tabs, Supabase reference uploads, KB status/rebuild controls, and `/api/process-wardrobe-brain-dump` for multimodal wardrobe/location/style summarisation. Added `getShotBrainContext` and `shotOrchestration.js`, and wired shot image/video/rewrite prompts to the richer brain context with explicit no-new-entity and wardrobe-continuity rules.
 - 2026-05-20: Hardened `generate-shot-video` Veo failure recovery for filtered/audio-triggered responses: added explicit non-fallback classification for safety-filter errors, one-time prompt sanitization retry mode (`buildAudioSafePrompt`) after audio-filter failures, and aligned retryability classification in `googleModelFallbacks` so provider "try again" wording no longer mislabels non-retryable filtered failures.
 - 2026-05-19: Polished screen 1 (Home) into the shared app shell pattern (StageRail + center workspace + right quick-start panel), keeping format selection behavior unchanged while aligning spacing/interaction patterns with migrated workflow screens.

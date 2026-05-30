@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AIS — Starting Screen</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ── Profile pill (top-left) ──────────────────────── -->
+  <div class="pill pill-profile">
+    <div class="avatar-ring">
+      <!-- Replace src with real avatar image if needed -->
+      <svg class="avatar-placeholder" viewBox="0 0 44 44" fill="none">
+        <defs>
+          <radialGradient id="av" cx="50%" cy="35%" r="55%">
+            <stop offset="0%" stop-color="#b8aeaa"/>
+            <stop offset="100%" stop-color="#3a3533"/>
+          </radialGradient>
+        </defs>
+        <circle cx="22" cy="22" r="22" fill="url(#av)"/>
+        <circle cx="22" cy="17" r="7" fill="rgba(255,255,255,0.25)"/>
+        <ellipse cx="22" cy="36" rx="12" ry="9" fill="rgba(255,255,255,0.2)"/>
+      </svg>
+    </div>
+
+    <button class="starburst-btn" aria-label="Menu">
+      <!-- 12-point starburst badge -->
+      <svg class="starburst-svg" viewBox="0 0 46 46" fill="none">
+        <polygon
+          points="
+            23,1
+            27.4,6.6
+            34,3.95
+            35.02,10.98
+            42.05,12
+            39.42,18.6
+            45,23
+            39.42,27.4
+            42.05,34
+            35.02,35.02
+            34,42.05
+            27.4,39.42
+            23,45
+            18.6,39.42
+            12,42.05
+            10.98,35.02
+            3.95,34
+            6.58,27.4
+            1,23
+            6.58,18.6
+            3.95,12
+            10.98,10.98
+            12,3.95
+            18.6,6.58
+          "
+          fill="#ef7b41"
+        />
+      </svg>
+      <!-- Hamburger lines on top of starburst -->
+      <span class="hamburger" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+    </button>
+  </div>
+
+  <!-- ── Tools pill (middle-left) ─────────────────────── -->
+  <div class="pill pill-tools">
+
+    <button class="tool-btn" aria-label="Undo">
+      <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 14 4 9l5-5"/>
+        <path d="M4 9h9.5a5.5 5.5 0 0 1 0 11H11"/>
+      </svg>
+    </button>
+
+    <button class="tool-btn" aria-label="Redo">
+      <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 14l5-5-5-5"/>
+        <path d="M18 9H8.5a5.5 5.5 0 0 0 0 11H11"/>
+      </svg>
+    </button>
+
+    <button class="tool-btn" aria-label="Fit to screen">
+      <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 8V3h5M14 3h5v5M19 14v5h-5M8 19H3v-5"/>
+      </svg>
+    </button>
+
+    <button class="tool-btn" aria-label="Layers">
+      <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.75">
+        <circle cx="13.5" cy="9.5" r="5.5"/>
+        <circle cx="8.5" cy="13.5" r="4"/>
+      </svg>
+    </button>
+
+    <button class="tool-btn" aria-label="Zoom in">
+      <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+        <circle cx="10" cy="10" r="6.5"/>
+        <path d="M15 15L19.5 19.5M10 7v6M7 10h6"/>
+      </svg>
+    </button>
+
+    <button class="tool-btn" aria-label="Zoom out">
+      <svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+        <circle cx="10" cy="10" r="6.5"/>
+        <path d="M15 15L19.5 19.5M7 10h6"/>
+      </svg>
+    </button>
+
+  </div>
+
+  <!-- ── Main content ──────────────────────────────────── -->
+  <main class="main">
+    <div class="orb-wrap">
+
+      <!-- skeleton hover popup -->
+      <div class="orb-popup" aria-hidden="true">
+        <div class="popup-card">
+
+          <!-- orange tab "ears" at top corners (matching PDF card frame) -->
+          <span class="popup-ear popup-ear--l"></span>
+          <span class="popup-ear popup-ear--r"></span>
+
+          <!-- cat with sunglasses peeking over the top edge -->
+          <div class="popup-cat-head">
+            <svg viewBox="0 0 44 30" fill="none">
+              <polygon points="7,24 2,6 18,20"  fill="#ef7b41"/>
+              <polygon points="9,23 5,10 17,20" fill="#c85f2e"/>
+              <polygon points="37,24 42,6 26,20"  fill="#ef7b41"/>
+              <polygon points="35,23 39,10 27,20" fill="#c85f2e"/>
+              <ellipse cx="22" cy="26" rx="19" ry="15" fill="#ef7b41"/>
+              <ellipse cx="22" cy="28" rx="12" ry="11" fill="#f8b58d"/>
+              <!-- sunglasses -->
+              <rect x="8"  y="19" width="12" height="8" rx="4" fill="#161210"/>
+              <rect x="24" y="19" width="12" height="8" rx="4" fill="#161210"/>
+              <rect x="20" y="21" width="4"  height="3" rx="1" fill="#161210"/>
+              <ellipse cx="22" cy="29" rx="1.5" ry="1.2" fill="#7e3519"/>
+            </svg>
+          </div>
+
+          <p class="popup-title">UPLOAD AUDIO</p>
+
+          <div class="popup-skel-group">
+            <div class="skel skel--long"></div>
+            <div class="skel skel--medium"></div>
+            <div class="skel skel--zone"></div>
+          </div>
+        </div>
+
+        <!-- wavy connector line down to the orb -->
+        <div class="popup-connector">
+          <svg width="10" height="44" viewBox="0 0 10 44" fill="none">
+            <path d="M5 0 Q9 7 5 14 Q1 21 5 28 Q9 35 5 44"
+              stroke="rgba(239,123,65,0.35)" stroke-width="1.5"
+              stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+
+      <button class="orb-btn" aria-label="Click the orb to start">
+        <span class="orb-glow"></span>
+        <video
+          class="orb-video"
+          src="/public/brain_loop_alpha.webm"
+          autoplay
+          loop
+          muted
+          playsinline
+        ></video>
+      </button>
+    </div>
+
+    <p class="cta-label">CLICK THE ORB TO START</p>
+  </main>
+
+  <!-- ── Fox mascot (bottom-right) ─────────────────────── -->
+  <div class="mascot" aria-hidden="true">
+    <svg viewBox="0 0 80 68" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="8,42 3,12 28,34"  fill="#ef7b41"/>
+      <polygon points="10,41 6,17 26,34" fill="#c85f2e"/>
+      <polygon points="60,42 65,12 40,34" fill="#ef7b41"/>
+      <polygon points="58,41 62,17 42,34" fill="#c85f2e"/>
+      <ellipse cx="34" cy="56" rx="31" ry="30" fill="#ef7b41"/>
+      <ellipse cx="34" cy="60" rx="21" ry="20" fill="#f8b58d"/>
+      <ellipse cx="22" cy="50" rx="4" ry="4" fill="#272423"/>
+      <ellipse cx="46" cy="50" rx="4" ry="4" fill="#272423"/>
+      <circle cx="23.5" cy="48.5" r="1.3" fill="white"/>
+      <circle cx="47.5" cy="48.5" r="1.3" fill="white"/>
+      <ellipse cx="34" cy="61" rx="2.5" ry="1.8" fill="#7e3519"/>
+      <path d="M30.5 64.5 Q34 67.5 37.5 64.5" stroke="#7e3519" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+    </svg>
+  </div>
+
+</body>
+</html>
