@@ -4,9 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AIS — Starting Screen</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="infinite-bg" class="infinite-bg" aria-hidden="true"></div>
 
   <!-- ── Profile pill (top-left) ──────────────────────── -->
   <div class="pill pill-profile">
@@ -113,54 +116,9 @@
 
   </div>
 
-  <!-- ── Main content ──────────────────────────────────── -->
-  <main class="main">
-    <div class="orb-wrap">
-
-      <!-- skeleton hover popup -->
-      <div class="orb-popup" aria-hidden="true">
-        <div class="popup-card">
-
-          <!-- orange tab "ears" at top corners (matching PDF card frame) -->
-          <span class="popup-ear popup-ear--l"></span>
-          <span class="popup-ear popup-ear--r"></span>
-
-          <!-- cat with sunglasses peeking over the top edge -->
-          <div class="popup-cat-head">
-            <svg viewBox="0 0 44 30" fill="none">
-              <polygon points="7,24 2,6 18,20"  fill="#ef7b41"/>
-              <polygon points="9,23 5,10 17,20" fill="#c85f2e"/>
-              <polygon points="37,24 42,6 26,20"  fill="#ef7b41"/>
-              <polygon points="35,23 39,10 27,20" fill="#c85f2e"/>
-              <ellipse cx="22" cy="26" rx="19" ry="15" fill="#ef7b41"/>
-              <ellipse cx="22" cy="28" rx="12" ry="11" fill="#f8b58d"/>
-              <!-- sunglasses -->
-              <rect x="8"  y="19" width="12" height="8" rx="4" fill="#161210"/>
-              <rect x="24" y="19" width="12" height="8" rx="4" fill="#161210"/>
-              <rect x="20" y="21" width="4"  height="3" rx="1" fill="#161210"/>
-              <ellipse cx="22" cy="29" rx="1.5" ry="1.2" fill="#7e3519"/>
-            </svg>
-          </div>
-
-          <p class="popup-title">UPLOAD AUDIO</p>
-
-          <div class="popup-skel-group">
-            <div class="skel skel--long"></div>
-            <div class="skel skel--medium"></div>
-            <div class="skel skel--zone"></div>
-          </div>
-        </div>
-
-        <!-- wavy connector line down to the orb -->
-        <div class="popup-connector">
-          <svg width="10" height="44" viewBox="0 0 10 44" fill="none">
-            <path d="M5 0 Q9 7 5 14 Q1 21 5 28 Q9 35 5 44"
-              stroke="rgba(239,123,65,0.35)" stroke-width="1.5"
-              stroke-linecap="round"/>
-          </svg>
-        </div>
-      </div>
-
+  <!-- ── Shared orb — persists & morphs across screens ─── -->
+  <div id="orb-stage">
+    <div class="orb" id="orb">
       <button class="orb-btn" aria-label="Click the orb to start">
         <span class="orb-glow"></span>
         <video
@@ -173,9 +131,82 @@
         ></video>
       </button>
     </div>
+  </div>
 
-    <p class="cta-label">CLICK THE ORB TO START</p>
+  <!-- ── Starting screen ───────────────────────────────── -->
+  <main class="screen screen-start is-active" data-route="/">
+    <div class="main">
+    <div class="orb-wrap">
+
+      <!-- hover hint popup -->
+      <div class="orb-popup" aria-hidden="true">
+        <div class="popup-card">
+          <span class="popup-label">audio</span>
+          <span class="popup-arrow">→</span>
+        </div>
+
+        <!-- wavy connector — path reversed so it draws from orb upward -->
+        <div class="popup-connector">
+          <svg width="10" height="44" viewBox="0 0 10 44" fill="none">
+            <path class="popup-tail-path"
+              d="M5 44 Q9 35 5 28 Q1 21 5 14 Q9 7 5 0"
+              stroke="rgba(239,123,65,0.35)" stroke-width="1.5"
+              stroke-linecap="round" pathLength="1"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- placeholder the shared orb (in #orb-stage) morphs onto -->
+      <div class="orb-slot" data-orb-slot></div>
+    </div>
+
+    <p class="cta-label" data-anim>
+      <span class="cta-cursor" aria-hidden="true">
+        <canvas id="cursor-canvas" class="cta-lottie" width="40" height="40"></canvas>
+      </span>
+      <span class="cta-text"><span class="cta-word-click">CLICK</span> THE ORB TO START</span>
+    </p>
+    </div>
   </main>
+
+  <!-- ── Audio Upload screen ───────────────────────────── -->
+  <div class="screen screen-audio" data-route="/audio">
+    <section class="audio-screen">
+      <h1 class="screen-label">AUDIO UPLOAD</h1>
+
+      <!-- The cat: each piece is animated independently by GSAP -->
+      <div class="upload-card" id="cat-card">
+        <span class="card-ear card-ear--l" id="cat-ear-l"></span>
+        <span class="card-ear card-ear--r" id="cat-ear-r"></span>
+
+        <!-- pixel "deal with it" sunglasses -->
+        <span class="card-glasses" id="cat-glasses">
+          <svg viewBox="0 0 26 10" fill="#0c0a09" shape-rendering="crispEdges" aria-hidden="true">
+            <rect x="0"  y="1" width="26" height="1"/>
+            <rect x="0"  y="2" width="11" height="6"/>
+            <rect x="15" y="2" width="11" height="6"/>
+            <rect x="11" y="3" width="4"  height="2"/>
+          </svg>
+        </span>
+
+        <!-- the open mouth = the audio upload area -->
+        <label class="dropzone" id="cat-mouth">
+          <span class="dropzone-text" id="cat-mouth-text">DROP YOUR AUDIO FILE HERE OR BROWSE</span>
+          <input class="dropzone-input" type="file" accept="audio/*" aria-label="Upload audio file" />
+        </label>
+
+        <span class="card-foot card-foot--l" id="cat-paw-l"></span>
+        <span class="card-foot card-foot--r" id="cat-paw-r"></span>
+      </div>
+
+      <div class="particle-stream" aria-hidden="true">
+        <div class="particle-stream__flow"></div>
+      </div>
+
+      <!-- orb lands here, scaled up & peeking from the bottom -->
+      <div class="orb-slot orb-slot--audio" data-orb-slot></div>
+    </section>
+  </div>
 
   <!-- ── Fox mascot (bottom-right) ─────────────────────── -->
   <div class="mascot" aria-hidden="true">
@@ -195,5 +226,55 @@
     </svg>
   </div>
 
+  <script>
+    const root = document.documentElement;
+
+    // Canvas calls this with its zoom level and pan offset.
+    window.setBgTransform = ({ zoom = 1, x = 0, y = 0 } = {}) => {
+      root.style.setProperty('--bg-zoom', zoom);
+      root.style.setProperty('--bg-x', x + 'px');
+      root.style.setProperty('--bg-y', y + 'px');
+    };
+
+    // Keep the fixed background layer aligned with the page scroll so the
+    // pattern visually scrolls *with* the content (and any inner scrollers).
+    const syncBgToScroll = () => {
+      const x = window.scrollX || window.pageXOffset || 0;
+      const y = window.scrollY || window.pageYOffset || 0;
+      root.style.setProperty('--bg-scroll-x', -x + 'px');
+      root.style.setProperty('--bg-scroll-y', -y + 'px');
+    };
+
+    let scrollQueued = false;
+    const onScroll = () => {
+      if (scrollQueued) return;
+      scrollQueued = true;
+      requestAnimationFrame(() => { syncBgToScroll(); scrollQueued = false; });
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', syncBgToScroll, { passive: true });
+    // Also catch scrolling that happens inside nested scroll containers.
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    syncBgToScroll();
+  </script>
+
+  <script type="module">
+    import { DotLottie } from '/dotlottie/index.js';
+    const anim = new DotLottie({
+      canvas: document.getElementById('cursor-canvas'),
+      src: '/public/mouse-animation-warm.lottie',
+      autoplay: true,
+      loop: false,
+      segment: [0, 70],
+    });
+    anim.addEventListener('complete', () => anim.play());
+  </script>
+
+  <!-- GSAP (timeline engine for the cat transform) -->
+  <script src="/gsap/gsap.min.js"></script>
+
+  <!-- Client router + shared-orb morph -->
+  <script type="module" src="/router.js"></script>
 </body>
 </html>
